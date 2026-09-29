@@ -24,13 +24,14 @@ ContextMenuTrigger.displayName = "ContextMenuTrigger"
 
 function ContextMenuContent({
   sideOffset = 4,
+  anchor,
   className,
   ...props
 }: ContextMenuPrimitive.Popup.Props &
-  Pick<ContextMenuPrimitive.Positioner.Props, "sideOffset">) {
+  Pick<ContextMenuPrimitive.Positioner.Props, "sideOffset" | "anchor">) {
   return (
     <ContextMenuPrimitive.Portal>
-      <ContextMenuPrimitive.Positioner className="isolate z-50" sideOffset={sideOffset}>
+      <ContextMenuPrimitive.Positioner className="isolate z-50" sideOffset={sideOffset} anchor={anchor}>
         <ContextMenuPrimitive.Popup
           data-slot="context-menu-content"
           className={cn(

@@ -1,0 +1,370 @@
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { Check, CheckCircle2, MoreHorizontal, RotateCcw, Send, Trash2 } from 'lucide-react';
+import { formatDistanceToNowStrict } from 'date-fns';
+import { toast } from 'sonner';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import { Portal as HoverCardPortal } from '@radix-ui/react-hover-card';
+import { Popover, PopoverContent } from '@/components/ui/popover';
+import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { apiFetch } from '@/lib/api';
+
+export type CommentAnchor = { type: 'table' | 'relationship'; id: string };
+export type ERDCommentsConfig = { projectId: string; teamId: string; fileId: string; userId: string };
+type Preview = { authorId?: string; authorName: string; body: string; createdAt: string };
+type Marker = { anchorType: CommentAnchor['type']; anchorId: string; status: 'open' | 'resolved'; messageCount: number; unreadCount: number; previewMessages: Preview[] };
+type Thread = { id: string; status: 'open' | 'resolved'; createdBy: string };
+type Message = Preview & { id: string; threadId: string; authorId: string };
+type CommentsContext = {
+  markers: Map<string, Marker>;
+  active: CommentAnchor | null;
+  open: (anchor: CommentAnchor) => void;
+  setAnchorElement: (element: HTMLElement | null) => void;
+};
+
+const Context = createContext<CommentsContext | null>(null);
+const keyOf = (anchor: CommentAnchor) => `${anchor.type}:${anchor.id}`;
+
+function avatarInitials(name: string): string {
+  return name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || '?';
+}
+
+function messageTime(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : formatDistanceToNowStrict(date, { addSuffix: true });
+}
+
+function resizeTextarea(element: HTMLTextAreaElement, maxHeight = 144): void {
+  element.style.height = 'auto';
+  element.style.height = `${Math.min(element.scrollHeight, maxHeight)}px`;
+}
+
+async function request(path: string, init?: RequestInit): Promise<any> {
+  const response = await apiFetch(path, init);
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error || 'Could not load comments.');
+  return body;
+}
+
+export function ERDCommentsProvider({ config, children }: { config: ERDCommentsConfig; children: ReactNode }) {
+  const base = `/api/projects/${encodeURIComponent(config.projectId)}/comments`;
+  const scope = `feature_type=diagram&file_id=${encodeURIComponent(config.fileId)}`;
+  const [markers, setMarkers] = useState(new Map<string, Marker>());
+  const [active, setActive] = useState<CommentAnchor | null>(null);
+  const [anchorElement, setAnchorElement] = useState<HTMLElement | null>(null);
+  const [threads, setThreads] = useState<Thread[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [draft, setDraft] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState('');
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const textarea = useRef<HTMLTextAreaElement>(null);
+  const editTextarea = useRef<HTMLTextAreaElement>(null);
+  const requestId = useRef(0);
+
+  const loadMarkers = useCallback(async () => {
+    try {
+      const data = await request(`${base}/markers?${scope}`);
+      const items: Marker[] = (data.markers || []).map((item: any) => ({
+        anchorType: item.anchorType ?? item.anchor_type,
+        anchorId: String(item.anchorId ?? item.anchor_id),
+        status: item.status === 'resolved' ? 'resolved' : 'open',
+        messageCount: Number(item.messageCount ?? item.message_count ?? 0),
+        unreadCount: Number(item.unreadCount ?? item.unread_count ?? 0),
+        previewMessages: (item.previewMessages ?? item.preview_messages ?? []).map((message: any) => ({
+          authorId: message.authorId == null && message.author_id == null ? undefined : String(message.authorId ?? message.author_id),
+          authorName: String(message.authorName ?? message.author_name ?? 'Team member'),
+          body: String(message.body ?? ''),
+          createdAt: String(message.createdAt ?? message.created_at ?? ''),
+        })),
+      }));
+      setMarkers(new Map(items.map((item) => [keyOf({ type: item.anchorType, id: item.anchorId }), item])));
+    } catch { /* The canvas stays usable if comments are unavailable. */ }
+  }, [base, scope]);
+
+  const loadAnchor = useCallback(async (anchor: CommentAnchor, markRead = true) => {
+    const current = ++requestId.current;
+    setLoading(true);
+    setError('');
+    try {
+      const data = await request(`${base}/anchor?${scope}&anchor_type=${anchor.type}&anchor_id=${encodeURIComponent(anchor.id)}`);
+      if (current !== requestId.current) return;
+      const nextThreads: Thread[] = (data.threads || []).map((thread: any) => ({
+        id: String(thread.id), status: thread.status === 'resolved' ? 'resolved' : 'open', createdBy: String(thread.createdBy ?? thread.created_by ?? ''),
+      }));
+      const nextMessages: Message[] = (data.messages || []).map((message: any) => ({
+        id: String(message.id), threadId: String(message.threadId ?? message.thread_id),
+        authorId: String(message.authorId ?? message.author_id),
+        authorName: String(message.authorName ?? message.author_name ?? 'Team member'),
+        body: String(message.body), createdAt: String(message.createdAt ?? message.created_at),
+      }));
+      setThreads(nextThreads);
+      setMessages(nextMessages);
+      setEditingMessageId(null);
+      setEditDraft('');
+      if (markRead && nextThreads.length) {
+        await Promise.all(nextThreads.map((thread) => request(`${base}/${encodeURIComponent(thread.id)}/read?${scope}`, { method: 'POST' })));
+        if (current === requestId.current) await loadMarkers();
+      }
+    } catch {
+      if (current === requestId.current) setError('Could not load comments. Try again.');
+    } finally {
+      if (current === requestId.current) setLoading(false);
+    }
+  }, [base, scope, loadMarkers]);
+
+  const open = useCallback((anchor: CommentAnchor) => {
+    setActive(anchor);
+    setAnchorElement(null);
+    setDraft('');
+    setThreads([]);
+    setMessages([]);
+    setEditingMessageId(null);
+    setEditDraft('');
+    setDeleteDialogOpen(false);
+    void loadAnchor(anchor);
+  }, [loadAnchor]);
+
+  useEffect(() => {
+    void loadMarkers();
+    const onUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<{ teamId?: string; projectId?: string }>).detail;
+      if (detail?.teamId && String(detail.teamId) !== config.teamId) return;
+      if (detail?.projectId && String(detail.projectId) !== config.projectId) return;
+      void loadMarkers();
+      if (active && document.visibilityState === 'visible') void loadAnchor(active, false);
+    };
+    const onOpen = (event: Event) => {
+      const anchor = (event as CustomEvent<CommentAnchor>).detail;
+      if (anchor && ['table', 'relationship'].includes(anchor.type) && anchor.id) open(anchor);
+    };
+    window.addEventListener('collaboration-updated', onUpdate);
+    window.addEventListener('erd-comment-open-request', onOpen);
+    const interval = window.setInterval(() => { if (document.visibilityState === 'visible') void loadMarkers(); }, 15000);
+    return () => {
+      window.removeEventListener('collaboration-updated', onUpdate);
+      window.removeEventListener('erd-comment-open-request', onOpen);
+      window.clearInterval(interval);
+    };
+  }, [active, config.projectId, config.teamId, loadAnchor, loadMarkers, open]);
+
+  const activeThread = threads[0] ?? null;
+  const activeMarker = active ? markers.get(keyOf(active)) : undefined;
+  const threadResolved = activeThread?.status === 'resolved' || (!activeThread && activeMarker?.status === 'resolved');
+
+  useEffect(() => {
+    if (!editingMessageId || !editTextarea.current) return;
+    resizeTextarea(editTextarea.current);
+    editTextarea.current.focus();
+    editTextarea.current.setSelectionRange(editTextarea.current.value.length, editTextarea.current.value.length);
+  }, [editingMessageId]);
+
+  const notifyLocalUpdate = () => window.dispatchEvent(new CustomEvent('collaboration-updated', { detail: { teamId: config.teamId, projectId: config.projectId } }));
+
+  const startEditing = (message: Message) => {
+    if (message.authorId !== config.userId) return;
+    setEditingMessageId(message.id);
+    setEditDraft(message.body);
+    setError('');
+  };
+
+  const saveEdit = async (event: FormEvent) => {
+    event.preventDefault();
+    const message = messages.find((item) => item.id === editingMessageId);
+    const body = editDraft.trim();
+    if (!message || !body || sending) return;
+    setSending(true);
+    setError('');
+    try {
+      await request(`${base}/${encodeURIComponent(message.threadId)}/messages/${encodeURIComponent(message.id)}?${scope}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body }),
+      });
+      setEditingMessageId(null);
+      setEditDraft('');
+      if (active) await loadAnchor(active, false);
+      notifyLocalUpdate();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not edit comment.');
+    } finally { setSending(false); }
+  };
+
+  const changeStatus = async () => {
+    if (!active || !activeThread || sending) return;
+    setSending(true);
+    setError('');
+    try {
+      const nextStatus = activeThread.status === 'open' ? 'resolved' : 'open';
+      await request(`${base}/${encodeURIComponent(activeThread.id)}?${scope}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      setThreads((current) => current.map((thread) => thread.id === activeThread.id ? { ...thread, status: nextStatus } : thread));
+      setMarkers((current) => {
+        const key = keyOf(active);
+        const marker = current.get(key);
+        if (!marker) return current;
+        const next = new Map(current);
+        next.set(key, { ...marker, status: nextStatus });
+        return next;
+      });
+      await loadAnchor(active, false);
+      notifyLocalUpdate();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not update thread.');
+    } finally { setSending(false); }
+  };
+
+  const deleteThread = async () => {
+    if (!active || !activeThread || sending) return;
+    setSending(true);
+    setError('');
+    try {
+      await request(`${base}/${encodeURIComponent(activeThread.id)}?${scope}`, { method: 'DELETE' });
+      setDeleteDialogOpen(false);
+      setActive(null);
+      setAnchorElement(null);
+      requestId.current++;
+      setThreads([]);
+      setMessages([]);
+      await loadMarkers();
+      notifyLocalUpdate();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not delete thread.');
+    } finally { setSending(false); }
+  };
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    const body = draft.trim();
+    if (!active || !body || loading || threadResolved || sending) return;
+    setSending(true);
+    setError('');
+    try {
+      const thread = activeThread?.status === 'open' ? activeThread : null;
+      if (thread) {
+        await request(`${base}/${encodeURIComponent(thread.id)}/messages?${scope}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body }),
+        });
+      } else {
+        await request(`${base}?${scope}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ body, context: { type: active.type, id: active.id, featureType: 'diagram', fileId: config.fileId } }),
+        });
+      }
+      setDraft('');
+      if (textarea.current) textarea.current.style.height = '';
+      await loadAnchor(active);
+      notifyLocalUpdate();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not send comment.');
+      toast.error('Could not send comment.');
+    } finally { setSending(false); }
+  };
+
+  const value = useMemo(() => ({ markers, active, open, setAnchorElement }), [markers, active, open]);
+  return (
+    <Context.Provider value={value}>
+      {children}
+      <Popover open={!!active && !!anchorElement} onOpenChange={(next) => { if (!next) { setActive(null); setAnchorElement(null); requestId.current++; } }}>
+        <PopoverContent anchor={anchorElement} side="right" align="start" sideOffset={12} className="z-200 flex max-h-[min(420px,70vh)] w-[min(340px,calc(100vw-24px))] flex-col gap-0 overflow-hidden p-0" aria-label="Table or relationship comments">
+          {activeThread && <div className="absolute right-2 top-2 z-10"><DropdownMenu>
+              <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon" className="size-8" aria-label="Comment thread actions"><MoreHorizontal aria-hidden="true" className="size-4" /></Button>} />
+              <DropdownMenuContent align="end" className="w-48" positionerClassName="z-[210]">
+                <DropdownMenuItem onClick={() => void changeStatus()} disabled={sending}>
+                  {activeThread.status === 'open' ? <CheckCircle2 aria-hidden="true" /> : <RotateCcw aria-hidden="true" />}
+                  {activeThread.status === 'open' ? 'Resolve Thread' : 'Reopen Thread'}
+                </DropdownMenuItem>
+                {activeThread.createdBy === config.userId && <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem variant="destructive" onClick={() => setDeleteDialogOpen(true)} disabled={sending}>
+                    <Trash2 aria-hidden="true" />
+                    Delete Thread
+                  </DropdownMenuItem>
+                </>}
+              </DropdownMenuContent>
+            </DropdownMenu></div>}
+          {(loading || messages.length > 0) && <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2.5 pr-10">
+            {loading && messages.length === 0 ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
+            <div className="space-y-4">
+              {messages.map((message) => <div key={message.id} className="flex gap-2.5 text-sm">
+                <Avatar className="size-8 bg-cyan-600 text-white" aria-label={message.authorName}>
+                  <AvatarFallback className="bg-cyan-600 text-xs font-medium text-white">{avatarInitials(message.authorName)}</AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 items-baseline gap-2">
+                    <span className="truncate font-medium">{message.authorName}</span>
+                    <time className="shrink-0 text-xs text-muted-foreground" dateTime={message.createdAt}>{messageTime(message.createdAt)}</time>
+                    {message.authorId === config.userId && <button type="button" className="shrink-0 text-xs text-blue-600 hover:underline dark:text-sky-400" onClick={() => startEditing(message)}>Edit</button>}
+                  </div>
+                  {editingMessageId === message.id ? (
+                    <form onSubmit={saveEdit} className="mt-1.5 space-y-2">
+                      <textarea ref={editTextarea} rows={1} maxLength={4000} value={editDraft} onChange={(event) => { setEditDraft(event.target.value); resizeTextarea(event.target); }} className="max-h-36 min-h-9 w-full resize-none rounded-md border bg-background px-2.5 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Edit comment" />
+                      <div className="flex justify-end gap-1.5">
+                        <Button type="button" variant="ghost" size="sm" onClick={() => { setEditingMessageId(null); setEditDraft(''); }} disabled={sending}>Cancel</Button>
+                        <Button type="submit" size="sm" disabled={!editDraft.trim() || sending}>Save</Button>
+                      </div>
+                    </form>
+                  ) : <p className="mt-1 whitespace-pre-wrap wrap-break-word text-foreground/90">{message.body}</p>}
+                </div>
+              </div>)}
+            </div>
+          </div>}
+          <form onSubmit={submit} className="flex shrink-0 items-end gap-2 p-2">
+            <label className="sr-only" htmlFor="erd-comment-reply">Write a comment</label>
+            <textarea ref={textarea} id="erd-comment-reply" rows={1} maxLength={4000} value={draft} disabled={loading || threadResolved || sending} onChange={(event) => {
+              setDraft(event.target.value);
+              resizeTextarea(event.target);
+            }} placeholder={threadResolved ? 'Reopen thread to comment…' : 'Write a comment…'} className="min-h-9 max-h-36 flex-1 resize-none rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60" />
+            <Button type="submit" size="icon" className="size-9 shrink-0" aria-label="Send comment" disabled={!draft.trim() || loading || threadResolved || sending}><Send aria-hidden="true" className="size-4" /></Button>
+          </form>
+          {error ? <p role="alert" className="px-3 pb-3 text-xs text-destructive">{error}</p> : null}
+        </PopoverContent>
+      </Popover>
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete thread?</AlertDialogTitle>
+            <AlertDialogDescription>This permanently deletes the thread and all of its comments.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={sending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={(event) => { event.preventDefault(); void deleteThread(); }} disabled={sending}>Delete Thread</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Context.Provider>
+  );
+}
+
+export function useERDComments() { return useContext(Context); }
+
+export function CommentMarker({ anchor }: { anchor: CommentAnchor }) {
+  const comments = useERDComments();
+  const element = useRef<HTMLButtonElement>(null);
+  const marker = comments?.markers.get(keyOf(anchor));
+  const active = comments?.active?.type === anchor.type && comments.active.id === anchor.id;
+  useLayoutEffect(() => {
+    if (active) comments?.setAnchorElement(element.current);
+  }, [active, comments]);
+  if (!comments || (!marker && !active)) return null;
+  const count = marker?.unreadCount || 0;
+  const resolved = marker?.status === 'resolved';
+  return <HoverCard openDelay={180} closeDelay={100}>
+    <HoverCardTrigger asChild>
+      <button ref={element} type="button" className={`nodrag nopan flex h-4 min-w-4 items-center justify-center rounded-full border-0 px-1 text-[9px] font-bold leading-none shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 ${resolved ? 'bg-foreground text-background hover:opacity-80 focus-visible:outline-foreground' : 'bg-sky-500 text-white hover:bg-sky-600 focus-visible:outline-sky-500 dark:bg-sky-400 dark:text-slate-950 dark:hover:bg-sky-300'}`} aria-label={`${anchor.type === 'table' ? 'Table' : 'Relationship'} comments${resolved ? ', resolved' : count ? `, ${count} unread` : ''}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); comments.open(anchor); }}>
+        {resolved ? <Check aria-hidden="true" className="size-2.5 stroke-[3]" /> : count > 0 ? (count > 3 ? '3+' : count) : <span className="sr-only">Comments</span>}
+      </button>
+    </HoverCardTrigger>
+    {!active && marker && <HoverCardPortal><HoverCardContent side="right" sideOffset={8} className="w-64 space-y-2 p-3" aria-label="Recent comments">
+      {marker.previewMessages.map((message, index) => <div key={`${message.createdAt}:${index}`} className="flex gap-2">
+        <Avatar className="size-6 bg-cyan-600 text-white" aria-hidden="true"><AvatarFallback className="bg-cyan-600 text-[10px] text-white">{avatarInitials(message.authorName)}</AvatarFallback></Avatar>
+        <p className="line-clamp-2 min-w-0 text-xs"><span className="font-medium">{message.authorName}: </span>{message.body}</p>
+      </div>)}
+    </HoverCardContent></HoverCardPortal>}
+  </HoverCard>;
+}

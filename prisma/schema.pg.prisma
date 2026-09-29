@@ -683,6 +683,47 @@ model DiscussionRead {
   @@map("discussion_reads")
 }
 
+model CommentThread {
+  id          String   @id
+  projectId   Int      @map("project_id")
+  teamId      String   @map("team_id")
+  featureType String   @map("feature_type")
+  fileId      String   @map("file_id")
+  anchorType  String   @map("anchor_type")
+  anchorId    String   @map("anchor_id")
+  anchorLabel String   @map("anchor_label")
+  status      String   @default("open")
+  createdBy   String   @map("created_by")
+  resolvedBy  String?  @map("resolved_by")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@index([teamId, projectId, featureType, fileId, updatedAt(sort: Desc)], map: "comment_threads_file_updated")
+  @@map("comment_threads")
+}
+
+model CommentMessage {
+  id         String   @id
+  threadId   String   @map("thread_id")
+  authorId   String   @map("author_id")
+  authorName String   @map("author_name")
+  body       String
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([threadId, createdAt], map: "comment_messages_thread_created")
+  @@map("comment_messages")
+}
+
+model CommentRead {
+  threadId   String   @map("thread_id")
+  userId     String   @map("user_id")
+  lastReadAt DateTime @default(now()) @map("last_read_at") @db.Timestamptz(3)
+
+  @@id([threadId, userId])
+  @@index([userId, threadId], map: "comment_reads_user_thread")
+  @@map("comment_reads")
+}
+
 // ── User Preferences (desktop app) ──
 model UserPreference {
   id                  String   @id @default(uuid())
