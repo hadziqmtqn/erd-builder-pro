@@ -43,6 +43,9 @@ type Thread = {
   previewMessages: DiscussionMessageData[];
 };
 type DiscussionMessageData = { id: string; threadId?: string; authorId: string; authorName: string; body: string; createdAt: string };
+type MessageCursor = { createdAt: string; id: string };
+type MessageHistoryPage = { hasMore: boolean; nextCursor: MessageCursor | null };
+type MessageHistoryState = MessageHistoryPage & { messages: DiscussionMessageData[] };
 type RawRecord = Record<string, unknown>;
 
 function DiscussionComposer({
@@ -243,6 +246,31 @@ function normalizeMessage(raw: RawRecord): DiscussionMessageData {
   };
 }
 
+function messageHistoryPage(raw: RawRecord): MessageHistoryPage {
+  const cursor = raw.nextCursor as RawRecord | null | undefined;
+  return {
+    hasMore: raw.hasMore === true,
+    nextCursor: cursor?.createdAt && cursor.id ? { createdAt: String(cursor.createdAt), id: String(cursor.id) } : null,
+  };
+}
+
+function mergeMessages(current: DiscussionMessageData[], incoming: DiscussionMessageData[]): DiscussionMessageData[] {
+  const byId = new Map(current.map((message) => [message.id, message]));
+  for (const message of incoming) byId.set(message.id, message);
+  return [...byId.values()].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id.localeCompare(b.id));
+}
+
+function mergeLiveMessages(current: MessageHistoryState, incoming: DiscussionMessageData[], page: MessageHistoryPage): MessageHistoryState {
+  const messages = mergeMessages(current.messages, incoming).slice(-Math.max(50, current.messages.length));
+  const oldest = messages[0];
+  const hasMore = current.hasMore || page.hasMore;
+  return {
+    messages,
+    hasMore,
+    nextCursor: hasMore && oldest ? { createdAt: oldest.createdAt, id: oldest.id } : null,
+  };
+}
+
 type CommentThreadGroup = {
   key: string;
   representative: Thread;
@@ -323,7 +351,9 @@ export function DiscussionsPanel({
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [threads, setThreads] = useState<Thread[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [messages, setMessages] = useState<DiscussionMessageData[]>([]);
+  const [messageHistory, setMessageHistory] = useState<MessageHistoryState>({ messages: [], hasMore: false, nextCursor: null });
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [olderError, setOlderError] = useState("");
   const [loadingThreads, setLoadingThreads] = useState(true);
   const [sending, setSending] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -331,8 +361,10 @@ export function DiscussionsPanel({
   const [draft, setDraft] = useState("");
   const [composeAnchor, setComposeAnchor] = useState<DiscussionAnchor | null>(null);
   const [activeCommentAnchor, setActiveCommentAnchor] = useState<DiscussionAnchor | null>(null);
+  const messages = messageHistory.messages;
   const listRequest = useRef(0);
   const detailRequest = useRef(0);
+  const olderRequest = useRef(0);
   const seenMessages = useRef(new Map<string, string>());
   const hasInitialSnapshot = useRef(false);
   const resourcePath = activeTab === "comments" ? "comments" : "discussions";
@@ -395,7 +427,10 @@ export function DiscussionsPanel({
     try {
       const data = await requestJson(threadEndpoint(threadId));
       if (requestId !== detailRequest.current) return false;
-      setMessages(Array.isArray(data.messages) ? data.messages.map((message: RawRecord) => normalizeMessage(message)) : []);
+      const nextMessages = Array.isArray(data.messages) ? data.messages.map((message: RawRecord) => normalizeMessage(message)) : [];
+      const page = messageHistoryPage(data);
+      setMessageHistory((current) => quiet ? mergeLiveMessages(current, nextMessages, page) : { ...page, messages: nextMessages });
+      if (!quiet) setOlderError("");
       if (markRead) {
         void requestJson(requestPath(`${threadEndpoint(threadId)}/read`, activeTab === "comments" ? {
           feature_type: fileContext.featureType,
@@ -431,7 +466,9 @@ export function DiscussionsPanel({
           return next ? { ...thread, ...next } : thread;
         });
       });
-      setMessages(anchorMessages);
+      const page = messageHistoryPage(data);
+      setMessageHistory((current) => quiet ? mergeLiveMessages(current, anchorMessages, page) : { ...page, messages: anchorMessages });
+      if (!quiet) setOlderError("");
       const selectedId = preferredThreadId || anchorThreads[0]?.id || null;
       setSelectedThreadId(selectedId);
       const contexts = Array.isArray(data.contexts) ? data.contexts.map((context: RawRecord) => normalizeContext(context)).filter(Boolean) as CollaborationContext[] : [];
@@ -450,11 +487,42 @@ export function DiscussionsPanel({
     }
   }, [endpoint, fileContext.fileId, fileContext.featureType, focusAnchor, loadThreads, onContextSelected]);
 
+  const loadOlderMessages = useCallback(async () => {
+    const cursor = messageHistory.nextCursor;
+    const threadId = selectedThreadId;
+    if (!messageHistory.hasMore || !cursor || !threadId || loadingOlder) return;
+    const requestId = ++olderRequest.current;
+    const activeRequest = detailRequest.current;
+    setLoadingOlder(true);
+    setOlderError("");
+    try {
+      const pageQuery = { before_created_at: cursor.createdAt, before_id: cursor.id };
+      const path = isCommentRail && activeCommentAnchor
+        ? requestPath(`${endpoint}/anchor`, {
+          feature_type: fileContext.featureType,
+          file_id: fileContext.fileId,
+          anchor_type: activeCommentAnchor.type,
+          anchor_id: activeCommentAnchor.id,
+          ...pageQuery,
+        })
+        : requestPath(threadEndpoint(threadId), pageQuery);
+      const data = await requestJson(path);
+      if (requestId !== olderRequest.current || activeRequest !== detailRequest.current) return;
+      const olderMessages = Array.isArray(data.messages) ? data.messages.map((message: RawRecord) => normalizeMessage(message)) : [];
+      const page = messageHistoryPage(data);
+      setMessageHistory((current) => ({ ...page, messages: mergeMessages(current.messages, olderMessages) }));
+    } catch {
+      if (requestId === olderRequest.current) setOlderError("Could not load earlier messages.");
+    } finally {
+      if (requestId === olderRequest.current) setLoadingOlder(false);
+    }
+  }, [activeCommentAnchor, endpoint, fileContext.featureType, fileContext.fileId, isCommentRail, loadingOlder, messageHistory, selectedThreadId, threadEndpoint]);
+
   useEffect(() => {
     hasInitialSnapshot.current = false;
     setScreen("list");
     setSelectedThreadId(null);
-    setMessages([]);
+    setMessageHistory({ messages: [], hasMore: false, nextCursor: null });
     setThreads([]);
     void loadThreads();
   }, [loadThreads]);
@@ -541,14 +609,14 @@ export function DiscussionsPanel({
       setActiveCommentAnchor(anchor);
       setScreen("thread");
       setSelectedThreadId(thread.id);
-      setMessages([]);
+      setMessageHistory({ messages: [], hasMore: false, nextCursor: null });
       focusAnchor(anchor);
       await loadAnchor(anchor, true, false, thread.id);
       return;
     }
     setScreen("thread");
     setSelectedThreadId(thread.id);
-    setMessages([]);
+    setMessageHistory({ messages: [], hasMore: false, nextCursor: null });
     const loaded = await loadThread(thread.id, true);
     if (loaded) {
       if (context) onContextSelected?.(context);
@@ -629,8 +697,8 @@ export function DiscussionsPanel({
       });
       setDraft("");
       notifyLocalUpdate();
-      if (isCommentRail && activeCommentAnchor) await loadAnchor(activeCommentAnchor, true, false, selectedThreadId);
-      else await loadThread(selectedThreadId, true);
+      if (isCommentRail && activeCommentAnchor) await loadAnchor(activeCommentAnchor, true, true, selectedThreadId);
+      else await loadThread(selectedThreadId, true, true);
       await loadThreads();
     } catch {
       setThreadError(`Couldn't send the reply. Reopen the ${activeTab === "comments" ? "comment" : "discussion"} if it was resolved.`);
@@ -643,6 +711,7 @@ export function DiscussionsPanel({
     const thread = threads.find((item) => item.id === selectedThreadId);
     if (!thread || sending) return;
     setSending(true);
+    const expectedStatus = thread.status;
     try {
       await requestJson(requestPath(`${endpoint}/${encodeURIComponent(thread.id)}`, activeTab === "comments" ? {
         feature_type: fileContext.featureType,
@@ -650,12 +719,13 @@ export function DiscussionsPanel({
       } : {}), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: thread.status === "open" ? "resolved" : "open" }),
+        body: JSON.stringify({ status: expectedStatus === "open" ? "resolved" : "open", expectedStatus }),
       });
       notifyLocalUpdate();
       await loadThreads();
-    } catch {
-      setThreadError(`Couldn't update this ${activeTab === "comments" ? "comment" : "discussion"}. Try again.`);
+    } catch (cause) {
+      setThreadError(cause instanceof Error ? cause.message : `Couldn't update this ${activeTab === "comments" ? "comment" : "discussion"}. Try again.`);
+      await loadThreads();
     } finally {
       setSending(false);
     }
@@ -864,6 +934,14 @@ export function DiscussionsPanel({
                   <MessageScroller className="flex-1">
                     <MessageScrollerViewport aria-label={`${activeTab === "comments" ? "Comment" : "Discussion"} messages`}>
                       <MessageScrollerContent className="gap-4 p-4">
+                        {messageHistory.hasMore && (
+                          <div className="flex flex-col items-center gap-1">
+                            <Button type="button" size="sm" variant="ghost" onClick={() => void loadOlderMessages()} disabled={loadingOlder}>
+                              {loadingOlder ? "Loading…" : "Load earlier messages"}
+                            </Button>
+                            {olderError && <p className="text-xs text-destructive" role="alert">{olderError}</p>}
+                          </div>
+                        )}
                         {messageGroups.map((group) => (
                           <MessageGroup key={group[0].id}>
                             {group.map((message, index) => (

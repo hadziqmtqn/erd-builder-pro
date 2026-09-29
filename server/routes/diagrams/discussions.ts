@@ -9,6 +9,7 @@ import { handleError } from "../../lib/utils.js";
 const router = Router({ mergeParams: true });
 const notFound = { error: "Resource not found" };
 const MAX_BODY_LENGTH = 4000;
+const HISTORY_PAGE_SIZE = 50;
 
 const featureTypeSchema = z.enum(["diagram", "note", "drawing", "flowchart"]);
 const anchorTypeSchema = z.enum(["general", "table", "relationship", "block", "shape", "point"]);
@@ -38,7 +39,18 @@ const createThreadSchema = z.object({
 });
 
 const messageSchema = z.object({ body: z.string().trim().min(1).max(MAX_BODY_LENGTH) }).strict();
-const statusSchema = z.object({ status: z.enum(["open", "resolved"]) }).strict();
+const editMessageSchema = z.object({
+  body: z.string().trim().min(1).max(MAX_BODY_LENGTH),
+  expectedBody: z.string().max(MAX_BODY_LENGTH),
+}).strict();
+const statusSchema = z.object({
+  status: z.enum(["open", "resolved"]),
+  expectedStatus: z.enum(["open", "resolved"]).optional(),
+}).strict().refine((value) => !value.expectedStatus || value.status !== value.expectedStatus);
+const historyCursorSchema = z.object({
+  before_created_at: z.string().datetime({ offset: true }).optional(),
+  before_id: z.string().trim().min(1).max(128).optional(),
+}).refine((value) => Boolean(value.before_created_at) === Boolean(value.before_id));
 const resourceKindSchema = z.enum(["discussion", "comment"]);
 
 type ResourceKind = z.infer<typeof resourceKindSchema>;
@@ -47,6 +59,7 @@ type AnchorType = z.infer<typeof anchorTypeSchema>;
 type ScopedFile = { id: number; uid: string | null; projectId: number | bigint; label: string; featureType: FeatureType };
 type ScopedResource = { projectId: number | bigint; projectName: string; currentFile: ScopedFile | null };
 type DiscussionActor = { id: string; teamId: string };
+type HistoryCursor = { createdAt: Date; id: string };
 
 const tables = {
   discussion: { threads: "discussion_threads", messages: "discussion_messages", reads: "discussion_reads" },
@@ -74,6 +87,34 @@ export function setCollaborationResource(kind: ResourceKind) {
 
 function isProjectRoute(req: Request): boolean {
   return typeof (req.params as { projectId?: string }).projectId === "string";
+}
+
+function historyCursor(req: Request): { valid: boolean; cursor: HistoryCursor | null } {
+  const parsed = historyCursorSchema.safeParse({
+    before_created_at: typeof req.query.before_created_at === "string" ? req.query.before_created_at : undefined,
+    before_id: typeof req.query.before_id === "string" ? req.query.before_id : undefined,
+  });
+  if (!parsed.success) return { valid: false, cursor: null };
+  return {
+    valid: true,
+    cursor: parsed.data.before_created_at && parsed.data.before_id
+      ? { createdAt: new Date(parsed.data.before_created_at), id: parsed.data.before_id }
+      : null,
+  };
+}
+
+function pageHistory<T extends { id: string; createdAt: Date | string }>(rows: T[]) {
+  const hasMore = rows.length > HISTORY_PAGE_SIZE;
+  const page = rows.slice(0, HISTORY_PAGE_SIZE);
+  const oldest = page[page.length - 1];
+  const timestamp = oldest?.createdAt instanceof Date
+    ? oldest.createdAt.toISOString()
+    : oldest ? new Date(oldest.createdAt).toISOString() : null;
+  return {
+    messages: page.reverse(),
+    hasMore,
+    nextCursor: hasMore && oldest && timestamp ? { createdAt: timestamp, id: oldest.id } : null,
+  };
 }
 
 export function requireCloudDiscussionTeam(_req: Request, res: Response, next: NextFunction): void {
@@ -441,6 +482,8 @@ router.get("/anchor", async (req, res) => {
   try {
     const actor = actorFor(req);
     if (!actor || !prisma || resourceKind(req) !== "comment") { res.status(404).json(notFound); return; }
+    const paging = historyCursor(req);
+    if (!paging.valid) { res.status(400).json({ error: "Invalid message cursor" }); return; }
     const resource = await scopedResource(req, actor);
     const featureType = featureTypeSchema.safeParse(req.query.feature_type).data;
     const fileId = typeof req.query.file_id === "string" ? req.query.file_id : "";
@@ -466,7 +509,12 @@ router.get("/anchor", async (req, res) => {
         AND t."anchor_type" = $5 AND t."anchor_id" = $6
       ORDER BY t."updated_at" DESC, t."id" DESC
     `, resource.projectId, actor.teamId, featureType, scopedFileId, anchorType, anchorId);
-    const messages = await prisma.$queryRawUnsafe<Array<Record<string, any>>>(`
+    const cursorClause = paging.cursor
+      ? `AND (m."created_at" < $7 OR (m."created_at" = $7 AND m."id" < $8))`
+      : "";
+    const messageValues: unknown[] = [resource.projectId, actor.teamId, featureType, scopedFileId, anchorType, anchorId];
+    if (paging.cursor) messageValues.push(paging.cursor.createdAt, paging.cursor.id);
+    const rows = await prisma.$queryRawUnsafe<Array<Record<string, any> & { id: string; createdAt: Date | string }>>(`
       SELECT m."id", m."thread_id" AS "threadId", m."author_id" AS "authorId",
         COALESCE(NULLIF(m."author_name", ''), u."name", u."email", 'Team member') AS "authorName",
         m."body", m."created_at" AS "createdAt"
@@ -475,9 +523,11 @@ router.get("/anchor", async (req, res) => {
       LEFT JOIN "users" u ON u."id" = m."author_id"
       WHERE t."project_id" = $1 AND t."team_id" = $2
         AND t."feature_type" = $3 AND t."file_id" = $4
-        AND t."anchor_type" = $5 AND t."anchor_id" = $6
-      ORDER BY m."created_at" ASC, m."id" ASC
-    `, resource.projectId, actor.teamId, featureType, scopedFileId, anchorType, anchorId);
+        AND t."anchor_type" = $5 AND t."anchor_id" = $6 ${cursorClause}
+      ORDER BY m."created_at" DESC, m."id" DESC
+      LIMIT ${HISTORY_PAGE_SIZE + 1}
+    `, ...messageValues);
+    const history = pageHistory(rows);
     const context = {
       featureType,
       fileId: resource.currentFile?.uid || scopedFileId,
@@ -485,7 +535,7 @@ router.get("/anchor", async (req, res) => {
       anchorId,
       anchorLabel: threads[0]?.anchorLabel || anchorLabel(anchorType),
     };
-    res.json({ threads, messages, contexts: [context] });
+    res.json({ threads, ...history, contexts: [context] });
   } catch (error) {
     handleError(res, error, "Failed to load anchor comments");
   }
@@ -534,6 +584,13 @@ router.post("/", async (req, res) => {
           `, randomUUID(), threadId, context.file.featureType, String(context.file.id), context.type, context.id ?? null, context.label);
         }
       } else {
+        const fileTable = featureTables[context.file!.featureType].table;
+        // ponytail: file-level locking keeps the write portable across SQLite and Postgres; use per-anchor locks only if contention is measured.
+        const locked = await tx.$executeRawUnsafe(`
+          UPDATE "${fileTable}" SET "updated_at" = "updated_at"
+          WHERE "id" = $1 AND "project_id" = $2
+        `, context.file!.id, resource.projectId);
+        if (!Number(locked)) return null;
         const existing = await tx.$queryRawUnsafe<Array<{ id: string; status: string }>>(`
           SELECT "id", "status" FROM "comment_threads"
           WHERE "project_id" = $1 AND "team_id" = $2 AND "feature_type" = $3
@@ -542,6 +599,11 @@ router.post("/", async (req, res) => {
         `, resource.projectId, actor.teamId, context.file!.featureType, String(context.file!.id), context.type, context.id);
         if (existing[0]?.status === "resolved") return null;
         if (existing[0]) {
+          const claimed = await tx.$executeRawUnsafe(`
+            UPDATE "comment_threads" SET "updated_at" = CURRENT_TIMESTAMP
+            WHERE "id" = $1 AND "project_id" = $2 AND "team_id" = $3 AND "status" = 'open'
+          `, existing[0].id, resource.projectId, actor.teamId);
+          if (!Number(claimed)) return null;
           activeThreadId = existing[0].id;
         } else {
           await tx.$executeRawUnsafe(`
@@ -574,20 +636,28 @@ router.get("/:threadId", async (req, res) => {
   try {
     const actor = actorFor(req);
     if (!actor || !prisma) { res.status(404).json(notFound); return; }
+    const paging = historyCursor(req);
+    if (!paging.valid) { res.status(400).json({ error: "Invalid message cursor" }); return; }
     const kind = resourceKind(req);
     const resource = await scopedResource(req, actor);
     if (!resource || !(await threadInScope(req, resource, actor, req.params.threadId, kind))) { res.status(404).json(notFound); return; }
     const messageTable = tables[kind].messages;
-    const messages = await prisma.$queryRawUnsafe<Array<Record<string, any>>>(`
+    const cursorClause = paging.cursor
+      ? `AND (m."created_at" < $2 OR (m."created_at" = $2 AND m."id" < $3))`
+      : "";
+    const values: unknown[] = [req.params.threadId];
+    if (paging.cursor) values.push(paging.cursor.createdAt, paging.cursor.id);
+    const rows = await prisma.$queryRawUnsafe<Array<Record<string, any> & { id: string; createdAt: Date | string }>>(`
       SELECT m."id", m."author_id" AS "authorId",
         COALESCE(NULLIF(m."author_name", ''), u."name", u."email", 'Team member') AS "authorName",
         m."body", m."created_at" AS "createdAt"
       FROM "${messageTable}" m
       LEFT JOIN "users" u ON u."id" = m."author_id"
-      WHERE m."thread_id" = $1
+      WHERE m."thread_id" = $1 ${cursorClause}
       ORDER BY m."created_at" DESC, m."id" DESC
-      LIMIT 500
-    `, req.params.threadId);
+      LIMIT ${HISTORY_PAGE_SIZE + 1}
+    `, ...values);
+    const history = pageHistory(rows);
     const contexts = kind === "discussion"
       ? await prisma.$queryRawUnsafe<Array<Record<string, any>>>(`
         SELECT "feature_type" AS "featureType", "file_id" AS "fileId", "anchor_type" AS "anchorType", "anchor_id" AS "anchorId", "anchor_label" AS "anchorLabel"
@@ -597,7 +667,7 @@ router.get("/:threadId", async (req, res) => {
         SELECT "feature_type" AS "featureType", "file_id" AS "fileId", "anchor_type" AS "anchorType", "anchor_id" AS "anchorId", "anchor_label" AS "anchorLabel"
         FROM "comment_threads" WHERE "id" = $1 LIMIT 1
       `, req.params.threadId);
-    res.json({ messages: messages.reverse(), contexts });
+    res.json({ ...history, contexts });
   } catch (error) {
     handleError(res, error, "Failed to load collaboration thread");
   }
@@ -651,11 +721,15 @@ router.post("/:threadId/messages", async (req, res) => {
       `, ...values);
       if (!rows[0]) return "missing";
       if (rows[0].status !== "open") return "resolved";
+      const claimed = await tx.$executeRawUnsafe(`
+        UPDATE "${table.threads}" SET "updated_at" = CURRENT_TIMESTAMP
+        WHERE "id" = $1 AND "project_id" = $2 AND "team_id" = $3 AND "status" = 'open'
+      `, req.params.threadId, resource.projectId, actor.teamId);
+      if (!Number(claimed)) return "resolved";
       await tx.$executeRawUnsafe(`
         INSERT INTO "${table.messages}" ("id", "thread_id", "author_id", "author_name", "body")
         VALUES ($1, $2, $3, $4, $5)
       `, messageId, req.params.threadId, actor.id, name, input.data.body);
-      await tx.$executeRawUnsafe(`UPDATE "${table.threads}" SET "updated_at" = CURRENT_TIMESTAMP WHERE "id" = $1`, req.params.threadId);
       await tx.$executeRawUnsafe(`
         INSERT INTO "${table.reads}" ("thread_id", "user_id", "last_read_at")
         VALUES ($1, $2, CURRENT_TIMESTAMP)
@@ -675,7 +749,7 @@ router.post("/:threadId/messages", async (req, res) => {
 router.patch("/:threadId/messages/:messageId", async (req, res) => {
   try {
     const actor = actorFor(req);
-    const input = messageSchema.safeParse(req.body);
+    const input = editMessageSchema.safeParse(req.body);
     if (!input.success) { res.status(400).json({ error: "Invalid message" }); return; }
     if (!actor || !prisma) { res.status(404).json(notFound); return; }
     const resource = await scopedResource(req, actor);
@@ -687,14 +761,18 @@ router.patch("/:threadId/messages/:messageId", async (req, res) => {
     const fileClause = fileParams
       ? `AND t."feature_type" = $7 AND t."file_id" = $8`
       : "";
+    const scopeValues = fileParams
+      ? [req.params.messageId, req.params.threadId, actor.id, resource.projectId, actor.teamId, fileParams.featureType, fileParams.fileId]
+      : [req.params.messageId, req.params.threadId, actor.id, resource.projectId, actor.teamId];
     const values = fileParams
-      ? [req.params.messageId, req.params.threadId, actor.id, input.data.body, resource.projectId, actor.teamId, fileParams.featureType, fileParams.fileId]
-      : [req.params.messageId, req.params.threadId, actor.id, input.data.body, resource.projectId, actor.teamId];
+      ? [req.params.messageId, req.params.threadId, actor.id, input.data.body, resource.projectId, actor.teamId, fileParams.featureType, fileParams.fileId, input.data.expectedBody]
+      : [req.params.messageId, req.params.threadId, actor.id, input.data.body, resource.projectId, actor.teamId, input.data.expectedBody];
     const updated = await prisma.$transaction(async (tx) => {
       const count = await tx.$executeRawUnsafe(`
         UPDATE "${table.messages}" AS m
         SET "body" = $4
         WHERE m."id" = $1 AND m."thread_id" = $2 AND m."author_id" = $3
+          AND m."body" = $${values.length}
           AND EXISTS (
             SELECT 1 FROM "${table.threads}" t
             WHERE t."id" = m."thread_id" AND t."project_id" = $5 AND t."team_id" = $6 ${fileClause}
@@ -702,10 +780,20 @@ router.patch("/:threadId/messages/:messageId", async (req, res) => {
       `, ...values);
       if (Number(count) > 0) {
         await tx.$executeRawUnsafe(`UPDATE "${table.threads}" SET "updated_at" = CURRENT_TIMESTAMP WHERE "id" = $1`, req.params.threadId);
+        return "updated";
       }
-      return Number(count);
+      const existing = await tx.$queryRawUnsafe<Array<{ id: string; body: string }>>(`
+        SELECT m."id", m."body" FROM "${table.messages}" m
+        WHERE m."id" = $1 AND m."thread_id" = $2 AND m."author_id" = $3
+          AND EXISTS (
+            SELECT 1 FROM "${table.threads}" t
+            WHERE t."id" = m."thread_id" AND t."project_id" = $4 AND t."team_id" = $5 ${fileParams ? 'AND t."feature_type" = $6 AND t."file_id" = $7' : ""}
+          )
+      `, ...scopeValues);
+      return existing[0] ? "conflict" : "missing";
     });
-    if (updated === 0) { res.status(404).json(notFound); return; }
+    if (updated === "missing") { res.status(404).json(notFound); return; }
+    if (updated === "conflict") { res.status(409).json({ error: "This message changed. Refresh before editing it again." }); return; }
     notifyTeam(actor.teamId);
     res.json({ id: req.params.messageId, body: input.data.body });
   } catch (error) {
@@ -721,6 +809,7 @@ router.patch("/:threadId", async (req, res) => {
     if (!actor || !prisma) { res.status(404).json(notFound); return; }
     const resource = await scopedResource(req, actor);
     const kind = resourceKind(req);
+    const expectedStatus = input.data.expectedStatus ?? (input.data.status === "open" ? "resolved" : "open");
     if (!resource) { res.status(404).json(notFound); return; }
     if (kind === "comment" && !contextParams(resource, req)) { res.status(404).json(notFound); return; }
     const table = tables[kind];
@@ -740,14 +829,21 @@ router.patch("/:threadId", async (req, res) => {
         LIMIT 1
       `, ...values);
       if (!rows[0]) return null;
-      if (rows[0].status === input.data.status) return false;
-      await tx.$executeRawUnsafe(`
-        UPDATE "${table.threads}" SET "status" = $4, "resolved_by" = $5, "updated_at" = CURRENT_TIMESTAMP
-        WHERE "id" = $1 AND "project_id" = $2 AND "team_id" = $3
-      `, req.params.threadId, resource.projectId, actor.teamId, input.data.status, input.data.status === "resolved" ? actor.id : null);
+      if (rows[0].status !== expectedStatus) return "conflict";
+      const expectedStatusIndex = values.length + 1;
+      const statusIndex = values.length + 2;
+      const resolvedByIndex = values.length + 3;
+      const count = await tx.$executeRawUnsafe(`
+        UPDATE "${table.threads}" AS t
+        SET "status" = $${statusIndex}, "resolved_by" = $${resolvedByIndex}, "updated_at" = CURRENT_TIMESTAMP
+        WHERE t."id" = $1 AND t."project_id" = $2 AND t."team_id" = $3 ${contextClause}
+          AND t."status" = $${expectedStatusIndex}
+      `, ...values, expectedStatus, input.data.status, input.data.status === "resolved" ? actor.id : null);
+      if (!Number(count)) return "conflict";
       return true;
     });
     if (changed === null) { res.status(404).json(notFound); return; }
+    if (changed === "conflict") { res.status(409).json({ error: "Thread status changed. Refresh before trying again." }); return; }
     if (changed) notifyTeam(actor.teamId);
     res.json({ status: input.data.status });
   } catch (error) {

@@ -7,6 +7,7 @@ import { Portal as HoverCardPortal } from '@radix-ui/react-hover-card';
 import { Popover, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { MessageScroller, MessageScrollerContent, MessageScrollerProvider, MessageScrollerViewport } from '@/components/ui/message-scroller';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { apiFetch } from '@/lib/api';
@@ -17,6 +18,9 @@ type Preview = { authorId?: string; authorName: string; body: string; createdAt:
 type Marker = { anchorType: CommentAnchor['type']; anchorId: string; status: 'open' | 'resolved'; messageCount: number; unreadCount: number; previewMessages: Preview[] };
 type Thread = { id: string; status: 'open' | 'resolved'; createdBy: string };
 type Message = Preview & { id: string; threadId: string; authorId: string };
+type MessageCursor = { createdAt: string; id: string };
+type MessageHistoryPage = { hasMore: boolean; nextCursor: MessageCursor | null };
+type MessageHistoryState = MessageHistoryPage & { messages: Message[] };
 type CommentsContext = {
   markers: Map<string, Marker>;
   active: CommentAnchor | null;
@@ -26,6 +30,31 @@ type CommentsContext = {
 
 const Context = createContext<CommentsContext | null>(null);
 const keyOf = (anchor: CommentAnchor) => `${anchor.type}:${anchor.id}`;
+
+function messageHistoryPage(raw: any): MessageHistoryPage {
+  const cursor = raw.nextCursor;
+  return {
+    hasMore: raw.hasMore === true,
+    nextCursor: cursor?.createdAt && cursor.id ? { createdAt: String(cursor.createdAt), id: String(cursor.id) } : null,
+  };
+}
+
+function mergeMessages(current: Message[], incoming: Message[]): Message[] {
+  const byId = new Map(current.map((message) => [message.id, message]));
+  for (const message of incoming) byId.set(message.id, message);
+  return [...byId.values()].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id.localeCompare(b.id));
+}
+
+function mergeLiveMessages(current: MessageHistoryState, incoming: Message[], page: MessageHistoryPage): MessageHistoryState {
+  const messages = mergeMessages(current.messages, incoming).slice(-Math.max(50, current.messages.length));
+  const oldest = messages[0];
+  const hasMore = current.hasMore || page.hasMore;
+  return {
+    messages,
+    hasMore,
+    nextCursor: hasMore && oldest ? { createdAt: oldest.createdAt, id: oldest.id } : null,
+  };
+}
 
 function avatarInitials(name: string): string {
   return name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || '?';
@@ -55,7 +84,9 @@ export function ERDCommentsProvider({ config, children }: { config: ERDCommentsC
   const [active, setActive] = useState<CommentAnchor | null>(null);
   const [anchorElement, setAnchorElement] = useState<HTMLElement | null>(null);
   const [threads, setThreads] = useState<Thread[]>([]);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messageHistory, setMessageHistory] = useState<MessageHistoryState>({ messages: [], hasMore: false, nextCursor: null });
+  const messages = messageHistory.messages;
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -87,10 +118,13 @@ export function ERDCommentsProvider({ config, children }: { config: ERDCommentsC
     } catch { /* The canvas stays usable if comments are unavailable. */ }
   }, [base, scope]);
 
-  const loadAnchor = useCallback(async (anchor: CommentAnchor, markRead = true) => {
+  const loadAnchor = useCallback(async (anchor: CommentAnchor, markRead = true, quiet = false) => {
     const current = ++requestId.current;
-    setLoading(true);
-    setError('');
+    setLoadingOlder(false);
+    if (!quiet) {
+      setLoading(true);
+      setError('');
+    }
     try {
       const data = await request(`${base}/anchor?${scope}&anchor_type=${anchor.type}&anchor_id=${encodeURIComponent(anchor.id)}`);
       if (current !== requestId.current) return;
@@ -104,7 +138,8 @@ export function ERDCommentsProvider({ config, children }: { config: ERDCommentsC
         body: String(message.body), createdAt: String(message.createdAt ?? message.created_at),
       }));
       setThreads(nextThreads);
-      setMessages(nextMessages);
+      const page = messageHistoryPage(data);
+      setMessageHistory((existing) => quiet ? mergeLiveMessages(existing, nextMessages, page) : { ...page, messages: nextMessages });
       setEditingMessageId(null);
       setEditDraft('');
       if (markRead && nextThreads.length) {
@@ -112,18 +147,43 @@ export function ERDCommentsProvider({ config, children }: { config: ERDCommentsC
         if (current === requestId.current) await loadMarkers();
       }
     } catch {
-      if (current === requestId.current) setError('Could not load comments. Try again.');
+      if (!quiet && current === requestId.current) setError('Could not load comments. Try again.');
     } finally {
       if (current === requestId.current) setLoading(false);
     }
   }, [base, scope, loadMarkers]);
+
+  const loadOlderMessages = useCallback(async () => {
+    const cursor = messageHistory.nextCursor;
+    if (!active || !cursor || !messageHistory.hasMore || loadingOlder) return;
+    const requestNumber = ++requestId.current;
+    const query = new URLSearchParams({ before_created_at: cursor.createdAt, before_id: cursor.id });
+    setLoadingOlder(true);
+    setError('');
+    try {
+      const data = await request(`${base}/anchor?${scope}&anchor_type=${active.type}&anchor_id=${encodeURIComponent(active.id)}&${query}`);
+      if (requestNumber !== requestId.current) return;
+      const olderMessages: Message[] = (data.messages || []).map((message: any) => ({
+        id: String(message.id), threadId: String(message.threadId ?? message.thread_id),
+        authorId: String(message.authorId ?? message.author_id),
+        authorName: String(message.authorName ?? message.author_name ?? 'Team member'),
+        body: String(message.body), createdAt: String(message.createdAt ?? message.created_at),
+      }));
+      const page = messageHistoryPage(data);
+      setMessageHistory((current) => ({ ...page, messages: mergeMessages(current.messages, olderMessages) }));
+    } catch (cause) {
+      if (requestNumber === requestId.current) setError(cause instanceof Error ? cause.message : 'Could not load earlier comments.');
+    } finally {
+      if (requestNumber === requestId.current) setLoadingOlder(false);
+    }
+  }, [active, base, loadingOlder, messageHistory, scope]);
 
   const open = useCallback((anchor: CommentAnchor) => {
     setActive(anchor);
     setAnchorElement(null);
     setDraft('');
     setThreads([]);
-    setMessages([]);
+    setMessageHistory({ messages: [], hasMore: false, nextCursor: null });
     setEditingMessageId(null);
     setEditDraft('');
     setDeleteDialogOpen(false);
@@ -137,7 +197,7 @@ export function ERDCommentsProvider({ config, children }: { config: ERDCommentsC
       if (detail?.teamId && String(detail.teamId) !== config.teamId) return;
       if (detail?.projectId && String(detail.projectId) !== config.projectId) return;
       void loadMarkers();
-      if (active && document.visibilityState === 'visible') void loadAnchor(active, false);
+      if (active && document.visibilityState === 'visible') void loadAnchor(active, false, true);
     };
     const onOpen = (event: Event) => {
       const anchor = (event as CustomEvent<CommentAnchor>).detail;
@@ -182,13 +242,15 @@ export function ERDCommentsProvider({ config, children }: { config: ERDCommentsC
     setError('');
     try {
       await request(`${base}/${encodeURIComponent(message.threadId)}/messages/${encodeURIComponent(message.id)}?${scope}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body }),
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body, expectedBody: message.body }),
       });
+      setMessageHistory((current) => ({ ...current, messages: current.messages.map((item) => item.id === message.id ? { ...item, body } : item) }));
       setEditingMessageId(null);
       setEditDraft('');
-      if (active) await loadAnchor(active, false);
+      if (active) await loadAnchor(active, false, true);
       notifyLocalUpdate();
     } catch (cause) {
+      if (active) await loadAnchor(active, false, true);
       setError(cause instanceof Error ? cause.message : 'Could not edit comment.');
     } finally { setSending(false); }
   };
@@ -197,11 +259,12 @@ export function ERDCommentsProvider({ config, children }: { config: ERDCommentsC
     if (!active || !activeThread || sending) return;
     setSending(true);
     setError('');
+    const expectedStatus = activeThread.status;
     try {
-      const nextStatus = activeThread.status === 'open' ? 'resolved' : 'open';
+      const nextStatus = expectedStatus === 'open' ? 'resolved' : 'open';
       await request(`${base}/${encodeURIComponent(activeThread.id)}?${scope}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: nextStatus }),
+        body: JSON.stringify({ status: nextStatus, expectedStatus }),
       });
       setThreads((current) => current.map((thread) => thread.id === activeThread.id ? { ...thread, status: nextStatus } : thread));
       setMarkers((current) => {
@@ -212,9 +275,10 @@ export function ERDCommentsProvider({ config, children }: { config: ERDCommentsC
         next.set(key, { ...marker, status: nextStatus });
         return next;
       });
-      await loadAnchor(active, false);
+      await loadAnchor(active, false, true);
       notifyLocalUpdate();
     } catch (cause) {
+      if (active) await loadAnchor(active, false, true);
       setError(cause instanceof Error ? cause.message : 'Could not update thread.');
     } finally { setSending(false); }
   };
@@ -230,7 +294,7 @@ export function ERDCommentsProvider({ config, children }: { config: ERDCommentsC
       setAnchorElement(null);
       requestId.current++;
       setThreads([]);
-      setMessages([]);
+      setMessageHistory({ messages: [], hasMore: false, nextCursor: null });
       await loadMarkers();
       notifyLocalUpdate();
     } catch (cause) {
@@ -258,7 +322,7 @@ export function ERDCommentsProvider({ config, children }: { config: ERDCommentsC
       }
       setDraft('');
       if (textarea.current) textarea.current.style.height = '';
-      await loadAnchor(active);
+      await loadAnchor(active, true, true);
       notifyLocalUpdate();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not send comment.');
@@ -288,9 +352,17 @@ export function ERDCommentsProvider({ config, children }: { config: ERDCommentsC
                 </>}
               </DropdownMenuContent>
             </DropdownMenu></div>}
-          {(loading || messages.length > 0) && <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2.5 pr-10">
-            {loading && messages.length === 0 ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
-            <div className="space-y-4">
+          {(loading || messages.length > 0) && <MessageScrollerProvider key={active ? keyOf(active) : 'comment-history'} defaultScrollPosition="end">
+            <MessageScroller className="flex-1">
+              <MessageScrollerViewport aria-label="Comment history" className="px-3 py-2.5 pr-10">
+                <MessageScrollerContent className="gap-4">
+                  {loading && messages.length === 0 ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
+                  {messageHistory.hasMore && <div className="flex justify-center">
+                    <Button type="button" size="sm" variant="ghost" onClick={() => void loadOlderMessages()} disabled={loadingOlder}>
+                      {loadingOlder ? 'Loading…' : 'Load earlier comments'}
+                    </Button>
+                  </div>}
+                  <div className="space-y-4">
               {messages.map((message) => <div key={message.id} className="flex gap-2.5 text-sm">
                 <Avatar className="size-8 bg-cyan-600 text-white" aria-label={message.authorName}>
                   <AvatarFallback className="bg-cyan-600 text-xs font-medium text-white">{avatarInitials(message.authorName)}</AvatarFallback>
@@ -312,8 +384,11 @@ export function ERDCommentsProvider({ config, children }: { config: ERDCommentsC
                   ) : <p className="mt-1 whitespace-pre-wrap wrap-break-word text-foreground/90">{message.body}</p>}
                 </div>
               </div>)}
-            </div>
-          </div>}
+                  </div>
+                </MessageScrollerContent>
+              </MessageScrollerViewport>
+            </MessageScroller>
+          </MessageScrollerProvider>}
           <form onSubmit={submit} className="flex shrink-0 items-end gap-2 p-2">
             <label className="sr-only" htmlFor="erd-comment-reply">Write a comment</label>
             <textarea ref={textarea} id="erd-comment-reply" rows={1} maxLength={4000} value={draft} disabled={loading || threadResolved || sending} onChange={(event) => {

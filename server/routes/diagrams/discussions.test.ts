@@ -226,8 +226,39 @@ describe("Cloud ERD discussions scope", () => {
       expect(response.status).toBe(201);
       expect((await response.json()).kind).toBe("comment");
     });
-    expect(mocks.executeRaw).toHaveBeenCalledTimes(3);
+    expect(mocks.executeRaw).toHaveBeenCalledTimes(4);
+    expect(mocks.executeRaw.mock.calls[0][0]).toContain('UPDATE "diagrams" SET "updated_at" = "updated_at"');
     expect(mocks.publish).toHaveBeenCalledWith(expect.objectContaining({ teamId: "team-a" }));
+  });
+
+  it("locks the file row before checking whether the anchor already has a comment thread", async () => {
+    const operations: string[] = [];
+    mocks.queryRaw.mockImplementation(async (query: string) => {
+      if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
+      if (query.includes('FROM "diagrams" f')) return [{ id: 42, uid: "diagram-uid", projectId: 7, label: "ERD" }];
+      if (query.includes('FROM "entities"')) return [{ label: "users" }];
+      if (query.includes('FROM "users"')) return [{ name: "Member A", email: "member@example.test" }];
+      if (query.includes('FROM "comment_threads"') && query.includes('ORDER BY')) {
+        operations.push("check-anchor");
+        return [];
+      }
+      return [];
+    });
+    mocks.executeRaw.mockImplementation(async (query: string) => {
+      if (query.includes('UPDATE "diagrams" SET "updated_at" = "updated_at"')) operations.push("lock-file");
+      return 1;
+    });
+
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/projects/7/comments?feature_type=diagram&file_id=diagram-uid`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: "A comment", context: { type: "table", id: "entity-1" } }),
+      });
+      expect(response.status).toBe(201);
+    });
+
+    expect(operations).toEqual(["lock-file", "check-anchor"]);
   });
 
   it("blocks creating comments on a resolved anchor until the thread is reopened", async () => {
@@ -250,7 +281,41 @@ describe("Cloud ERD discussions scope", () => {
       expect(await response.json()).toEqual({ error: "Reopen this thread before commenting" });
     });
 
-    expect(mocks.executeRaw).not.toHaveBeenCalled();
+    expect(mocks.executeRaw).toHaveBeenCalledTimes(1);
+    expect(mocks.executeRaw.mock.calls[0][0]).toContain('UPDATE "diagrams" SET "updated_at" = "updated_at"');
+    expect(mocks.publish).not.toHaveBeenCalled();
+  });
+
+  it("does not save a comment or reply if Resolve wins the write race", async () => {
+    mocks.queryRaw.mockImplementation(async (query: string) => {
+      if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
+      if (query.includes('FROM "diagrams" f')) return [{ id: 42, uid: "diagram-uid", projectId: 7, label: "ERD" }];
+      if (query.includes('FROM "entities"')) return [{ label: "users" }];
+      if (query.includes('FROM "users"')) return [{ name: "Member A", email: "member@example.test" }];
+      if (query.includes('FROM "comment_threads"')) return [{ id: "thread-1", status: "open" }];
+      return [];
+    });
+    mocks.executeRaw.mockImplementation(async (query: string) => query.includes('SET "updated_at" = CURRENT_TIMESTAMP') ? 0 : 1);
+
+    await withServer(async (url) => {
+      const comment = await fetch(`${url}/api/projects/7/comments?feature_type=diagram&file_id=diagram-uid`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: "Concurrent comment", context: { type: "table", id: "entity-1" } }),
+      });
+      expect(comment.status).toBe(409);
+
+      const reply = await fetch(`${url}/api/projects/7/comments/thread-1/messages?feature_type=diagram&file_id=diagram-uid`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: "Concurrent reply" }),
+      });
+      expect(reply.status).toBe(409);
+    });
+
+    expect(mocks.executeRaw.mock.calls).toHaveLength(3);
+    expect(mocks.executeRaw.mock.calls[0][0]).toContain('UPDATE "diagrams" SET "updated_at" = "updated_at"');
+    expect(mocks.executeRaw.mock.calls.slice(1).every(([query]) => String(query).includes('SET "updated_at" = CURRENT_TIMESTAMP') && String(query).includes('"status" = \'open\''))).toBe(true);
     expect(mocks.publish).not.toHaveBeenCalled();
   });
 
@@ -271,7 +336,7 @@ describe("Cloud ERD discussions scope", () => {
     expect(mocks.executeRaw).not.toHaveBeenCalled();
   });
 
-  it("loads the full comment history for one ERD anchor", async () => {
+  it("loads the latest page of comment history for one ERD anchor", async () => {
     mocks.queryRaw.mockImplementation(async (query: string) => {
       if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
       if (query.includes('FROM "diagrams" f')) return [{ id: 42, uid: "diagram-uid", projectId: 7, label: "ERD" }];
@@ -294,6 +359,118 @@ describe("Cloud ERD discussions scope", () => {
     });
   });
 
+  it("bounds anchor history and returns a stable cursor for older messages", async () => {
+    const rows = Array.from({ length: 51 }, (_, index) => ({
+      id: `message-${index}`,
+      threadId: "thread-1",
+      authorId: "member-a",
+      authorName: "Member A",
+      body: `Message ${index}`,
+      createdAt: new Date((51 - index) * 1000).toISOString(),
+    }));
+    mocks.queryRaw.mockImplementation(async (query: string) => {
+      if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
+      if (query.includes('FROM "diagrams" f')) return [{ id: 42, uid: "diagram-uid", projectId: 7, label: "ERD" }];
+      if (query.includes('FROM "comment_threads" t')) return [{ id: "thread-1", anchorLabel: "users", status: "open" }];
+      if (query.includes('FROM "comment_messages" m')) return rows;
+      return [];
+    });
+
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/projects/7/comments/anchor?feature_type=diagram&file_id=diagram-uid&anchor_type=table&anchor_id=entity-1`);
+      const data = await response.json();
+      expect(response.status).toBe(200);
+      expect(data.messages).toHaveLength(50);
+      expect(data.hasMore).toBe(true);
+      expect(data.nextCursor).toEqual({ createdAt: new Date(2000).toISOString(), id: "message-49" });
+      expect(mocks.queryRaw.mock.calls.find(([query]) => String(query).includes('FROM "comment_messages" m'))?.[0]).toContain("LIMIT 51");
+
+      const cursor = new URLSearchParams({ before_created_at: data.nextCursor.createdAt, before_id: data.nextCursor.id });
+      const older = await fetch(`${url}/api/projects/7/comments/anchor?feature_type=diagram&file_id=diagram-uid&anchor_type=table&anchor_id=entity-1&${cursor}`);
+      expect(older.status).toBe(200);
+      const cursorQuery = mocks.queryRaw.mock.calls.find(([query]) => String(query).includes('FROM "comment_messages" m') && String(query).includes('m."created_at" < $7'));
+      expect(cursorQuery?.[7]).toEqual(new Date(data.nextCursor.createdAt));
+      expect(cursorQuery?.[8]).toBe(data.nextCursor.id);
+    });
+  });
+
+  it("rejects malformed message history cursors", async () => {
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/projects/7/comments/anchor?feature_type=diagram&file_id=diagram-uid&anchor_type=table&anchor_id=entity-1&before_id=message-1`);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: "Invalid message cursor" });
+    });
+    expect(mocks.queryRaw).not.toHaveBeenCalled();
+  });
+
+  it("rejects stale thread status changes instead of overwriting a newer status", async () => {
+    mocks.queryRaw.mockImplementation(async (query: string) => {
+      if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
+      if (query.includes('SELECT t."status"') && query.includes('FROM "discussion_threads"')) return [{ status: "resolved" }];
+      return [];
+    });
+
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/projects/7/discussions/thread-1`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "resolved", expectedStatus: "open" }),
+      });
+      expect(response.status).toBe(409);
+      expect(await response.json()).toEqual({ error: "Thread status changed. Refresh before trying again." });
+    });
+    expect(mocks.executeRaw).not.toHaveBeenCalled();
+    expect(mocks.publish).not.toHaveBeenCalled();
+  });
+
+  it("keeps legacy status requests safe with an atomic expected-state update", async () => {
+    mocks.queryRaw.mockImplementation(async (query: string) => {
+      if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
+      if (query.includes('SELECT t."status"') && query.includes('FROM "discussion_threads"')) return [{ status: "open" }];
+      return [];
+    });
+
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/projects/7/discussions/thread-1`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "resolved" }),
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ status: "resolved" });
+    });
+
+    const [query, ...values] = mocks.executeRaw.mock.calls[0];
+    expect(query).toContain('AND t."status" = $4');
+    expect(values.slice(-3)).toEqual(["open", "resolved", "member-a"]);
+  });
+
+  it("loads only the latest page of a Discussion thread", async () => {
+    const rows = Array.from({ length: 51 }, (_, index) => ({
+      id: `message-${index}`,
+      authorId: "member-a",
+      authorName: "Member A",
+      body: `Message ${index}`,
+      createdAt: new Date((51 - index) * 1000).toISOString(),
+    }));
+    mocks.queryRaw.mockImplementation(async (query: string) => {
+      if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
+      if (query.includes('SELECT t."id"') && query.includes('FROM "discussion_threads" t')) return [{ id: "thread-1" }];
+      if (query.includes('FROM "discussion_messages" m')) return rows;
+      return [];
+    });
+
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/projects/7/discussions/thread-1`);
+      const data = await response.json();
+      expect(response.status).toBe(200);
+      expect(data.messages).toHaveLength(50);
+      expect(data.hasMore).toBe(true);
+      expect(data.nextCursor.id).toBe("message-49");
+      expect(mocks.queryRaw.mock.calls.find(([query]) => String(query).includes('FROM "discussion_messages" m'))?.[0]).toContain("LIMIT 51");
+    });
+  });
+
   it("allows a comment author to edit only their own message", async () => {
     mocks.queryRaw.mockImplementation(async (query: string) => {
       if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
@@ -305,13 +482,35 @@ describe("Cloud ERD discussions scope", () => {
       const response = await fetch(`${url}/api/projects/7/comments/thread-1/messages/message-1?feature_type=diagram&file_id=diagram-uid`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body: "Updated comment" }),
+        body: JSON.stringify({ body: "Updated comment", expectedBody: "Original comment" }),
       });
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({ id: "message-1", body: "Updated comment" });
     });
     expect(mocks.executeRaw).toHaveBeenCalled();
+    expect(mocks.executeRaw.mock.calls[0][0]).toContain('AND m."body" = $9');
     expect(mocks.publish).toHaveBeenCalledWith(expect.objectContaining({ teamId: "team-a" }));
+  });
+
+  it("rejects a stale edit instead of overwriting a newer message body", async () => {
+    mocks.queryRaw.mockImplementation(async (query: string) => {
+      if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
+      if (query.includes('FROM "diagrams" f')) return [{ id: 42, uid: "diagram-uid", projectId: 7, label: "ERD" }];
+      if (query.includes('SELECT m."id", m."body"') && query.includes('FROM "comment_messages" m')) return [{ id: "message-1", body: "Newer text" }];
+      return [];
+    });
+    mocks.executeRaw.mockImplementation(async (query: string) => query.includes('UPDATE "comment_messages"') ? 0 : 1);
+
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/projects/7/comments/thread-1/messages/message-1?feature_type=diagram&file_id=diagram-uid`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: "Stale edit", expectedBody: "Original text" }),
+      });
+      expect(response.status).toBe(409);
+      expect(await response.json()).toEqual({ error: "This message changed. Refresh before editing it again." });
+    });
+    expect(mocks.publish).not.toHaveBeenCalled();
   });
 
   it("deletes a comment thread only when the active member created it", async () => {
