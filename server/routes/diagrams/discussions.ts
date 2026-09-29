@@ -228,6 +228,7 @@ async function resolveAnchorLabel(file: ScopedFile | null, type: AnchorType, id:
   if (type === "general") return "General";
   if (!file || !id) return null;
   if (file.featureType !== "diagram") return `${file.label} · ${anchorLabel(type)}`;
+  if (type !== "table" && type !== "relationship") return null;
   if (!prisma) return null;
   if (type === "table") {
     const rows = await prisma.$queryRawUnsafe<Array<{ label: string }>>(
@@ -370,8 +371,15 @@ async function listDiscussions(req: Request, res: Response, resource: ScopedReso
 async function listComments(req: Request, res: Response, resource: ScopedResource, actor: DiscussionActor): Promise<void> {
   const params = contextParams(resource, req);
   if (!params) { res.status(404).json(notFound); return; }
-  const rawAnchorType = typeof req.query.anchor_type === "string" ? anchorTypeSchema.safeParse(req.query.anchor_type).data : undefined;
-  const rawAnchorId = typeof req.query.anchor_id === "string" ? req.query.anchor_id : undefined;
+  const anchorTypeInput = typeof req.query.anchor_type === "string" ? req.query.anchor_type : undefined;
+  const anchorIdInput = typeof req.query.anchor_id === "string" ? req.query.anchor_id : undefined;
+  const parsedAnchorType = anchorTypeInput ? anchorTypeSchema.safeParse(anchorTypeInput) : null;
+  if ((anchorTypeInput || anchorIdInput) && (!parsedAnchorType?.success || parsedAnchorType.data === "general" || !anchorIdInput || anchorIdInput.length > 128)) {
+    res.status(400).json({ error: "Invalid comment anchor" });
+    return;
+  }
+  const rawAnchorType = parsedAnchorType?.success ? parsedAnchorType.data : undefined;
+  const rawAnchorId = anchorIdInput;
   const hasAnchor = rawAnchorType && rawAnchorType !== "general" && rawAnchorId;
   const anchorFilter = hasAnchor ? `AND t."anchor_type" = $5 AND t."anchor_id" = $6` : "";
   const values = hasAnchor
@@ -484,12 +492,17 @@ router.get("/anchor", async (req, res) => {
     if (!actor || !prisma || resourceKind(req) !== "comment") { res.status(404).json(notFound); return; }
     const paging = historyCursor(req);
     if (!paging.valid) { res.status(400).json({ error: "Invalid message cursor" }); return; }
-    const resource = await scopedResource(req, actor);
     const featureType = featureTypeSchema.safeParse(req.query.feature_type).data;
     const fileId = typeof req.query.file_id === "string" ? req.query.file_id : "";
-    const anchorType = discussionAnchorTypeSchema.safeParse(req.query.anchor_type).data;
+    const anchorTypeResult = discussionAnchorTypeSchema.safeParse(req.query.anchor_type);
+    const anchorType = anchorTypeResult.success ? anchorTypeResult.data : undefined;
     const anchorId = typeof req.query.anchor_id === "string" ? req.query.anchor_id : "";
-    if (!resource || !featureType || !fileId || !anchorType || !anchorId || !contextParams(resource, req)) {
+    if (!anchorType || anchorType === "general" || !anchorId || anchorId.length > 128) {
+      res.status(400).json({ error: "Invalid comment anchor" });
+      return;
+    }
+    const resource = await scopedResource(req, actor);
+    if (!resource || !featureType || !fileId || !contextParams(resource, req)) {
       res.status(404).json(notFound);
       return;
     }
@@ -758,13 +771,21 @@ router.patch("/:threadId/messages/:messageId", async (req, res) => {
     if (kind === "comment" && !contextParams(resource, req)) { res.status(404).json(notFound); return; }
     const table = tables[kind];
     const fileParams = contextParams(resource, req);
-    const fileClause = fileParams
-      ? `AND t."feature_type" = $7 AND t."file_id" = $8`
+    const constrainToFile = fileParams && (kind === "comment" || !isProjectRoute(req));
+    const fileClause = constrainToFile
+      ? kind === "comment"
+        ? `AND t."feature_type" = $7 AND t."file_id" = $8`
+        : `AND EXISTS (SELECT 1 FROM "discussion_contexts" c WHERE c."thread_id" = t."id" AND c."feature_type" = $7 AND c."file_id" = $8)`
       : "";
-    const scopeValues = fileParams
+    const scopeFileClause = constrainToFile
+      ? kind === "comment"
+        ? `AND t."feature_type" = $6 AND t."file_id" = $7`
+        : `AND EXISTS (SELECT 1 FROM "discussion_contexts" c WHERE c."thread_id" = t."id" AND c."feature_type" = $6 AND c."file_id" = $7)`
+      : "";
+    const scopeValues = constrainToFile
       ? [req.params.messageId, req.params.threadId, actor.id, resource.projectId, actor.teamId, fileParams.featureType, fileParams.fileId]
       : [req.params.messageId, req.params.threadId, actor.id, resource.projectId, actor.teamId];
-    const values = fileParams
+    const values = constrainToFile
       ? [req.params.messageId, req.params.threadId, actor.id, input.data.body, resource.projectId, actor.teamId, fileParams.featureType, fileParams.fileId, input.data.expectedBody]
       : [req.params.messageId, req.params.threadId, actor.id, input.data.body, resource.projectId, actor.teamId, input.data.expectedBody];
     const updated = await prisma.$transaction(async (tx) => {
@@ -787,7 +808,7 @@ router.patch("/:threadId/messages/:messageId", async (req, res) => {
         WHERE m."id" = $1 AND m."thread_id" = $2 AND m."author_id" = $3
           AND EXISTS (
             SELECT 1 FROM "${table.threads}" t
-            WHERE t."id" = m."thread_id" AND t."project_id" = $4 AND t."team_id" = $5 ${fileParams ? 'AND t."feature_type" = $6 AND t."file_id" = $7' : ""}
+            WHERE t."id" = m."thread_id" AND t."project_id" = $4 AND t."team_id" = $5 ${scopeFileClause}
           )
       `, ...scopeValues);
       return existing[0] ? "conflict" : "missing";
@@ -861,24 +882,20 @@ router.delete("/:threadId", async (req, res) => {
     if (kind === "comment" && !contextParams(resource, req)) { res.status(404).json(notFound); return; }
     const table = tables[kind];
     const fileParams = contextParams(resource, req);
-    const fileClause = fileParams
-      ? `AND t."feature_type" = $4 AND t."file_id" = $5`
+    const constrainToFile = fileParams && (kind === "comment" || !isProjectRoute(req));
+    const fileClause = constrainToFile
+      ? kind === "comment"
+        ? `AND "feature_type" = $5 AND "file_id" = $6`
+        : `AND EXISTS (SELECT 1 FROM "discussion_contexts" c WHERE c."thread_id" = "${table.threads}"."id" AND c."feature_type" = $5 AND c."file_id" = $6)`
       : "";
-    const values = fileParams
-      ? [req.params.threadId, resource.projectId, actor.teamId, fileParams.featureType, fileParams.fileId]
-      : [req.params.threadId, resource.projectId, actor.teamId];
-    const rows = await prisma.$queryRawUnsafe<Array<{ createdBy: string }>>(`
-      SELECT t."created_by" AS "createdBy"
-      FROM "${table.threads}" t
-      WHERE t."id" = $1 AND t."project_id" = $2 AND t."team_id" = $3 ${fileClause}
-      LIMIT 1
+    const values = constrainToFile
+      ? [req.params.threadId, resource.projectId, actor.teamId, actor.id, fileParams.featureType, fileParams.fileId]
+      : [req.params.threadId, resource.projectId, actor.teamId, actor.id];
+    const deleted = await prisma.$executeRawUnsafe(`
+      DELETE FROM "${table.threads}"
+      WHERE "id" = $1 AND "project_id" = $2 AND "team_id" = $3 AND "created_by" = $4 ${fileClause}
     `, ...values);
-    if (!rows[0]) { res.status(404).json(notFound); return; }
-    if (rows[0].createdBy !== actor.id) {
-      res.status(403).json({ error: "Only the thread creator can delete this thread" });
-      return;
-    }
-    await prisma.$executeRawUnsafe(`DELETE FROM "${table.threads}" WHERE "id" = $1`, req.params.threadId);
+    if (!Number(deleted)) { res.status(404).json(notFound); return; }
     notifyTeam(actor.teamId);
     res.json({ success: true });
   } catch (error) {
@@ -896,13 +913,23 @@ router.post("/:threadId/contexts", async (req, res) => {
     if (!resource || !(await threadInScope(req, resource, actor, req.params.threadId, "discussion"))) { res.status(404).json(notFound); return; }
     const context = await contextForRequest(req, resource, input.data, "discussion");
     if (!context?.file) { res.status(404).json(notFound); return; }
-    await prisma.$executeRawUnsafe(`
-      INSERT INTO "discussion_contexts" ("id", "thread_id", "feature_type", "file_id", "anchor_type", "anchor_id", "anchor_label")
-      SELECT $1, $2, $3, $4, $5, $6, $7
-      WHERE NOT EXISTS (
-        SELECT 1 FROM "discussion_contexts" WHERE "thread_id" = $2 AND "feature_type" = $3 AND "file_id" = $4
-      )
-    `, randomUUID(), req.params.threadId, context.file.featureType, String(context.file.id), context.type, context.id ?? null, context.label);
+    const found = await prisma.$transaction(async (tx) => {
+      // ponytail: the thread row is the portable lock for context deduplication across SQLite and Postgres.
+      const locked = await tx.$executeRawUnsafe(`
+        UPDATE "discussion_threads" SET "updated_at" = "updated_at"
+        WHERE "id" = $1 AND "project_id" = $2 AND "team_id" = $3 AND "status" = 'open'
+      `, req.params.threadId, resource.projectId, actor.teamId);
+      if (!Number(locked)) return false;
+      await tx.$executeRawUnsafe(`
+        INSERT INTO "discussion_contexts" ("id", "thread_id", "feature_type", "file_id", "anchor_type", "anchor_id", "anchor_label")
+        SELECT $1, $2, $3, $4, $5, $6, $7
+        WHERE NOT EXISTS (
+          SELECT 1 FROM "discussion_contexts" WHERE "thread_id" = $2 AND "feature_type" = $3 AND "file_id" = $4
+        )
+      `, randomUUID(), req.params.threadId, context.file.featureType, String(context.file.id), context.type, context.id ?? null, context.label);
+      return true;
+    });
+    if (!found) { res.status(409).json({ error: "Reopen this thread before adding context" }); return; }
     notifyTeam(actor.teamId);
     res.status(201).json({ success: true });
   } catch (error) {

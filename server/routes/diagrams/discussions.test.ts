@@ -205,6 +205,21 @@ describe("Cloud ERD discussions scope", () => {
     });
   });
 
+  it("rejects partial comment anchor filters instead of returning every file comment", async () => {
+    mocks.queryRaw.mockImplementation(async (query: string) => {
+      if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
+      if (query.includes('FROM "diagrams" f')) return [{ id: 42, uid: "diagram-uid", projectId: 7, label: "ERD" }];
+      return [];
+    });
+
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/projects/7/comments?feature_type=diagram&file_id=diagram-uid&anchor_type=table`);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: "Invalid comment anchor" });
+    });
+    expect(mocks.queryRaw.mock.calls.every(([query]) => !String(query).includes('FROM "comment_threads" t'))).toBe(true);
+  });
+
   it("creates a contextual Comment without using client team scope as authorization", async () => {
     mocks.queryRaw.mockImplementation(async (query: string) => {
       if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
@@ -229,6 +244,26 @@ describe("Cloud ERD discussions scope", () => {
     expect(mocks.executeRaw).toHaveBeenCalledTimes(4);
     expect(mocks.executeRaw.mock.calls[0][0]).toContain('UPDATE "diagrams" SET "updated_at" = "updated_at"');
     expect(mocks.publish).toHaveBeenCalledWith(expect.objectContaining({ teamId: "team-a" }));
+  });
+
+  it("rejects Comment anchors that do not belong to an ERD", async () => {
+    mocks.queryRaw.mockImplementation(async (query: string) => {
+      if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
+      if (query.includes('FROM "diagrams" f')) return [{ id: 42, uid: "diagram-uid", projectId: 7, label: "ERD" }];
+      return [];
+    });
+
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/projects/7/comments?feature_type=diagram&file_id=diagram-uid`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: "Orphan marker", context: { type: "shape", id: "shape-1" } }),
+      });
+      expect(response.status).toBe(404);
+      expect(await response.json()).toEqual({ error: "Resource not found" });
+    });
+    expect(mocks.executeRaw).not.toHaveBeenCalled();
+    expect(mocks.publish).not.toHaveBeenCalled();
   });
 
   it("locks the file row before checking whether the anchor already has a comment thread", async () => {
@@ -403,6 +438,15 @@ describe("Cloud ERD discussions scope", () => {
     expect(mocks.queryRaw).not.toHaveBeenCalled();
   });
 
+  it("rejects an invalid comment anchor before querying its history", async () => {
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/projects/7/comments/anchor?feature_type=diagram&file_id=diagram-uid&anchor_type=general&anchor_id=entity-1`);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: "Invalid comment anchor" });
+    });
+    expect(mocks.queryRaw).not.toHaveBeenCalled();
+  });
+
   it("rejects stale thread status changes instead of overwriting a newer status", async () => {
     mocks.queryRaw.mockImplementation(async (query: string) => {
       if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
@@ -513,11 +557,53 @@ describe("Cloud ERD discussions scope", () => {
     expect(mocks.publish).not.toHaveBeenCalled();
   });
 
+  it("edits a Discussion message without querying Comment-only thread columns", async () => {
+    mocks.queryRaw.mockImplementation(async (query: string) => {
+      if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
+      if (query.includes('FROM "diagrams" f')) return [{ id: 42, uid: "diagram-uid", projectId: 7, label: "ERD" }];
+      return [];
+    });
+
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/projects/7/discussions/thread-1/messages/message-1?feature_type=diagram&file_id=diagram-uid`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: "Updated discussion", expectedBody: "Original discussion" }),
+      });
+      expect(response.status).toBe(200);
+    });
+
+    const update = String(mocks.executeRaw.mock.calls[0][0]);
+    expect(update).toContain('UPDATE "discussion_messages"');
+    expect(update).toContain('AND m."body" = $7');
+    expect(update).not.toContain('t."feature_type"');
+    expect(update).not.toContain('t."file_id"');
+  });
+
+  it("keeps the legacy file Discussion edit constrained through its context table", async () => {
+    mocks.queryRaw.mockImplementation(async (query: string) => {
+      if (query.includes('JOIN "projects"')) return [{ id: 42, uid: "diagram-uid", projectId: 7, projectName: "Workspace", label: "ERD" }];
+      return [];
+    });
+
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/diagrams/diagram-uid/discussions/thread-1/messages/message-1`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: "Updated discussion", expectedBody: "Original discussion" }),
+      });
+      expect(response.status).toBe(200);
+    });
+
+    const update = String(mocks.executeRaw.mock.calls[0][0]);
+    expect(update).toContain('EXISTS (SELECT 1 FROM "discussion_contexts"');
+    expect(update).not.toContain('t."feature_type"');
+  });
+
   it("deletes a comment thread only when the active member created it", async () => {
     mocks.queryRaw.mockImplementation(async (query: string) => {
       if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
       if (query.includes('FROM "diagrams" f')) return [{ id: 42, uid: "diagram-uid", projectId: 7, label: "ERD" }];
-      if (query.includes('FROM "comment_threads" t')) return [{ createdBy: "member-a" }];
       return [];
     });
 
@@ -526,7 +612,74 @@ describe("Cloud ERD discussions scope", () => {
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({ success: true });
     });
-    expect(mocks.executeRaw).toHaveBeenCalledWith(expect.stringContaining('DELETE FROM "comment_threads"'), "thread-1");
+    expect(mocks.executeRaw).toHaveBeenCalledWith(
+      expect.stringContaining('AND "created_by" = $4'),
+      "thread-1", 7, "team-a", "member-a", "diagram", "42",
+    );
     expect(mocks.publish).toHaveBeenCalledWith(expect.objectContaining({ teamId: "team-a" }));
+  });
+
+  it("returns generic not-found when an atomic thread delete does not match its creator scope", async () => {
+    mocks.queryRaw.mockImplementation(async (query: string) => {
+      if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
+      if (query.includes('FROM "diagrams" f')) return [{ id: 42, uid: "diagram-uid", projectId: 7, label: "ERD" }];
+      return [];
+    });
+    mocks.executeRaw.mockResolvedValue(0);
+
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/projects/7/comments/thread-1?feature_type=diagram&file_id=diagram-uid`, { method: "DELETE" });
+      expect(response.status).toBe(404);
+      expect(await response.json()).toEqual({ error: "Resource not found" });
+    });
+    expect(mocks.publish).not.toHaveBeenCalled();
+  });
+
+  it("locks a Discussion thread before deduplicating a concurrently added file context", async () => {
+    const operations: string[] = [];
+    mocks.queryRaw.mockImplementation(async (query: string) => {
+      if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
+      if (query.includes('FROM "diagrams" f')) return [{ id: 42, uid: "diagram-uid", projectId: 7, label: "ERD" }];
+      if (query.includes('FROM "discussion_threads" t')) return [{ id: "thread-1" }];
+      return [];
+    });
+    mocks.executeRaw.mockImplementation(async (query: string) => {
+      if (query.includes('UPDATE "discussion_threads" SET "updated_at" = "updated_at"')) operations.push("lock-thread");
+      if (query.includes('INSERT INTO "discussion_contexts"')) operations.push("insert-context");
+      return 1;
+    });
+
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/projects/7/discussions/thread-1/contexts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ context: { featureType: "diagram", fileId: "diagram-uid", type: "general" } }),
+      });
+      expect(response.status).toBe(201);
+    });
+    expect(operations).toEqual(["lock-thread", "insert-context"]);
+    expect(String(mocks.executeRaw.mock.calls[0][0])).toContain('AND "status" = \'open\'');
+  });
+
+  it("does not add context after a Discussion has been resolved", async () => {
+    mocks.queryRaw.mockImplementation(async (query: string) => {
+      if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
+      if (query.includes('FROM "diagrams" f')) return [{ id: 42, uid: "diagram-uid", projectId: 7, label: "ERD" }];
+      if (query.includes('FROM "discussion_threads" t')) return [{ id: "thread-1" }];
+      return [];
+    });
+    mocks.executeRaw.mockResolvedValue(0);
+
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/projects/7/discussions/thread-1/contexts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ context: { featureType: "diagram", fileId: "diagram-uid", type: "general" } }),
+      });
+      expect(response.status).toBe(409);
+      expect(await response.json()).toEqual({ error: "Reopen this thread before adding context" });
+    });
+    expect(mocks.executeRaw).toHaveBeenCalledTimes(1);
+    expect(mocks.publish).not.toHaveBeenCalled();
   });
 });
