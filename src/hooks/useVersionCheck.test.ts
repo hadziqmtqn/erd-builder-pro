@@ -3,9 +3,9 @@ import { isNewerVersion } from './useVersionCheck';
 
 describe('isNewerVersion', () => {
   it('compares release versions before prerelease labels', () => {
-    expect(isNewerVersion('3.4.6', '3.4.7-rc.4')).toBe(false);
-    expect(isNewerVersion('3.4.7-rc.4', '3.4.6')).toBe(true);
-    expect(isNewerVersion('3.4.7', '3.4.7-rc.4')).toBe(true);
+    expect(isNewerVersion('3.4.6', '3.4.7-rc.5')).toBe(false);
+    expect(isNewerVersion('3.4.7-rc.5', '3.4.6')).toBe(true);
+    expect(isNewerVersion('3.4.7', '3.4.7-rc.5')).toBe(true);
   });
 
   it('compares prerelease identifiers according to SemVer ordering', () => {
