@@ -91,10 +91,10 @@ export function NavUser({
                   {showOutdatedBadge && (
                     <span
                       className="absolute -top-1 -right-1 flex size-3 rounded-full bg-amber-500 ring-2 ring-sidebar"
-                      title={isDesktop 
-                        ? `Update available: v${latestVersion || '?'}` 
+                      title={hasUpdate
+                        ? `Update available: v${latestVersion}`
                         : isWebOutdated
-                          ? `New version available: v${latestVersion || '?'}. ${
+                          ? `New version available: v${latestVersion}. ${
                               (import.meta as any).env?.APP_VERSION 
                                 ? `You're on v${(import.meta as any).env.APP_VERSION}.` 
                                 : ''

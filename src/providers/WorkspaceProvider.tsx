@@ -586,8 +586,8 @@ export function WorkspaceProvider({
   // Merge: desktop update takes priority (can actually install).
   // Web outdated flag is separate so the About dialog only shows Download button
   // when Tauri updater has a concrete update object.
-  const showOutdatedBadge = hasUpdate || isWebOutdated;
   const mergedLatestVersion = latestVersion || latestWebVersion;
+  const showOutdatedBadge = (hasUpdate || isWebOutdated) && Boolean(mergedLatestVersion);
 
   // ── Side Effects ──
   // PWA install toast + public doc detection
@@ -1152,7 +1152,7 @@ export function WorkspaceProvider({
 
     breadcrumbLabel, setBreadcrumbLabel,
     flowchartExportHandler, setFlowchartExportHandler,
-    hasUpdate, latestVersion, isCheckingUpdate, isDownloadingUpdate,
+    hasUpdate, latestVersion: mergedLatestVersion, isCheckingUpdate, isDownloadingUpdate,
     checkForUpdates, downloadUpdate,
     isWebOutdated, showOutdatedBadge,
   }), [
@@ -1225,7 +1225,7 @@ export function WorkspaceProvider({
     tablePage,
     breadcrumbLabel, setBreadcrumbLabel,
     flowchartExportHandler, setFlowchartExportHandler,
-    hasUpdate, latestVersion, isCheckingUpdate, isDownloadingUpdate,
+    hasUpdate, mergedLatestVersion, isCheckingUpdate, isDownloadingUpdate,
     checkForUpdates, downloadUpdate,
     isWebOutdated, showOutdatedBadge,
     pendingErdDiffTrigger, triggerPendingErdDiff,

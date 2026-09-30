@@ -178,11 +178,18 @@ export function AboutDialog({
 
         <div className="flex flex-col items-center py-6 gap-4">
           {/* App Icon */}
-          <div className="flex items-center justify-center">
+          <div className="flex size-14 items-center justify-center">
             <img
-              src="/favicon.svg"
-              alt="ERD Builder Pro"
-              className="size-14"
+              src="/img/ERD-Builder-Pro-Light-1.svg"
+              alt=""
+              aria-hidden="true"
+              className="size-full dark:hidden"
+            />
+            <img
+              src="/img/ERD-Builder-Pro-Dark-1.svg"
+              alt=""
+              aria-hidden="true"
+              className="hidden size-full dark:block"
             />
           </div>
 
