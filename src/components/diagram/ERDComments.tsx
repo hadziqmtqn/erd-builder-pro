@@ -45,10 +45,12 @@ function mergeMessages(current: Message[], incoming: Message[]): Message[] {
   return [...byId.values()].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id.localeCompare(b.id));
 }
 
-function mergeLiveMessages(current: MessageHistoryState, incoming: Message[], page: MessageHistoryPage): MessageHistoryState {
-  const messages = mergeMessages(current.messages, incoming).slice(-Math.max(50, current.messages.length));
+export function mergeLiveMessages(current: MessageHistoryState, incoming: Message[], page: MessageHistoryPage, threadIds?: ReadonlySet<string>): MessageHistoryState {
+  if (threadIds?.size === 0) return { ...page, messages: incoming };
+  const retained = threadIds ? current.messages.filter((message) => threadIds.has(message.threadId)) : current.messages;
+  const messages = mergeMessages(retained, incoming).slice(-Math.max(50, retained.length));
   const oldest = messages[0];
-  const hasMore = current.hasMore || page.hasMore;
+  const hasMore = (retained.length > 0 && current.hasMore) || page.hasMore;
   return {
     messages,
     hasMore,
@@ -148,10 +150,14 @@ export function ERDCommentsProvider({ config, children }: { config: ERDCommentsC
       }));
       setThreads(nextThreads);
       const page = messageHistoryPage(data);
-      setMessageHistory((existing) => quiet ? mergeLiveMessages(existing, nextMessages, page) : { ...page, messages: nextMessages });
-      if (!quiet) {
+      const threadIds = new Set(nextThreads.map((thread) => thread.id));
+      setMessageHistory((existing) => quiet && nextThreads.length
+        ? mergeLiveMessages(existing, nextMessages, page, threadIds)
+        : { ...page, messages: nextMessages });
+      if (!quiet || !nextThreads.length) {
         setEditingMessageId(null);
         setEditDraft('');
+        setDeleteDialogOpen(false);
       }
       if (markRead && nextThreads.length) {
         await Promise.all(nextThreads.map((thread) => request(`${base}/${encodeURIComponent(thread.id)}/read?${scope}`, { method: 'POST' })));
@@ -230,7 +236,7 @@ export function ERDCommentsProvider({ config, children }: { config: ERDCommentsC
     window.addEventListener('cloud-workspace-sync', onWorkspaceSync);
     window.addEventListener('cloud-live-sync-reconnected', onReconnect);
     window.addEventListener('erd-comment-open-request', onOpen);
-    const interval = window.setInterval(() => { if (document.visibilityState === 'visible') void loadMarkers(); }, 15000);
+    const interval = window.setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 15000);
     return () => {
       window.removeEventListener('collaboration-updated', onUpdate);
       window.removeEventListener('cloud-workspace-sync', onWorkspaceSync);

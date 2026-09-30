@@ -469,6 +469,24 @@ export function DiscussionsPanel({
   const olderRequest = useRef(0);
   const seenMessages = useRef(new Map<string, string>());
   const hasInitialSnapshot = useRef(false);
+  const threadView = useRef({ screen, selectedThreadId });
+  threadView.current = { screen, selectedThreadId };
+  const clearThreadView = useCallback(() => {
+    threadView.current = { screen: "list", selectedThreadId: null };
+    detailRequest.current++;
+    olderRequest.current++;
+    setScreen("list");
+    setSelectedThreadId(null);
+    setMessageHistory({ messages: [], hasMore: false, nextCursor: null });
+    setLoadingOlder(false);
+    setOlderError("");
+    setThreadError("");
+    setEditingMessageId(null);
+    setEditDraft("");
+    setEditOriginalBody("");
+    setPendingDelete(null);
+    setActiveCommentAnchor(null);
+  }, []);
   const resourcePath = activeTab === "comments" ? "comments" : "discussions";
   const endpoint = `/api/projects/${encodeURIComponent(projectId)}/${resourcePath}`;
   const listEndpoint = useMemo(() => requestPath(endpoint, {
@@ -503,6 +521,9 @@ export function DiscussionsPanel({
       seenMessages.current = new Map(nextThreads.filter((thread: Thread) => thread.latestMessageId).map((thread: Thread) => [thread.id, thread.latestMessageId!]));
       hasInitialSnapshot.current = true;
       setThreads(nextThreads);
+      const selected = threadView.current;
+      if (selected.screen === "thread" && selected.selectedThreadId
+        && !nextThreads.some((thread) => thread.id === selected.selectedThreadId)) clearThreadView();
       setUnreadCount(Number(data.unreadCount ?? data.unread_count) || 0);
       return nextThreads;
     } catch {
@@ -511,7 +532,7 @@ export function DiscussionsPanel({
     } finally {
       if (requestId === listRequest.current) setLoadingThreads(false);
     }
-  }, [activeTab, listEndpoint, userId]);
+  }, [activeTab, clearThreadView, listEndpoint, userId]);
 
   const focusAnchor = useCallback((anchor: DiscussionAnchor) => {
     onContextSelected?.({
@@ -560,6 +581,10 @@ export function DiscussionsPanel({
       }));
       if (requestId !== detailRequest.current) return false;
       const anchorThreads: Thread[] = Array.isArray(data.threads) ? data.threads.map((thread: RawRecord) => normalizeThread(thread)) : [];
+      if (!anchorThreads.length) {
+        clearThreadView();
+        return true;
+      }
       const anchorMessages = Array.isArray(data.messages) ? data.messages.map((message: RawRecord) => normalizeMessage(message)) : [];
       setThreads((current) => {
         const incoming = new Map<string, Thread>(anchorThreads.map((thread: Thread): [string, Thread] => [thread.id, thread]));
@@ -571,7 +596,7 @@ export function DiscussionsPanel({
       const page = messageHistoryPage(data);
       setMessageHistory((current) => quiet ? mergeLiveMessages(current, anchorMessages, page) : { ...page, messages: anchorMessages });
       if (!quiet) setOlderError("");
-      const selectedId = preferredThreadId || anchorThreads[0]?.id || null;
+      const selectedId = anchorThreads.some((thread) => thread.id === preferredThreadId) ? preferredThreadId! : anchorThreads[0].id;
       setSelectedThreadId(selectedId);
       const contexts = Array.isArray(data.contexts) ? data.contexts.map((context: RawRecord) => normalizeContext(context)).filter(Boolean) as CollaborationContext[] : [];
       if (contexts[0]) onContextSelected?.(contexts[0]);
@@ -587,7 +612,7 @@ export function DiscussionsPanel({
       if (!quiet && requestId === detailRequest.current) setThreadError("Couldn't load the full comment history. Try again.");
       return false;
     }
-  }, [endpoint, fileContext.fileId, fileContext.featureType, focusAnchor, loadThreads, onContextSelected]);
+  }, [clearThreadView, endpoint, fileContext.fileId, fileContext.featureType, focusAnchor, loadThreads, onContextSelected]);
 
   const loadOlderMessages = useCallback(async () => {
     const cursor = messageHistory.nextCursor;
@@ -705,6 +730,7 @@ export function DiscussionsPanel({
   };
 
   const openThread = async (thread: Thread) => {
+    setDraft("");
     cancelEditMessage();
     setPendingDelete(null);
     const context = thread.contexts[0] || normalizeContext(thread);
@@ -863,10 +889,7 @@ export function DiscussionsPanel({
       await requestJson(`${endpoint}/${encodeURIComponent(thread.id)}`, { method: "DELETE" });
       setPendingDelete(null);
       if (selectedThreadId === threadId) {
-        setSelectedThreadId(null);
-        setScreen("list");
-        setMessageHistory({ messages: [], hasMore: false, nextCursor: null });
-        cancelEditMessage();
+        clearThreadView();
       }
       notifyLocalUpdate();
     } catch (cause) {
@@ -950,7 +973,7 @@ export function DiscussionsPanel({
             type="button"
             variant="ghost"
             size="icon"
-            className="relative size-11 shrink-0 text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="relative shrink-0 text-muted-foreground hover:bg-muted hover:text-foreground"
             aria-label={`${isCommentRail ? "Open comments" : "Open discussions"}${unreadCount ? `, ${unreadCount} unread` : ""}`}
             title={isCommentRail ? "Comments" : "Discussions"}
           >

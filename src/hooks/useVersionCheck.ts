@@ -10,6 +10,44 @@ interface VersionCache {
   fetchedAt: number;
 }
 
+function compareNumericIdentifiers(left: string, right: string): number {
+  const a = left.replace(/^0+(?=\d)/, '');
+  const b = right.replace(/^0+(?=\d)/, '');
+  return a.length === b.length ? a.localeCompare(b) : a.length - b.length;
+}
+
+export function isNewerVersion(candidate: string, current: string): boolean {
+  const parse = (version: string) => {
+    const match = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.exec(version);
+    if (!match) return null;
+    const prerelease = match[4]?.split('.') ?? [];
+    if (prerelease.some((part) => /^\d+$/.test(part) && part.length > 1 && part.startsWith('0'))) return null;
+    return { core: match.slice(1, 4), prerelease };
+  };
+
+  const a = parse(candidate);
+  const b = parse(current);
+  if (!a || !b) return false;
+
+  for (let i = 0; i < 3; i++) {
+    const result = compareNumericIdentifiers(a.core[i], b.core[i]);
+    if (result !== 0) return result > 0;
+  }
+  if (!a.prerelease.length || !b.prerelease.length) return !a.prerelease.length && !!b.prerelease.length;
+
+  for (let i = 0; i < Math.min(a.prerelease.length, b.prerelease.length); i++) {
+    const left = a.prerelease[i];
+    const right = b.prerelease[i];
+    if (left === right) continue;
+    const leftNumeric = /^\d+$/.test(left);
+    const rightNumeric = /^\d+$/.test(right);
+    if (leftNumeric && rightNumeric) return compareNumericIdentifiers(left, right) > 0;
+    if (leftNumeric !== rightNumeric) return !leftNumeric;
+    return left > right;
+  }
+  return a.prerelease.length > b.prerelease.length;
+}
+
 function getBuildVersion(): string {
   try {
     return (import.meta as any).env?.APP_VERSION || '0.0.0';
@@ -87,7 +125,7 @@ export function useVersionCheck() {
     // 2. Try localStorage cache first (instant, no network)
     const cached = getCachedVersion();
     if (cached && cached.current === runtimeVersion) {
-      if (cached.latest !== runtimeVersion && cached.latest) {
+      if (isNewerVersion(cached.latest, runtimeVersion)) {
         setIsOutdated(true);
         setLatestVersion(cached.latest);
       }
@@ -106,14 +144,14 @@ export function useVersionCheck() {
 
       setCachedVersion(latest, runtimeVersion);
 
-      if (latest !== runtimeVersion) {
+      if (isNewerVersion(latest, runtimeVersion)) {
         setIsOutdated(true);
         setLatestVersion(latest);
       }
     } catch {
       // Network error — use whatever cache we have (even stale)
       const stale = getCachedVersion();
-      if (stale && stale.latest !== runtimeVersion && stale.latest) {
+      if (stale && isNewerVersion(stale.latest, runtimeVersion)) {
         setIsOutdated(true);
         setLatestVersion(stale.latest);
       }
