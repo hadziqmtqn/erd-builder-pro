@@ -1,7 +1,7 @@
 import React, { createContext, useContext } from 'react';
 import { Node, Edge, OnNodesChange, OnEdgesChange, OnConnect } from '@xyflow/react';
 import { BroadcastMessageType } from '../hooks/useBroadcastChannel';
-import { Entity, AppView } from '../types';
+import { Entity, AppView, Project } from '../types';
 
 export interface FlowchartExportHandler {
   exportAll: () => void;
@@ -115,7 +115,7 @@ export interface WorkspaceContextValue {
   handleSidebarNoteCreate: (title: string, projectId?: string | null) => Promise<any>;
   handleSidebarDrawingCreate: (title: string, projectId?: string | null, options?: { silent?: boolean }) => Promise<any>;
   handleSidebarFlowchartCreate: (title: string, projectId?: string | null, options?: { silent?: boolean }) => Promise<any>;
-  handleSidebarProjectCreate: (name: string) => Promise<void>;
+  handleSidebarProjectCreate: (name: string) => Promise<Project | null>;
   handleSidebarProjectUpdate: (id: any, data: any) => Promise<void>;
   handleSidebarProjectDelete: (id: any) => Promise<void>;
 

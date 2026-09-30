@@ -58,6 +58,7 @@ interface MainHeaderProps {
   breadcrumbLabel?: string | null;
   noteContent?: string;
   historyAvailable?: boolean;
+  discussionPanel?: React.ReactNode;
 }
 
 export const MainHeader = React.memo(({
@@ -92,6 +93,7 @@ export const MainHeader = React.memo(({
   breadcrumbLabel,
   noteContent,
   historyAvailable = true,
+  discussionPanel,
 }: MainHeaderProps) => {
   const location = useLocation();
   const [isShareModalOpen, setIsShareModalOpen] = React.useState(false);
@@ -347,6 +349,8 @@ export const MainHeader = React.memo(({
                 )}
               </div>
             )}
+
+            {discussionPanel}
 
             <NavActionsMenu 
               onShare={() => isOnline && setIsShareModalOpen(true)}

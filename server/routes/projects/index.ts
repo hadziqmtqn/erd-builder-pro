@@ -1,8 +1,28 @@
 import { Router } from "express";
 import { authenticate } from "../../lib/middleware.js";
+import { requireCloudCapability } from "../../lib/cloud-capability.js";
 import * as ctrl from "./controller.js";
+import discussionsRouter, { requireCloudDiscussionTeam, setCollaborationResource } from "../diagrams/discussions.js";
 
 const router = Router();
+const cloudCapability = requireCloudCapability("erd_builder");
+
+router.use(
+  "/:projectId/discussions",
+  authenticate,
+  cloudCapability,
+  requireCloudDiscussionTeam,
+  setCollaborationResource("discussion"),
+  discussionsRouter,
+);
+router.use(
+  "/:projectId/comments",
+  authenticate,
+  cloudCapability,
+  requireCloudDiscussionTeam,
+  setCollaborationResource("comment"),
+  discussionsRouter,
+);
 
 router.get("/", authenticate, ctrl.list);
 router.get("/selectable", authenticate, ctrl.selectable);

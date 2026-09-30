@@ -3,11 +3,19 @@ import { authenticate } from "../../lib/middleware.js";
 import { requireCloudCapability } from "../../lib/cloud-capability.js";
 import { validate, createDiagramSchema } from "../../lib/validation.js";
 import * as ctrl from "./controller.js";
+import discussionsRouter, { requireCloudDiscussionTeam } from "./discussions.js";
 
 const router = Router();
 
 const cloudCapability = requireCloudCapability("erd_builder");
 
+router.use(
+  "/:uid/discussions",
+  authenticate,
+  cloudCapability,
+  requireCloudDiscussionTeam,
+  discussionsRouter,
+);
 router.get("/", authenticate, cloudCapability, ctrl.list);
 router.post("/", authenticate, cloudCapability, validate(createDiagramSchema), ctrl.create);
 router.get("/public/:uid", ctrl.getPublic);

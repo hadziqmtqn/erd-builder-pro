@@ -11,8 +11,16 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { useWorkspace } from '../../providers/WorkspaceProvider';
 import { useAIAction } from '@/contexts/AIActionContext';
+import { CommentMarker, useERDComments } from './ERDComments';
 
 import {
   AlertDialog,
@@ -115,6 +123,7 @@ const EntityColumnRow = memo(({ col, borderColor, typeColor, hideHandles, onDoub
 });
 
 const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
+  const comments = useERDComments();
   const { isPublicView, duplicateEntity, activeDocument, setSelectedNodeId } = useWorkspace();
   const { setRightPanelMode } = useAIAction();
   const isNotesCompanion = Boolean((data as any)._notesCompanion);
@@ -157,6 +166,12 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
     e.stopPropagation();
     if (isReadOnly) return;
     duplicateEntity(id);
+  };
+
+  const handleComment = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    window.dispatchEvent(new CustomEvent('erd-comment-open-request', { detail: { type: 'table', id } }));
   };
 
   const confirmDelete = () => {
@@ -208,9 +223,12 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
     [data.columns]
   );
 
-  return (
-    <>
-      <div 
+  const contextMenuEnabled = !isPublicView && !isNotesCompanion && !isProductionDb && !data.isDiffMode;
+
+  const table = (
+    <div className="relative">
+      {!data.isDiffMode && <div className="absolute -right-1 -top-1 z-20"><CommentMarker anchor={{ type: 'table', id }} /></div>}
+      <div
         className={containerClasses}
         style={{ borderColor: borderColor, overflow: 'visible' }}
       >
@@ -292,6 +310,45 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
           ))}
         </div>
       </div>
+    </div>
+  );
+
+  return (
+    <>
+      {contextMenuEnabled ? (
+        <ContextMenu>
+          <ContextMenuTrigger className="contents">
+            {table}
+          </ContextMenuTrigger>
+          <ContextMenuContent className="w-48">
+            {!isReadOnly && (
+              <>
+                <ContextMenuItem onClick={handleEdit}>
+                  <Pencil aria-hidden="true" />
+                  Edit
+                </ContextMenuItem>
+                <ContextMenuItem onClick={handleDuplicate}>
+                  <Copy aria-hidden="true" />
+                  Duplicate
+                </ContextMenuItem>
+              </>
+            )}
+            {comments && <ContextMenuItem onClick={handleComment}>
+              <MessageSquare aria-hidden="true" />
+              Comment
+            </ContextMenuItem>}
+            {!isReadOnly && (
+              <>
+                <ContextMenuSeparator />
+                <ContextMenuItem variant="destructive" onClick={handleDeleteClick}>
+                  <Trash2 aria-hidden="true" />
+                  Delete
+                </ContextMenuItem>
+              </>
+            )}
+          </ContextMenuContent>
+        </ContextMenu>
+      ) : table}
 
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <AlertDialogContent size="sm" className="max-w-100">

@@ -175,7 +175,7 @@ Detection: `isDesktopMode()`, `isLocalPostgres()`, `useLocalAuth()`. Supabase au
 
 ### CLI/Installed SQLite Updates
 - CLI uses the same `src/` frontend and `server/` bundle as Desktop; `npm run build:cli` assembles generated `cli/dist`, `cli/dist-server`, and copies the authoritative `prisma/schema.sqlite.prisma` plus `schema.sql`.
-- `isDesktopMode()` includes CLI because its `DATABASE_URL` is `file:`. Any new system table/column must have an idempotent path in `server/lib/startup-migration.ts`; fresh `schema.sql` alone does not upgrade an existing `~/.erdbpro/data.db`.
+- `isDesktopMode()` includes CLI because its `DATABASE_URL` is `file:`. New system tables are owned by the selected Prisma schema and versioned migration; `server/lib/startup-migration.ts` may contain only additive columns or data-preserving legacy compatibility, never the table definition itself.
 - Keep `cli/prisma/schema.sqlite.prisma`, `cli/prisma/schema.sql`, and `scripts/schema.sql` refreshed from the build after schema changes. Generated `cli/dist*` folders are excluded from TypeScript checks.
 
 ### Security (Phase 1-4)

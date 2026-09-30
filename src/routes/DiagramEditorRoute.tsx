@@ -1,10 +1,11 @@
 import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom';
 import { Database } from 'lucide-react';
 import { autoLayoutERD } from '@/lib/autoLayoutERD';
 
 import { ERDView } from '@/components/views/ERDView';
+import type { ERDCommentsConfig } from '@/components/diagram/ERDComments';
 import { DataViewer } from '@/components/db-connect/DataViewer';
 import { DataViewerModeToolbar, type DataViewerMode } from '@/components/db-connect/DataViewerModeToolbar';
 import { DataQueryView } from '@/components/db-connect/DataQueryView';
@@ -12,6 +13,7 @@ import { ProjectFileTabs } from '@/components/ProjectFileTabs';
 
 export function DiagramEditorRoute() {
   const ctx = useWorkspace();
+  const { activeTeamId } = useOutletContext<{ activeTeamId?: string | null }>() || {};
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
@@ -91,6 +93,7 @@ export function DiagramEditorRoute() {
       .then(() => triggerDebouncedSync())
       .catch(error => console.error('Error saving ERD auto-layout:', error));
   }, [nodes, edges, setNodes, takeSnapshot, saveDiagram, triggerDebouncedSync, viewportRef]);
+
   useEffect(() => {
     if (isPublicView || isTeamScopeRefreshing || !id) return;
     if (processedUrlRef.current) return;
@@ -129,6 +132,12 @@ export function DiagramEditorRoute() {
   const show = isPublicView ? publicData : activeDiagram;
   const effectiveReadOnly = isPublicView || isProductionDb;
   const dataViewerStateKey = `${show?.uid || show?.id || ''}:${sourceConnectionId || ''}`;
+  const projectId = activeDiagram?.project_id ?? activeDiagram?.projectId;
+  const project = ctx.projects.find((item: any) => String(item.id) === String(projectId));
+  const projectTeamId = project?.team_id ?? project?.teamId;
+  const comments: ERDCommentsConfig | undefined = !isPublicView && !isProductionDb && !ctx.isGuest && projectId && projectTeamId && String(projectTeamId) === String(activeTeamId) && ctx.user?.id && show?.id
+    ? { projectId: String(projectId), teamId: String(activeTeamId), fileId: String(show.uid ?? show.id), userId: String(ctx.user.id) }
+    : undefined;
 
   if (!show && !isPublicView && !isERDItemLoading) {
     return (
@@ -193,6 +202,7 @@ export function DiagramEditorRoute() {
           handleExportImage={handleWorkspaceExportImage}
           isReadOnly={effectiveReadOnly}
           isDbClient={isProductionDb}
+          comments={comments}
           sourceConnectionId={sourceConnectionId}
           undo={undo}
           redo={redo}

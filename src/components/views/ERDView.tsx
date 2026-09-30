@@ -11,16 +11,22 @@ import {
   Edge,
   Viewport,
   MarkerType,
+  Position,
   ConnectionLineType,
   useReactFlow,
   addEdge,
   reconnectEdge,
+  SmoothStepEdge,
+  EdgeLabelRenderer,
+  type EdgeProps,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Plus, Upload, Undo2, Redo2, LayoutGrid, RefreshCw, Database, Download, FolderGit2 } from 'lucide-react';
+import { Plus, Upload, Undo2, Redo2, LayoutGrid, RefreshCw, Database, Download, FolderGit2, MessageCircle } from 'lucide-react';
 
 import { Button } from "@/components/ui/button";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import EntityNode from '../diagram/EntityNode';
+import { CommentMarker, ERDCommentsProvider, type ERDCommentsConfig } from '../diagram/ERDComments';
 import { SchemaDiffOverlay } from '../diagram/SchemaDiffOverlay';
 import { Entity } from '@/types';
 import { useAIAction } from '@/contexts/AIActionContext';
@@ -42,6 +48,22 @@ import { erdToDBML } from '@/lib/dbml-converter';
 const nodeTypes = {
   entity: EntityNode,
 };
+
+function CommentableEdge(props: EdgeProps) {
+  const offset = 16;
+  const x = props.sourceX + (props.sourcePosition === Position.Right ? offset : props.sourcePosition === Position.Left ? -offset : 0);
+  const y = props.sourceY + (props.sourcePosition === Position.Bottom ? offset : props.sourcePosition === Position.Top ? -offset : 0);
+  return <>
+    <SmoothStepEdge {...props} />
+    <EdgeLabelRenderer>
+      <div className="nodrag nopan pointer-events-auto absolute" style={{ transform: `translate(-50%, -50%) translate(${x}px, ${y}px)` }}>
+        <CommentMarker anchor={{ type: 'relationship', id: props.id }} />
+      </div>
+    </EdgeLabelRenderer>
+  </>;
+}
+
+const edgeTypes = { commentable: CommentableEdge };
 
 interface ERDViewProps {
   nodes: Node<Entity>[];
@@ -84,6 +106,7 @@ interface ERDViewProps {
   getRelationKey?: (edge: Edge) => string | null;
   dedupeEdgesByRelation?: (edges: Edge[]) => Edge[];
   onEdgeReconnect?: (edges: Edge[]) => void;
+  comments?: ERDCommentsConfig;
 }
 
 
@@ -127,18 +150,35 @@ const ERDViewComponent = ({
   getRelationKey,
   dedupeEdgesByRelation,
   onEdgeReconnect,
+  comments,
 }: ERDViewProps) => {
 
   const { registerContentHandler, setSelectionText, setActionContextData, setRightPanelMode } = useAIAction();
-  const { getViewport, getNodes, getEdges, setViewport } = useReactFlow();
+  const { getViewport, getNodes, getEdges, setViewport, setCenter } = useReactFlow();
   const { resolvedTheme } = useWorkspace();
   const bgColor = resolvedTheme === 'dark' ? '#222' : '#ccc';
   const isProductionDb = isDbClient;
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
+  const [edgeContextMenu, setEdgeContextMenu] = useState<{ x: number; y: number; id: string } | null>(null);
+  const edgeContextMenuAnchor = React.useMemo(() => edgeContextMenu ? {
+    getBoundingClientRect: () => new DOMRect(edgeContextMenu.x, edgeContextMenu.y, 0, 0),
+  } : null, [edgeContextMenu]);
   const canvasRef = React.useRef<HTMLDivElement>(null);
   const lowDetailRef = React.useRef(false);
+
+  const handleEdgeContextMenuLocal = useCallback((event: React.MouseEvent, edge: Edge) => {
+    if (!comments) return;
+    event.preventDefault();
+    setEdgeContextMenu({ x: event.clientX, y: event.clientY, id: edge.id });
+  }, [comments]);
+
+  const handleEdgeComment = useCallback(() => {
+    if (!edgeContextMenu) return;
+    window.dispatchEvent(new CustomEvent('erd-comment-open-request', { detail: { type: 'relationship', id: edgeContextMenu.id } }));
+    setEdgeContextMenu(null);
+  }, [edgeContextMenu]);
 
   const handleMoveLocal = useCallback((event: any, viewport: any) => {
     const lowDetail = viewport.zoom < 0.35;
@@ -148,6 +188,41 @@ const ERDViewComponent = ({
     }
     onMove(event, viewport);
   }, [onMove]);
+
+  const handleDiscussionAnchorSelected = useCallback((type: "general" | "table" | "relationship", id: string | null) => {
+    if (!id || type === "general") return;
+    const currentNodes = getNodes() as Node<Entity>[];
+    const centerOf = (node: Node<Entity>) => ({
+      x: node.position.x + (node.measured?.width ?? node.width ?? 180) / 2,
+      y: node.position.y + (node.measured?.height ?? node.height ?? 120) / 2,
+    });
+    if (type === "table") {
+      const node = currentNodes.find((item) => item.id === id);
+      if (node) {
+        const center = centerOf(node);
+        void setCenter(center.x, center.y, { zoom: getViewport().zoom, duration: 0 });
+      }
+      return;
+    }
+    const edge = (getEdges() as Edge[]).find((item) => item.id === id);
+    if (!edge) return;
+    const source = currentNodes.find((node) => node.id === edge.source);
+    const target = currentNodes.find((node) => node.id === edge.target);
+    if (!source || !target) return;
+    const from = centerOf(source);
+    const to = centerOf(target);
+    void setCenter((from.x + to.x) / 2, (from.y + to.y) / 2, { zoom: getViewport().zoom, duration: 0 });
+  }, [getEdges, getNodes, getViewport, setCenter]);
+
+  React.useEffect(() => {
+    const onDiscussionAnchorSelected = (event: Event) => {
+      const detail = (event as CustomEvent<{ type?: "general" | "table" | "relationship"; id?: string | null }>).detail;
+      if (!detail?.type) return;
+      handleDiscussionAnchorSelected(detail.type, detail.id ?? null);
+    };
+    window.addEventListener('erd-discussion-anchor-selected', onDiscussionAnchorSelected);
+    return () => window.removeEventListener('erd-discussion-anchor-selected', onDiscussionAnchorSelected);
+  }, [handleDiscussionAnchorSelected]);
 
   const saveCanvasAfterNodeDrag = useCallback(() => {
     if (!saveDiagram) return;
@@ -244,7 +319,7 @@ const ERDViewComponent = ({
     }));
   }, [pendingDiff]);
 
-  const styledEdges = React.useMemo(() => styleErdEdges(edges, allSelectedIds), [edges, allSelectedIds]);
+  const styledEdges = React.useMemo(() => styleErdEdges(edges, allSelectedIds).map(edge => comments ? { ...edge, type: 'commentable' } : edge), [edges, allSelectedIds, comments]);
   const styledDiffEdges = React.useMemo(
     () => pendingDiff ? styleErdEdges(pendingDiff.diffEdges) : [],
     [pendingDiff],
@@ -599,7 +674,7 @@ const ERDViewComponent = ({
     }
   }, [nodes, startDiff, pendingErdDiffTrigger]);
 
-  return (
+  const content = (
     <div className="flex-1 relative flex flex-col overflow-hidden border rounded-xl bg-muted/20" style={{ contain: 'paint layout' }}>
 
       {isReadOnly && isProductionDb && (
@@ -776,9 +851,11 @@ const ERDViewComponent = ({
             setEdges(deduped);
           }}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           onNodeClick={handleNodeClickLocal}
           onNodeDoubleClick={onNodeDoubleClick}
           onEdgeClick={onEdgeClick}
+          onEdgeContextMenu={comments && !pendingDiff ? handleEdgeContextMenuLocal : undefined}
           onPaneClick={handlePaneClickLocal}
           onMove={handleMoveLocal}
           colorMode={resolvedTheme}
@@ -804,6 +881,22 @@ const ERDViewComponent = ({
         </ReactFlow>
       </div>
 
+      {edgeContextMenu && (
+        <ContextMenu open onOpenChange={(next) => { if (!next) setEdgeContextMenu(null); }}>
+          <ContextMenuTrigger
+            className="fixed size-px opacity-0"
+            style={{ left: edgeContextMenu.x, top: edgeContextMenu.y }}
+            onContextMenu={(event) => event.preventDefault()}
+          />
+          <ContextMenuContent anchor={edgeContextMenuAnchor}>
+            <ContextMenuItem onClick={handleEdgeComment}>
+              <MessageCircle aria-hidden="true" />
+              Comment
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
+      )}
+
       {pendingDiff && <SchemaDiffOverlay
         diff={pendingDiff.diffResult}
         approvedIds={approvedChangeIds}
@@ -823,6 +916,7 @@ const ERDViewComponent = ({
       />}
     </div>
   );
+  return comments ? <ERDCommentsProvider config={comments}>{content}</ERDCommentsProvider> : content;
 };
 
 // Custom comparator: skip function props to prevent unnecessary re-renders
@@ -879,6 +973,7 @@ export const ERDView = React.memo(ERDViewComponent, (prev, next) => {
     edgesEqual(prev.edges, next.edges) &&
     (shouldIgnoreLoading || prev.isLoading === next.isLoading) &&
     prev.isReadOnly === next.isReadOnly &&
+    prev.comments?.projectId === next.comments?.projectId && prev.comments?.teamId === next.comments?.teamId && prev.comments?.fileId === next.comments?.fileId && prev.comments?.userId === next.comments?.userId &&
     sameViewport &&
     prev.selectedNodeId === next.selectedNodeId &&
     prev.canUndo === next.canUndo &&

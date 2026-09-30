@@ -26,11 +26,23 @@ function resolveDatabaseUrl(): string {
   return process.env.DATABASE_URL;
 }
 
+function withPostgresSessionTimezone(baseUrl: string): string {
+  try {
+    const url = new URL(baseUrl);
+    // Prisma's PostgreSQL adapter normalizes timestamptz as UTC. Keep the
+    // session in UTC so the adapter does not discard a local offset.
+    url.searchParams.set("options", "-c TimeZone=UTC");
+    return url.toString();
+  } catch {
+    return baseUrl;
+  }
+}
+
 function buildPrismaPgOptions(): { connectionString: string } {
   const baseUrl = resolveDatabaseUrl();
 
   if (isLocalPostgres()) {
-    return { connectionString: baseUrl };
+    return { connectionString: withPostgresSessionTimezone(baseUrl) };
   }
 
   // Supabase PostgreSQL: limit connection pool to avoid exhausting
@@ -43,7 +55,7 @@ function buildPrismaPgOptions(): { connectionString: string } {
     if (!url.searchParams.has("pgbouncer")) {
       url.searchParams.set("pgbouncer", "true");
     }
-    return { connectionString: url.toString() };
+    return { connectionString: withPostgresSessionTimezone(url.toString()) };
   } catch {
     return { connectionString: baseUrl };
   }

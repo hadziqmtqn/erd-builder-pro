@@ -17,7 +17,7 @@ function isPostgresDatabase(): boolean {
 }
 
 function postgresDateType(): string {
-  return SUPABASE_URL ? "TIMESTAMPTZ(6)" : "TIMESTAMP(3)";
+  return SUPABASE_URL ? "TIMESTAMPTZ(6)" : "TIMESTAMPTZ(3)";
 }
 
 async function backfillModelUids<T extends PrismaRecord>(
@@ -246,7 +246,7 @@ async function createTeamTablesIfMissing(): Promise<void> {
   await addColumnIfMissing("projects", "team_id", '"team_id" TEXT');
 
   try {
-    const dateType = isLocalPostgres() ? "TIMESTAMP(3)" : "DATETIME";
+    const dateType = isLocalPostgres() ? postgresDateType() : "DATETIME";
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "teams" (
         "id" TEXT NOT NULL PRIMARY KEY,
@@ -318,56 +318,69 @@ async function createTeamTablesIfMissing(): Promise<void> {
   }
 }
 
-async function createCloudAiTablesIfMissing(): Promise<void> {
-  if (!prisma) return;
+const LEGACY_DISCUSSION_TABLES = [
+  ["cloud_erd_discussion_threads", "discussion_threads"],
+  ["cloud_erd_discussion_messages", "discussion_messages"],
+  ["cloud_erd_discussion_reads", "discussion_reads"],
+] as const;
 
-  const dateType = isPostgresDatabase() ? postgresDateType() : "TEXT";
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS "cloud_ai_runtime_configs" (
-      "id" TEXT PRIMARY KEY,
-      "revision" INTEGER NOT NULL,
-      "ciphertext" TEXT NOT NULL,
-      "iv" TEXT NOT NULL,
-      "auth_tag" TEXT NOT NULL,
-      "enabled" BOOLEAN NOT NULL DEFAULT true,
-      "expires_at" ${dateType},
-      "received_at" ${dateType} NOT NULL,
-      "updated_at" ${dateType} NOT NULL,
-      "last_error_code" TEXT
-    )
-  `);
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS "cloud_ai_usage_periods" (
-      "id" TEXT PRIMARY KEY,
-      "team_id" TEXT NOT NULL,
-      "period_start" ${dateType} NOT NULL,
-      "period_end" ${dateType},
-      "limit_credits" INTEGER NOT NULL,
-      "consumed_credits" INTEGER NOT NULL DEFAULT 0,
-      "reserved_credits" INTEGER NOT NULL DEFAULT 0,
-      "entitlement_revision" TEXT NOT NULL,
-      "created_at" ${dateType} NOT NULL,
-      "updated_at" ${dateType} NOT NULL
-    )
-  `);
-  await prisma.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "cloud_ai_usage_period_team_start" ON "cloud_ai_usage_periods"("team_id", "period_start")');
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS "cloud_ai_usage_requests" (
-      "id" TEXT PRIMARY KEY,
-      "request_id" TEXT NOT NULL UNIQUE,
-      "team_id" TEXT NOT NULL,
-      "period_id" TEXT NOT NULL,
-      "user_id" TEXT NOT NULL,
-      "credits" INTEGER NOT NULL DEFAULT 1,
-      "state" TEXT NOT NULL,
-      "provider_code" TEXT,
-      "model_identifier" TEXT,
-      "error_code" TEXT,
-      "created_at" ${dateType} NOT NULL,
-      "updated_at" ${dateType} NOT NULL
-    )
-  `);
-  await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "cloud_ai_usage_requests_team_created" ON "cloud_ai_usage_requests"("team_id", "created_at")');
+async function migrateLegacyDiscussionTablesIfNeeded(): Promise<void> {
+  if (!prisma) return;
+  const [legacyThreads, legacyMessages, legacyReads] = LEGACY_DISCUSSION_TABLES;
+  if ((await getColumns(legacyThreads[0])).length === 0) return;
+  if ((await getColumns("discussion_threads")).length === 0 || (await getColumns("discussion_contexts")).length === 0) {
+    logger.warn("Discussion migration is missing Prisma-owned tables; legacy data was left untouched");
+    return;
+  }
+
+  try {
+    const threads = await prisma.$queryRawUnsafe<Array<{
+      id: string; diagram_id: number | bigint; team_id: string;
+      status: string; created_by: string;
+      resolved_by: string | null; created_at: Date | string; updated_at: Date | string;
+    }>>(`SELECT "id", "diagram_id", "team_id", "status", "created_by", "resolved_by", "created_at", "updated_at" FROM "${legacyThreads[0]}"`);
+    for (const thread of threads) {
+      const project = await prisma.$queryRawUnsafe<Array<{ id: number | bigint }>>(
+        'SELECT p."id" FROM "diagrams" d LEFT JOIN "projects" p ON p."id" = d."project_id" WHERE d."id" = $1 LIMIT 1',
+        thread.diagram_id,
+      );
+      await prisma.$executeRawUnsafe(`
+        INSERT INTO "discussion_threads" ("id", "project_id", "team_id", "status", "created_by", "resolved_by", "created_at", "updated_at")
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT ("id") DO NOTHING
+      `, thread.id, project[0]?.id ?? null, thread.team_id, thread.status, thread.created_by, thread.resolved_by, thread.created_at, thread.updated_at);
+      await prisma.$executeRawUnsafe(`
+        INSERT INTO "discussion_contexts" ("id", "thread_id", "feature_type", "file_id", "created_at")
+        VALUES ($1, $2, 'diagram', $3, $4)
+        ON CONFLICT ("id") DO NOTHING
+      `, `${thread.id}:diagram:${String(thread.diagram_id)}`, thread.id, String(thread.diagram_id), thread.created_at);
+    }
+
+    if ((await getColumns(legacyMessages[0])).length > 0) {
+      const messages = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(`SELECT "id", "thread_id", "author_id", "author_name", "body", "created_at" FROM "${legacyMessages[0]}"`);
+      for (const message of messages) {
+        await prisma.$executeRawUnsafe(`
+          INSERT INTO "discussion_messages" ("id", "thread_id", "author_id", "author_name", "body", "created_at")
+          VALUES ($1, $2, $3, $4, $5, $6)
+          ON CONFLICT ("id") DO NOTHING
+        `, message.id, message.thread_id, message.author_id, message.author_name, message.body, message.created_at);
+      }
+    }
+
+    if ((await getColumns(legacyReads[0])).length > 0) {
+      const reads = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(`SELECT "thread_id", "user_id", "last_read_at" FROM "${legacyReads[0]}"`);
+      for (const read of reads) {
+        await prisma.$executeRawUnsafe(`
+          INSERT INTO "discussion_reads" ("thread_id", "user_id", "last_read_at")
+          VALUES ($1, $2, $3)
+          ON CONFLICT ("thread_id", "user_id") DO NOTHING
+        `, read.thread_id, read.user_id, read.last_read_at);
+      }
+    }
+    logger.info({ count: threads.length }, "Migrated legacy discussion data to Project contexts");
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "Failed to migrate legacy discussion data (non-fatal)");
+  }
 }
 
 /** Establishes the signed baseline once for Teams that existed before this release. */
@@ -902,7 +915,7 @@ export async function applySchemaMigrations(): Promise<void> {
     await addColumnIfMissing(
       "users",
       "login_locked_until",
-      `"login_locked_until" ${isLocalPostgres() ? "TIMESTAMP(3)" : "DATETIME"}`,
+      `"login_locked_until" ${isLocalPostgres() ? postgresDateType() : "DATETIME"}`,
     );
   }
   try {
@@ -944,9 +957,9 @@ export async function applySchemaMigrations(): Promise<void> {
   await ensureAiChatMessageIdempotency();
   await createErdMetadataTablesIfMissing();
   await createTeamTablesIfMissing();
+  await migrateLegacyDiscussionTablesIfNeeded();
   await backfillLegacyTeamData();
   await backfillLegacyFileOwners();
-  await createCloudAiTablesIfMissing();
   await sealExistingTeamRecords();
   if (isDesktopMode()) {
     // v3.4.3+ — local Repository-Aware ERD link used by Desktop/CLI MCP.

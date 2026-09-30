@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -12,6 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field, FieldLabel } from '@/components/ui/field';
+import { Plus, X } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -36,6 +37,8 @@ interface RenameDocumentDialogProps {
   setSelectedProjectId: (id: string) => void;
   /** For create mode — called with (title, projectId) when user confirms */
   onCreate?: (title: string, projectId: string | null) => void;
+  /** For create mode — creates a project and returns it for selection. */
+  onProjectCreate?: (name: string) => Promise<{ id: number | string } | null>;
   /** For edit mode */
   updateDiagram?: (id: string | number, name: string, options?: { silent?: boolean }) => void;
   updateNote?: (uid: string, name: string, options?: { silent?: boolean }) => void;
@@ -64,6 +67,7 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
   selectedProjectId,
   setSelectedProjectId,
   onCreate,
+  onProjectCreate,
   updateDiagram,
   updateNote,
   updateDrawing,
@@ -75,6 +79,38 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
   onRenameSuccess,
 }) => {
   const isCreate = mode === 'create';
+  const [isAddingProject, setIsAddingProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
+
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      setIsAddingProject(false);
+      setNewProjectName('');
+    }
+    onOpenChange(open);
+  };
+
+  const handleCreateProject = async () => {
+    const name = newProjectName.trim();
+    if (!name || !onProjectCreate || isCreatingProject) return;
+
+    setIsCreatingProject(true);
+    try {
+      const project = await onProjectCreate(name);
+      if (!project) {
+        toast.error('Failed to create project');
+        return;
+      }
+      setSelectedProjectId(String(project.id));
+      setIsAddingProject(false);
+      setNewProjectName('');
+    } catch {
+      toast.error('Failed to create project');
+    } finally {
+      setIsCreatingProject(false);
+    }
+  };
 
   useEffect(() => {
     if (isOpen && !isCreate && activeDocument) {
@@ -84,11 +120,11 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
   }, [isOpen]);
 
   const handleSave = async () => {
-    if (!newName.trim() || (requireProject && selectedProjectId === 'none')) return;
+    if (isAddingProject || isCreatingProject || !newName.trim() || (requireProject && selectedProjectId === 'none')) return;
 
     if (isCreate) {
       onCreate?.(newName.trim(), selectedProjectId === 'none' ? null : selectedProjectId);
-      onOpenChange(false);
+      handleOpenChange(false);
       return;
     }
 
@@ -120,7 +156,7 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
         }
 
         toast.success('Document updated successfully');
-        onOpenChange(false);
+        handleOpenChange(false);
       } catch (error) {
         toast.error('Failed to update document');
       }
@@ -128,7 +164,7 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>{isCreate ? `Create ${viewLabel(view)}` : 'Edit Document'}</DialogTitle>
@@ -159,24 +195,81 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
             </Field>
 
             <Field>
-              <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
+              <FieldLabel htmlFor="document-project-select" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
                 Project
               </FieldLabel>
-              <Select value={selectedProjectId} onValueChange={(value) => value !== null && setSelectedProjectId(value)}>
-                <SelectTrigger className="h-9">
-                  <SelectValue>
-                    {selectedProjectId === "none" ? (requireProject ? "Select Project" : "No project") : projects.find(p => p.id.toString() === selectedProjectId)?.name || "Select Project"}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {!requireProject && <SelectItem value="none">No project</SelectItem>}
-                  {projects.map((project) => (
-                    <SelectItem key={project.id} value={project.id.toString()}>
-                      {project.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2">
+                <Select
+                  value={selectedProjectId}
+                  onValueChange={(value) => value !== null && setSelectedProjectId(value)}
+                  disabled={isAddingProject || isCreatingProject}
+                >
+                  <SelectTrigger id="document-project-select" className="min-w-0 flex-1">
+                    <SelectValue>
+                      {selectedProjectId === "none" ? (requireProject ? "Select Project" : "No project") : projects.find(p => p.id.toString() === selectedProjectId)?.name || "Select Project"}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {!requireProject && <SelectItem value="none">No project</SelectItem>}
+                    {projects.map((project) => (
+                      <SelectItem key={project.id} value={project.id.toString()}>
+                        {project.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {isCreate && onProjectCreate && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-lg"
+                    className="shrink-0"
+                    aria-label={isAddingProject ? 'Cancel adding project' : 'Add a project'}
+                    aria-expanded={isAddingProject}
+                    aria-controls="new-project-field"
+                    disabled={isCreatingProject}
+                    onClick={() => {
+                      setIsAddingProject(!isAddingProject);
+                      setNewProjectName('');
+                    }}
+                  >
+                    {isAddingProject ? <X className="size-4" /> : <Plus className="size-4" />}
+                  </Button>
+                )}
+              </div>
+              {isCreate && isAddingProject && (
+                <div id="new-project-field" className="mt-3 space-y-2">
+                  <FieldLabel htmlFor="new-project-name" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
+                    New project name
+                  </FieldLabel>
+                  <div className="flex gap-2">
+                    <Input
+                      id="new-project-name"
+                      value={newProjectName}
+                      onChange={(event) => setNewProjectName(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          void handleCreateProject();
+                        }
+                      }}
+                      placeholder="Enter project name"
+                      className="min-w-0 flex-1"
+                      autoFocus
+                      disabled={isCreatingProject}
+                    />
+                    <Button
+                      type="button"
+                      size="lg"
+                      className="shrink-0"
+                      disabled={!newProjectName.trim() || isCreatingProject}
+                      onClick={() => void handleCreateProject()}
+                    >
+                      {isCreatingProject ? 'Adding…' : 'Add project'}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </Field>
           </div>
         </DialogBody>
@@ -185,7 +278,7 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
             Cancel
           </DialogClose>
           <Button
-            disabled={!newName.trim() || (requireProject && selectedProjectId === 'none')}
+            disabled={isAddingProject || isCreatingProject || !newName.trim() || (requireProject && selectedProjectId === 'none')}
             onClick={handleSave}
             className="h-9 px-6"
           >

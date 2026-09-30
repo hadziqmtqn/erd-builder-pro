@@ -68,6 +68,7 @@ import { ERDTableListPanel } from '@/components/diagram/ERDTableListPanel';
 import PropertiesPanel from '@/components/PropertiesPanel';
 import { VersionHistoryPanel, type HistoryEntityType } from '@/components/history/VersionHistoryPanel';
 import { RepositoryPanel } from '@/components/repository/RepositoryPanel';
+import { DiscussionsPanel, type CollaborationContext, type CollaborationFeatureType } from '@/components/diagram/DiscussionsPanel';
 import { applyDBMLMetadata, dbmlToERD, erdToDBML, findMatchingCanvasEdge } from '@/lib/dbml-converter';
 import { closeRepositoryPreview, ERD_REPOSITORY_APPLIED_EVENT } from '@/lib/repository-preview';
 import { AIChatToggle } from '@/components/ai/AIChatToggle';
@@ -537,11 +538,80 @@ function AppLayoutInner() {
   }, [entityContext, isPublicView, isActiveDbClient, searchParams, teamState.activeTeam, user?.isSso]);
   const showDBMLPanel = isActiveDiagramContext && (activeDiagram?.source_type ?? activeDiagram?.sourceType) !== 'production_db';
 
-  // Derive project_id from the active entity — used to populate ai_chat_sessions.project_id
+  // Derive project_id from the active entity. Discussions and Comments use the
+  // same Project boundary for Cloud and licensed Self-host Teams.
   const activeProjectId = useMemo<string | number | null>(() => {
     const ent = entityContext?.entityType === 'dbClient' ? activeDbClient : activeNote || activeDiagram || activeFlowchart || activeDrawing;
-    return ent?.project_id ?? null;
+    return ent?.project_id ?? ent?.projectId ?? null;
   }, [entityContext, activeDbClient, activeNote, activeDiagram, activeFlowchart, activeDrawing]);
+
+  const discussionFileContext = useMemo(() => {
+    if (isPublicView || isGuest || !entityContext || !activeFileName || isActiveDbClient) return null;
+    const featureType: CollaborationFeatureType | null = entityContext.entityType === 'diagram'
+      ? 'diagram'
+      : entityContext.entityType === 'note'
+        ? 'note'
+        : entityContext.entityType === 'drawing'
+          ? 'drawing'
+          : entityContext.entityType === 'flowchart'
+            ? 'flowchart'
+            : null;
+    const fileId = activeFileUid || currentActiveId || entityContext.entityUid;
+    return featureType && fileId ? { featureType, fileId: String(fileId), label: activeFileName } : null;
+  }, [activeFileName, activeFileUid, currentActiveId, entityContext, isActiveDbClient, isGuest, isPublicView]);
+
+  const discussionProject = projects.find((project) => String(project.id) === String(activeProjectId));
+  const discussionProjectTeamId = discussionProject?.team_id ?? discussionProject?.teamId;
+  const discussionTeamId = discussionFileContext && !isPublicView && !isGuest
+    && discussionProjectTeamId && String(discussionProjectTeamId) === String(teamState.activeTeamId)
+    ? String(teamState.activeTeamId)
+    : undefined;
+  const discussionAnchorContext = useMemo(() => {
+    if (selectedEdgeId && edges.some((edge) => edge.id === selectedEdgeId)) {
+      return { type: 'relationship' as const, id: selectedEdgeId };
+    }
+    if (selectedNodeId && nodes.some((node) => node.id === selectedNodeId)) {
+      return { type: 'table' as const, id: selectedNodeId };
+    }
+    return null;
+  }, [edges, nodes, selectedEdgeId, selectedNodeId]);
+  const handleDiscussionAnchorSelected = useCallback((type: 'general' | 'table' | 'relationship', id: string | null) => {
+    window.dispatchEvent(new CustomEvent('erd-discussion-anchor-selected', { detail: { type, id } }));
+  }, []);
+  const handleDiscussionContextSelected = useCallback((context: CollaborationContext) => {
+    if (!discussionFileContext) return;
+    const sameFile = context.featureType === discussionFileContext.featureType && String(context.fileId) === discussionFileContext.fileId;
+    if (sameFile) {
+      if (context.featureType === 'diagram' && context.anchorType !== 'general' && context.anchorId) {
+        handleDiscussionAnchorSelected(context.anchorType as 'table' | 'relationship', context.anchorId);
+      }
+      return;
+    }
+    const collections: Record<string, any[]> = {
+      diagram: diagrams,
+      note: notes,
+      drawing: drawings,
+      flowchart: flowcharts,
+    };
+    const item = collections[context.featureType]?.find((candidate) => String(candidate.uid ?? candidate.id) === String(context.fileId) || String(candidate.id) === String(context.fileId));
+    if (!item) return;
+    const routePrefix: Record<string, string> = { diagram: '/diagrams', note: '/notes', drawing: '/drawings', flowchart: '/flowcharts' };
+    navigate(`${routePrefix[context.featureType]}/${item.uid ?? item.id}`);
+    if (context.featureType === 'diagram' && context.anchorType !== 'general' && context.anchorId) {
+      window.setTimeout(() => handleDiscussionAnchorSelected(context.anchorType as 'table' | 'relationship', context.anchorId), 0);
+    }
+  }, [diagrams, discussionFileContext, flowcharts, handleDiscussionAnchorSelected, navigate, notes, drawings]);
+  const discussionPanel = activeProjectId && discussionFileContext && discussionTeamId ? (
+    <DiscussionsPanel
+      key={`${discussionTeamId}:${activeProjectId}:${discussionFileContext.featureType}:${discussionFileContext.fileId}`}
+      projectId={String(activeProjectId)}
+      teamId={discussionTeamId}
+      userId={user?.id ? String(user.id) : undefined}
+      fileContext={discussionFileContext}
+      anchorContext={discussionAnchorContext}
+      onContextSelected={handleDiscussionContextSelected}
+    />
+  ) : null;
 
   // ── Persist Tauri window size/position (handled by tauri-plugin-window-state) ──
 
@@ -855,9 +925,10 @@ function AppLayoutInner() {
           breadcrumbLabel={breadcrumbLabel}
           noteContent={activeNote?.content}
           historyAvailable={Boolean(historyEntityType)}
+          discussionPanel={discussionPanel}
         />
 
-        <div className="flex flex-1 flex-col gap-4 p-4 pt-4 min-h-0 overflow-hidden" style={{ isolation: 'isolate' } as React.CSSProperties}>
+        <div className="relative flex flex-1 flex-col gap-4 p-4 pt-4 min-h-0 overflow-hidden" style={{ isolation: 'isolate' } as React.CSSProperties}>
           {isTeamScopeRefreshing ? (
             <div className="flex flex-1 flex-col items-center justify-center rounded-xl border bg-muted/10" role="status" aria-live="polite">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
@@ -943,6 +1014,16 @@ function AppLayoutInner() {
             requireProject={Boolean(teamState.activeTeamId)}
             selectedProjectId={renameProjectId}
             setSelectedProjectId={setRenameProjectId}
+            onProjectCreate={async (name) => {
+              const project = await handleSidebarProjectCreate(name);
+              if (project) {
+                setSelectableProjects((current) => [
+                  project,
+                  ...current.filter((item) => String(item.id) !== String(project.id)),
+                ]);
+              }
+              return project;
+            }}
             onCreate={(title, projectId) => {
               const viewCb = createDialogView;
               if (viewCb === 'notes') handleSidebarNoteCreate(title, projectId);
