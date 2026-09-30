@@ -112,7 +112,7 @@ function DiscussionComposer({
           value={value}
           onChange={onChange}
           placeholder={placeholder}
-          className="!min-h-11 max-h-36 resize-none overflow-y-auto rounded-2xl bg-muted/40 px-3 py-2 pr-12 shadow-none"
+          className="min-h-11! max-h-36 resize-none overflow-y-auto rounded-2xl bg-muted/40 px-3 py-2 pr-12 shadow-none"
           required
         />
         <Button
@@ -184,7 +184,7 @@ function DiscussionMessage({ message, isOwn, showAvatar, canEdit, editing, editD
   );
   const bubble = (
     <Bubble className={cn(isOwn ? "bg-brand text-white" : "bg-muted text-foreground", isOwn ? "rounded-br-md" : "rounded-bl-md")}>
-      <BubbleContent className="break-words">{message.body}</BubbleContent>
+      <BubbleContent className="wrap-break-word">{message.body}</BubbleContent>
     </Bubble>
   );
   const time = messageTime(message.createdAt);
@@ -196,7 +196,7 @@ function DiscussionMessage({ message, isOwn, showAvatar, canEdit, editing, editD
           aria-label="Edit your message"
           value={editDraft}
           onChange={onEditDraftChange}
-          className="!min-h-11 max-h-36 w-full resize-none overflow-y-auto rounded-2xl bg-muted/40 px-3 py-2 shadow-none"
+          className="min-h-11! max-h-36 w-full resize-none overflow-y-auto rounded-2xl bg-muted/40 px-3 py-2 shadow-none"
           disabled={disabled}
         />
         {message.body !== editOriginalBody && <p className="text-xs text-destructive" role="alert">This message changed. Cancel and edit the latest version.</p>}
@@ -490,7 +490,7 @@ export function DiscussionsPanel({
     try {
       const data = await requestJson(listEndpoint);
       if (requestId !== listRequest.current) return [];
-      const nextThreads = Array.isArray(data.threads) ? data.threads.map((thread: RawRecord) => normalizeThread(thread)) : [];
+      const nextThreads: Thread[] = Array.isArray(data.threads) ? data.threads.map((thread: RawRecord) => normalizeThread(thread)) : [];
       if (notify && hasInitialSnapshot.current) {
         for (const thread of nextThreads) {
           const previousMessageId = seenMessages.current.get(thread.id);
@@ -500,7 +500,7 @@ export function DiscussionsPanel({
           }
         }
       }
-      seenMessages.current = new Map(nextThreads.filter((thread) => thread.latestMessageId).map((thread) => [thread.id, thread.latestMessageId!]));
+      seenMessages.current = new Map(nextThreads.filter((thread: Thread) => thread.latestMessageId).map((thread: Thread) => [thread.id, thread.latestMessageId!]));
       hasInitialSnapshot.current = true;
       setThreads(nextThreads);
       setUnreadCount(Number(data.unreadCount ?? data.unread_count) || 0);
@@ -559,11 +559,11 @@ export function DiscussionsPanel({
         anchor_id: anchor.id,
       }));
       if (requestId !== detailRequest.current) return false;
-      const anchorThreads = Array.isArray(data.threads) ? data.threads.map((thread: RawRecord) => normalizeThread(thread)) : [];
+      const anchorThreads: Thread[] = Array.isArray(data.threads) ? data.threads.map((thread: RawRecord) => normalizeThread(thread)) : [];
       const anchorMessages = Array.isArray(data.messages) ? data.messages.map((message: RawRecord) => normalizeMessage(message)) : [];
       setThreads((current) => {
-        const incoming = new Map<string, Thread>(anchorThreads.map((thread): [string, Thread] => [thread.id, thread]));
-        return current.map((thread) => {
+        const incoming = new Map<string, Thread>(anchorThreads.map((thread: Thread): [string, Thread] => [thread.id, thread]));
+        return current.map((thread: Thread) => {
           const next = incoming.get(thread.id);
           return next ? { ...thread, ...next } : thread;
         });
@@ -577,7 +577,7 @@ export function DiscussionsPanel({
       if (contexts[0]) onContextSelected?.(contexts[0]);
       else focusAnchor(anchor);
       if (markRead) {
-        void Promise.all(anchorThreads.map((thread) => requestJson(requestPath(`${endpoint}/${encodeURIComponent(thread.id)}/read`, {
+        void Promise.all(anchorThreads.map((thread: Thread) => requestJson(requestPath(`${endpoint}/${encodeURIComponent(thread.id)}/read`, {
           feature_type: fileContext.featureType,
           file_id: fileContext.fileId,
         }), { method: "POST" }).catch(() => null))).then(() => loadThreads());
@@ -1095,7 +1095,7 @@ export function DiscussionsPanel({
                   <button
                     type="button"
                     key={thread.id}
-                    className={cn("flex min-h-[4.5rem] w-full items-center gap-3 border-b border-border/70 px-4 py-3 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring", thread.unread && "bg-primary/5")}
+                    className={cn("flex min-h-18 w-full items-center gap-3 border-b border-border/70 px-4 py-3 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring", thread.unread && "bg-primary/5")}
                     onClick={() => void openThread(thread)}
                   >
                     <span aria-hidden="true" className={cn("relative flex size-10 shrink-0 items-center justify-center rounded-full", visual?.className ?? "bg-muted text-muted-foreground")}>
