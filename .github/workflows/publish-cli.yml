@@ -49,6 +49,9 @@ jobs:
   build-and-publish:
     needs: build-menubar
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     env:
       DB_VARIANT: sqlite
 
@@ -68,8 +71,10 @@ jobs:
 
       - run: chmod +x cli/menubar/erdbpro-tray
 
-      # Node 22 ships with npm 10.x — OIDC + trusted publishing work out of the box.
-      # DO NOT upgrade to npm@latest — v11+ has sigstore bundling issues.
+      # Trusted Publishing requires npm >=11.5.1; pin npm 11 to avoid npm 12's
+      # install-time security default changes during this release build.
+      - name: Install npm with trusted publishing support
+        run: npm install --global npm@11.20.0
 
       - name: Install deps
         run: npm ci
@@ -117,12 +122,15 @@ jobs:
         id: tag
         run: |
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            echo "tag=latest" >> $GITHUB_OUTPUT
+            VERSION=$(node -p "require('./cli/package.json').version")
+            if [[ "$VERSION" == *-* ]]; then
+              echo "tag=beta" >> $GITHUB_OUTPUT
+            else
+              echo "tag=latest" >> $GITHUB_OUTPUT
+            fi
           else
             echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
           fi
 
       - name: Publish to npm
         run: cd cli && npm publish --tag ${{ steps.tag.outputs.tag }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
