@@ -139,6 +139,11 @@ describe("Cloud ERD discussions scope", () => {
       teamId: "team-a",
       eventType: "cloud.workspace.sync",
     }));
+    const contextInsert = mocks.executeRaw.mock.calls.find(([query]) => String(query).includes('INSERT INTO "discussion_contexts"'))?.[0];
+    expect(String(contextInsert)).toContain('("id", "thread_id", "feature_type", "file_id")');
+    expect(String(contextInsert)).not.toContain('"anchor_type"');
+    expect(String(contextInsert)).not.toContain('"anchor_id"');
+    expect(String(contextInsert)).not.toContain('"anchor_label"');
   });
 
   it("accepts the legacy anchor payload while clients roll forward", async () => {
@@ -152,11 +157,9 @@ describe("Cloud ERD discussions scope", () => {
     });
   });
 
-  it("derives a table anchor from the frontend context trigger", async () => {
+  it("rejects an ERD object anchor on a Discussion because anchors belong to Comments", async () => {
     mocks.queryRaw.mockImplementation(async (query: string, ...values: unknown[]) => {
       if (query.includes('JOIN "projects"')) return [{ id: 42, projectId: 7 }];
-      if (query.includes('FROM "entities"')) return [{ label: "users" }];
-      if (query.includes('FROM "users"')) return [{ name: "Member A", email: "member@example.test" }];
       return [];
     });
 
@@ -166,10 +169,11 @@ describe("Cloud ERD discussions scope", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body: "Should users be soft deleted?", context: { type: "table", id: "entity-1" } }),
       });
-      expect(response.status).toBe(201);
+      expect(response.status).toBe(404);
     });
 
-    expect(mocks.executeRaw.mock.calls[1]).toEqual(expect.arrayContaining(["table", "entity-1", "users"]));
+    expect(mocks.executeRaw).not.toHaveBeenCalled();
+    expect(mocks.publish).not.toHaveBeenCalled();
   });
 
   it("rejects replies to resolved discussions", async () => {
@@ -194,8 +198,8 @@ describe("Cloud ERD discussions scope", () => {
   it("lists project discussions across the active file boundary", async () => {
     mocks.queryRaw.mockImplementation(async (query: string, ...values: unknown[]) => {
       if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
-      if (query.includes('FROM "diagrams" f')) return [{ id: 42, uid: "diagram-uid", projectId: 7, label: "ERD" }];
       if (query.includes("LEFT JOIN LATERAL")) return [];
+      if (query.includes('FROM "diagrams" f')) return [{ id: 42, uid: "diagram-uid", projectId: 7, label: "ERD" }];
       if (query.includes("COUNT(*)")) return [{ count: 0 }];
       return [];
     });
@@ -582,6 +586,70 @@ describe("Cloud ERD discussions scope", () => {
     expect(update).not.toContain('t."file_id"');
   });
 
+  it("deletes a Discussion message only for its author and publishes the change", async () => {
+    mocks.queryRaw.mockImplementation(async (query: string) => {
+      if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
+      return [];
+    });
+
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/projects/7/discussions/thread-1/messages/message-1`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expectedBody: "Original discussion" }),
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ success: true, id: "message-1" });
+    });
+
+    const deletion = mocks.executeRaw.mock.calls.find(([query]) => String(query).includes('DELETE FROM "discussion_messages"'));
+    expect(deletion?.[0]).toContain('"author_id" = $3');
+    expect(deletion?.[0]).toContain('"body" = $4');
+    expect(deletion?.[0]).toContain('t."project_id" = $5 AND t."team_id" = $6');
+    expect(deletion?.slice(1)).toEqual(["message-1", "thread-1", "member-a", "Original discussion", 7, "team-a"]);
+    expect(mocks.executeRaw).toHaveBeenCalledWith(expect.stringContaining('UPDATE "discussion_threads"'), "thread-1", 7, "team-a");
+    expect(mocks.publish).toHaveBeenCalledWith(expect.objectContaining({ teamId: "team-a" }));
+  });
+
+  it("rejects a stale Discussion message delete", async () => {
+    mocks.queryRaw.mockImplementation(async (query: string) => {
+      if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
+      if (query.includes('FROM "discussion_messages" m')) return [{ id: "message-1" }];
+      return [];
+    });
+    mocks.executeRaw.mockImplementation(async (query: string) => query.includes('DELETE FROM "discussion_messages"') ? 0 : 1);
+
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/projects/7/discussions/thread-1/messages/message-1`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expectedBody: "Old discussion" }),
+      });
+      expect(response.status).toBe(409);
+      expect(await response.json()).toEqual({ error: "This message changed. Refresh before deleting it again." });
+    });
+    expect(mocks.publish).not.toHaveBeenCalled();
+  });
+
+  it("returns generic not-found when the Discussion message is outside the author's scope", async () => {
+    mocks.queryRaw.mockImplementation(async (query: string) => {
+      if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
+      return [];
+    });
+    mocks.executeRaw.mockImplementation(async (query: string) => query.includes('DELETE FROM "discussion_messages"') ? 0 : 1);
+
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/projects/7/discussions/thread-1/messages/message-1`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expectedBody: "Someone else's message" }),
+      });
+      expect(response.status).toBe(404);
+      expect(await response.json()).toEqual({ error: "Resource not found" });
+    });
+    expect(mocks.publish).not.toHaveBeenCalled();
+  });
+
   it("keeps the legacy file Discussion edit constrained through its context table", async () => {
     mocks.queryRaw.mockImplementation(async (query: string) => {
       if (query.includes('JOIN "projects"')) return [{ id: 42, uid: "diagram-uid", projectId: 7, projectName: "Workspace", label: "ERD" }];
@@ -600,6 +668,51 @@ describe("Cloud ERD discussions scope", () => {
     const update = String(mocks.executeRaw.mock.calls[0][0]);
     expect(update).toContain('EXISTS (SELECT 1 FROM "discussion_contexts"');
     expect(update).not.toContain('t."feature_type"');
+  });
+
+  it("marks a Discussion thread deletable only for its creator", async () => {
+    mocks.queryRaw.mockImplementation(async (query: string) => {
+      if (query.includes('FROM "projects" p')) return [{ id: 7, name: "Workspace" }];
+      if (query.includes('SELECT t."id"') && query.includes('FROM "discussion_threads" t')) return [{ id: "thread-1", status: "open", fileName: "Test ERD", canDelete: true }];
+      if (query.includes("COUNT(*)")) return [{ count: 0 }];
+      return [];
+    });
+
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/projects/7/discussions?scope=project`);
+      expect(response.status).toBe(200);
+      expect((await response.json()).threads[0]).toEqual(expect.objectContaining({ canDelete: true, fileName: "Test ERD" }));
+    });
+    const query = String(mocks.queryRaw.mock.calls.find(([candidate]) => String(candidate).includes('FROM "discussion_threads" t'))?.[0]);
+    expect(query).toContain('(t."created_by" = $3) AS "canDelete"');
+    expect(query).toContain('"fileName"');
+    expect(query).not.toContain('c0."anchor_type"');
+    expect(query).not.toContain('c0."anchor_id"');
+  });
+
+  it("deletes a Discussion thread only when the active member created it", async () => {
+    mocks.queryRaw.mockImplementation(async (query: string) => query.includes('FROM "projects" p') ? [{ id: 7, name: "Workspace" }] : []);
+
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/projects/7/discussions/thread-1`, { method: "DELETE" });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ success: true });
+    });
+    expect(mocks.executeRaw).toHaveBeenCalledWith(expect.stringContaining('DELETE FROM "discussion_threads"'), "thread-1", 7, "team-a", "member-a");
+    expect(mocks.executeRaw.mock.calls[0][0]).toContain('AND "created_by" = $4');
+    expect(mocks.publish).toHaveBeenCalledWith(expect.objectContaining({ teamId: "team-a" }));
+  });
+
+  it("returns generic not-found when a Discussion thread is not owned by the active member", async () => {
+    mocks.queryRaw.mockImplementation(async (query: string) => query.includes('FROM "projects" p') ? [{ id: 7, name: "Workspace" }] : []);
+    mocks.executeRaw.mockResolvedValue(0);
+
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/projects/7/discussions/thread-1`, { method: "DELETE" });
+      expect(response.status).toBe(404);
+      expect(await response.json()).toEqual({ error: "Resource not found" });
+    });
+    expect(mocks.publish).not.toHaveBeenCalled();
   });
 
   it("deletes a comment thread only when the active member created it", async () => {
@@ -661,6 +774,9 @@ describe("Cloud ERD discussions scope", () => {
     });
     expect(operations).toEqual(["lock-thread", "insert-context"]);
     expect(String(mocks.executeRaw.mock.calls[0][0])).toContain('AND "status" = \'open\'');
+    expect(String(mocks.executeRaw.mock.calls[1][0])).not.toContain('"anchor_type"');
+    expect(String(mocks.executeRaw.mock.calls[1][0])).not.toContain('"anchor_id"');
+    expect(String(mocks.executeRaw.mock.calls[1][0])).not.toContain('"anchor_label"');
   });
 
   it("does not add context after a Discussion has been resolved", async () => {

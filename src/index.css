@@ -369,6 +369,10 @@ code:not(pre code) {
   --color-chart-3: var(--chart-3);
   --color-chart-2: var(--chart-2);
   --color-chart-1: var(--chart-1);
+  --color-feature-erd: var(--feature-erd);
+  --color-feature-notes: var(--feature-notes);
+  --color-feature-drawing: var(--feature-drawing);
+  --color-feature-flowchart: var(--feature-flowchart);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -420,6 +424,10 @@ code:not(pre code) {
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
+  --feature-erd: #1d4ed8;
+  --feature-notes: #15803d;
+  --feature-drawing: #c2410c;
+  --feature-flowchart: #7e22ce;
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
@@ -457,6 +465,10 @@ code:not(pre code) {
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+  --feature-erd: #93c5fd;
+  --feature-notes: #86efac;
+  --feature-drawing: #fdba74;
+  --feature-flowchart: #d8b4fe;
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);

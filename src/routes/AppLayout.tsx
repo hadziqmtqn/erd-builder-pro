@@ -581,8 +581,10 @@ function AppLayoutInner() {
   const handleDiscussionContextSelected = useCallback((context: CollaborationContext) => {
     if (!discussionFileContext) return;
     const sameFile = context.featureType === discussionFileContext.featureType && String(context.fileId) === discussionFileContext.fileId;
-    if (sameFile && context.featureType === 'diagram') {
-      handleDiscussionAnchorSelected(context.anchorType as 'general' | 'table' | 'relationship', context.anchorId);
+    if (sameFile) {
+      if (context.featureType === 'diagram' && context.anchorType !== 'general' && context.anchorId) {
+        handleDiscussionAnchorSelected(context.anchorType as 'table' | 'relationship', context.anchorId);
+      }
       return;
     }
     const collections: Record<string, any[]> = {

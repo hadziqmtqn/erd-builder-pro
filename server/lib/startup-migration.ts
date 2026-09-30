@@ -335,10 +335,10 @@ async function migrateLegacyDiscussionTablesIfNeeded(): Promise<void> {
 
   try {
     const threads = await prisma.$queryRawUnsafe<Array<{
-      id: string; diagram_id: number | bigint; team_id: string; anchor_type: string;
-      anchor_id: string | null; anchor_label: string; status: string; created_by: string;
+      id: string; diagram_id: number | bigint; team_id: string;
+      status: string; created_by: string;
       resolved_by: string | null; created_at: Date | string; updated_at: Date | string;
-    }>>(`SELECT "id", "diagram_id", "team_id", "anchor_type", "anchor_id", "anchor_label", "status", "created_by", "resolved_by", "created_at", "updated_at" FROM "${legacyThreads[0]}"`);
+    }>>(`SELECT "id", "diagram_id", "team_id", "status", "created_by", "resolved_by", "created_at", "updated_at" FROM "${legacyThreads[0]}"`);
     for (const thread of threads) {
       const project = await prisma.$queryRawUnsafe<Array<{ id: number | bigint }>>(
         'SELECT p."id" FROM "diagrams" d LEFT JOIN "projects" p ON p."id" = d."project_id" WHERE d."id" = $1 LIMIT 1',
@@ -350,10 +350,10 @@ async function migrateLegacyDiscussionTablesIfNeeded(): Promise<void> {
         ON CONFLICT ("id") DO NOTHING
       `, thread.id, project[0]?.id ?? null, thread.team_id, thread.status, thread.created_by, thread.resolved_by, thread.created_at, thread.updated_at);
       await prisma.$executeRawUnsafe(`
-        INSERT INTO "discussion_contexts" ("id", "thread_id", "feature_type", "file_id", "anchor_type", "anchor_id", "anchor_label", "created_at")
-        VALUES ($1, $2, 'diagram', $3, $4, $5, $6, $7)
+        INSERT INTO "discussion_contexts" ("id", "thread_id", "feature_type", "file_id", "created_at")
+        VALUES ($1, $2, 'diagram', $3, $4)
         ON CONFLICT ("id") DO NOTHING
-      `, `${thread.id}:diagram:${String(thread.diagram_id)}`, thread.id, String(thread.diagram_id), thread.anchor_type, thread.anchor_id, thread.anchor_label, thread.created_at);
+      `, `${thread.id}:diagram:${String(thread.diagram_id)}`, thread.id, String(thread.diagram_id), thread.created_at);
     }
 
     if ((await getColumns(legacyMessages[0])).length > 0) {

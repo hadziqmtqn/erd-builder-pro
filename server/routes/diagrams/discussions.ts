@@ -13,7 +13,8 @@ const HISTORY_PAGE_SIZE = 50;
 
 const featureTypeSchema = z.enum(["diagram", "note", "drawing", "flowchart"]);
 const anchorTypeSchema = z.enum(["general", "table", "relationship", "block", "shape", "point"]);
-const discussionAnchorTypeSchema = z.enum(["general", "table", "relationship"]);
+const legacyAnchorTypeSchema = z.enum(["general", "table", "relationship"]);
+const erdCommentAnchorTypeSchema = z.enum(["table", "relationship"]);
 const collaborationContextSchema = z.object({
   type: anchorTypeSchema,
   id: z.string().trim().min(1).max(128).optional(),
@@ -25,7 +26,7 @@ const createThreadSchema = z.object({
   body: z.string().trim().min(1).max(MAX_BODY_LENGTH),
   context: collaborationContextSchema.optional(),
   // Keep accepting the pre-context payload while cached clients roll forward.
-  anchorType: discussionAnchorTypeSchema.optional(),
+  anchorType: legacyAnchorTypeSchema.optional(),
   anchorId: z.string().trim().min(1).max(128).optional(),
 }).strict().superRefine((value, ctx) => {
   const anchorType = value.context?.type ?? value.anchorType ?? "general";
@@ -43,6 +44,7 @@ const editMessageSchema = z.object({
   body: z.string().trim().min(1).max(MAX_BODY_LENGTH),
   expectedBody: z.string().max(MAX_BODY_LENGTH),
 }).strict();
+const deleteMessageSchema = z.object({ expectedBody: z.string().max(MAX_BODY_LENGTH) }).strict();
 const statusSchema = z.object({
   status: z.enum(["open", "resolved"]),
   expectedStatus: z.enum(["open", "resolved"]).optional(),
@@ -72,6 +74,17 @@ const featureTables: Record<FeatureType, { table: string; label: string }> = {
   drawing: { table: "drawings", label: "title" },
   flowchart: { table: "flowcharts", label: "title" },
 };
+
+function discussionFileNameSql(contextAlias: string, threadAlias: string): string {
+  const cases = Object.entries(featureTables).map(([type, file]) => `
+      WHEN '${type}' THEN (
+        SELECT f."${file.label}" FROM "${file.table}" f
+        WHERE CAST(f."id" AS TEXT) = ${contextAlias}."file_id"
+          AND f."project_id" = ${threadAlias}."project_id"
+        LIMIT 1
+      )`);
+  return `CASE ${contextAlias}."feature_type"${cases.join("")} END`;
+}
 
 function resourceKind(req: Request): ResourceKind {
   const value = (req as any).collaborationResource;
@@ -268,10 +281,10 @@ async function contextForRequest(req: Request, resource: ScopedResource, input: 
     ? await scopedFeatureContext(raw.featureType, raw.fileId, resource.projectId, actor.teamId)
     : null);
   if (raw.featureType && raw.fileId && !file) return null;
+  if (kind === "discussion" && (raw.type !== "general" || raw.id)) return null;
   if (kind === "comment" && (!file || raw.type === "general" || !raw.id)) return null;
   if (kind === "discussion" && !isProjectRoute(req) && !file) return null;
-  if (kind === "discussion" && !["general", "table", "relationship"].includes(raw.type)) return null;
-  const label = await resolveAnchorLabel(file, raw.type, raw.id, resource);
+  const label = kind === "discussion" ? file?.label || "General" : await resolveAnchorLabel(file, raw.type, raw.id, resource);
   if (!label) return null;
   return { file, type: raw.type, id: raw.id, label };
 }
@@ -328,8 +341,8 @@ async function listDiscussions(req: Request, res: Response, resource: ScopedReso
   const values = [resource.projectId, actor.teamId, ...context.values, actor.id];
   const threads = await prisma!.$queryRawUnsafe<Array<Record<string, any>>>(`
     SELECT t."id", c."feature_type" AS "featureType", c."file_id" AS "fileId",
-      COALESCE(c."anchor_type", 'general') AS "anchorType", c."anchor_id" AS "anchorId",
-      COALESCE(c."anchor_label", 'General') AS "anchorLabel", t."status",
+      c."fileName", t."status",
+      (t."created_by" = ${context.actorRef}) AS "canDelete",
       latest."id" AS "latestMessageId", latest."body" AS "latestMessage",
       latest."author_id" AS "latestAuthorId", latest."created_at" AS "lastMessageAt",
       EXISTS (
@@ -340,7 +353,8 @@ async function listDiscussions(req: Request, res: Response, resource: ScopedReso
       ) AS "unread"
     FROM "discussion_threads" t
     LEFT JOIN LATERAL (
-      SELECT c0."feature_type", c0."file_id", c0."anchor_type", c0."anchor_id", c0."anchor_label"
+      SELECT c0."feature_type", c0."file_id",
+        ${discussionFileNameSql("c0", "t")} AS "fileName"
       FROM "discussion_contexts" c0
       WHERE c0."thread_id" = t."id" ${context.sql.replaceAll("c.", "c0.")}
       ORDER BY c0."created_at" ASC, c0."id" ASC
@@ -489,10 +503,10 @@ router.get("/anchor", async (req, res) => {
     if (!paging.valid) { res.status(400).json({ error: "Invalid message cursor" }); return; }
     const featureType = featureTypeSchema.safeParse(req.query.feature_type).data;
     const fileId = typeof req.query.file_id === "string" ? req.query.file_id : "";
-    const anchorTypeResult = discussionAnchorTypeSchema.safeParse(req.query.anchor_type);
+    const anchorTypeResult = erdCommentAnchorTypeSchema.safeParse(req.query.anchor_type);
     const anchorType = anchorTypeResult.success ? anchorTypeResult.data : undefined;
     const anchorId = typeof req.query.anchor_id === "string" ? req.query.anchor_id : "";
-    if (!anchorType || anchorType === "general" || !anchorId || anchorId.length > 128) {
+    if (!anchorType || !anchorId || anchorId.length > 128) {
       res.status(400).json({ error: "Invalid comment anchor" });
       return;
     }
@@ -587,9 +601,9 @@ router.post("/", async (req, res) => {
         `, threadId, resource.projectId, actor.teamId, actor.id);
         if (context.file) {
           await tx.$executeRawUnsafe(`
-            INSERT INTO "discussion_contexts" ("id", "thread_id", "feature_type", "file_id", "anchor_type", "anchor_id", "anchor_label")
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-          `, randomUUID(), threadId, context.file.featureType, String(context.file.id), context.type, context.id ?? null, context.label);
+            INSERT INTO "discussion_contexts" ("id", "thread_id", "feature_type", "file_id")
+            VALUES ($1, $2, $3, $4)
+          `, randomUUID(), threadId, context.file.featureType, String(context.file.id));
         }
       } else {
         const fileTable = featureTables[context.file!.featureType].table;
@@ -668,8 +682,11 @@ router.get("/:threadId", async (req, res) => {
     const history = pageHistory(rows);
     const contexts = kind === "discussion"
       ? await prisma.$queryRawUnsafe<Array<Record<string, any>>>(`
-        SELECT "feature_type" AS "featureType", "file_id" AS "fileId", "anchor_type" AS "anchorType", "anchor_id" AS "anchorId", "anchor_label" AS "anchorLabel"
-        FROM "discussion_contexts" WHERE "thread_id" = $1 ORDER BY "created_at" ASC, "id" ASC
+        SELECT c."feature_type" AS "featureType", c."file_id" AS "fileId",
+          ${discussionFileNameSql("c", "t")} AS "fileName"
+        FROM "discussion_contexts" c
+        JOIN "discussion_threads" t ON t."id" = c."thread_id"
+        WHERE c."thread_id" = $1 ORDER BY c."created_at" ASC, c."id" ASC
       `, req.params.threadId)
       : await prisma.$queryRawUnsafe<Array<Record<string, any>>>(`
         SELECT "feature_type" AS "featureType", "file_id" AS "fileId", "anchor_type" AS "anchorType", "anchor_id" AS "anchorId", "anchor_label" AS "anchorLabel"
@@ -817,6 +834,68 @@ router.patch("/:threadId/messages/:messageId", async (req, res) => {
   }
 });
 
+router.delete("/:threadId/messages/:messageId", async (req, res) => {
+  try {
+    if (resourceKind(req) !== "discussion") { res.status(404).json(notFound); return; }
+    const input = deleteMessageSchema.safeParse(req.body);
+    if (!input.success) { res.status(400).json({ error: "Invalid message" }); return; }
+    const actor = actorFor(req);
+    if (!actor || !prisma) { res.status(404).json(notFound); return; }
+    const resource = await scopedResource(req, actor);
+    if (!resource) { res.status(404).json(notFound); return; }
+    const fileParams = contextParams(resource, req);
+    const constrainToFile = Boolean(fileParams && !isProjectRoute(req));
+    const fileClause = constrainToFile
+      ? `AND EXISTS (SELECT 1 FROM "discussion_contexts" c WHERE c."thread_id" = t."id" AND c."feature_type" = $7 AND c."file_id" = $8)`
+      : "";
+    const scopeFileClause = constrainToFile
+      ? `AND EXISTS (SELECT 1 FROM "discussion_contexts" c WHERE c."thread_id" = t."id" AND c."feature_type" = $6 AND c."file_id" = $7)`
+      : "";
+    const values = constrainToFile
+      ? [req.params.messageId, req.params.threadId, actor.id, input.data.expectedBody, resource.projectId, actor.teamId, fileParams!.featureType, fileParams!.fileId]
+      : [req.params.messageId, req.params.threadId, actor.id, input.data.expectedBody, resource.projectId, actor.teamId];
+    const scopeValues = constrainToFile
+      ? [req.params.messageId, req.params.threadId, actor.id, resource.projectId, actor.teamId, fileParams!.featureType, fileParams!.fileId]
+      : [req.params.messageId, req.params.threadId, actor.id, resource.projectId, actor.teamId];
+
+    const deleted = await prisma.$transaction(async (tx) => {
+      const count = await tx.$executeRawUnsafe(`
+        DELETE FROM "discussion_messages"
+        WHERE "id" = $1 AND "thread_id" = $2 AND "author_id" = $3 AND "body" = $4
+          AND EXISTS (
+            SELECT 1 FROM "discussion_threads" t
+            WHERE t."id" = "discussion_messages"."thread_id"
+              AND t."project_id" = $5 AND t."team_id" = $6 ${fileClause}
+          )
+      `, ...values);
+      if (Number(count) > 0) {
+        await tx.$executeRawUnsafe(`
+          UPDATE "discussion_threads" SET "updated_at" = CURRENT_TIMESTAMP
+          WHERE "id" = $1 AND "project_id" = $2 AND "team_id" = $3
+        `, req.params.threadId, resource.projectId, actor.teamId);
+        return "deleted";
+      }
+      const existing = await tx.$queryRawUnsafe<Array<{ id: string }>>(`
+        SELECT m."id" FROM "discussion_messages" m
+        WHERE m."id" = $1 AND m."thread_id" = $2 AND m."author_id" = $3
+          AND EXISTS (
+            SELECT 1 FROM "discussion_threads" t
+            WHERE t."id" = m."thread_id" AND t."project_id" = $4 AND t."team_id" = $5 ${scopeFileClause}
+          )
+        LIMIT 1
+      `, ...scopeValues);
+      return existing[0] ? "conflict" : "missing";
+    });
+
+    if (deleted === "missing") { res.status(404).json(notFound); return; }
+    if (deleted === "conflict") { res.status(409).json({ error: "This message changed. Refresh before deleting it again." }); return; }
+    notifyTeam(actor.teamId);
+    res.json({ success: true, id: req.params.messageId });
+  } catch (error) {
+    handleError(res, error, "Failed to delete collaboration message");
+  }
+});
+
 router.patch("/:threadId", async (req, res) => {
   try {
     const actor = actorFor(req);
@@ -916,12 +995,12 @@ router.post("/:threadId/contexts", async (req, res) => {
       `, req.params.threadId, resource.projectId, actor.teamId);
       if (!Number(locked)) return false;
       await tx.$executeRawUnsafe(`
-        INSERT INTO "discussion_contexts" ("id", "thread_id", "feature_type", "file_id", "anchor_type", "anchor_id", "anchor_label")
-        SELECT $1, $2, $3, $4, $5, $6, $7
+        INSERT INTO "discussion_contexts" ("id", "thread_id", "feature_type", "file_id")
+        SELECT $1, $2, $3, $4
         WHERE NOT EXISTS (
           SELECT 1 FROM "discussion_contexts" WHERE "thread_id" = $2 AND "feature_type" = $3 AND "file_id" = $4
         )
-      `, randomUUID(), req.params.threadId, context.file.featureType, String(context.file.id), context.type, context.id ?? null, context.label);
+      `, randomUUID(), req.params.threadId, context.file.featureType, String(context.file.id));
       return true;
     });
     if (!found) { res.status(409).json({ error: "Reopen this thread before adding context" }); return; }

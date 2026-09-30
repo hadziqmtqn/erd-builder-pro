@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type FormEvent } from "react";
 import { formatDistanceToNowStrict } from "date-fns";
-import { ArrowLeft, Check, CheckCircle2, MessageCircle, MessageSquareText, Plus, RotateCcw, Send } from "lucide-react";
+import { ArrowLeft, Check, CheckCircle2, Database, FileText, MessageCircle, MessageSquareText, MoreHorizontal, Network, PenTool, Pencil, Plus, RotateCcw, Send, Trash2, X, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import ConfirmModal from "@/components/ConfirmModal";
+import { ContextMenu, ContextMenuContent, ContextMenuGroup, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Message, MessageAvatar, MessageContent, MessageGroup } from "@/components/ui/message";
 import { MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport } from "@/components/ui/message-scroller";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -20,12 +23,12 @@ export type CollaborationAnchorType = "general" | "table" | "relationship" | "bl
 export type CollaborationContext = {
   featureType: CollaborationFeatureType;
   fileId: string;
+  fileName?: string | null;
   anchorType: CollaborationAnchorType;
   anchorId: string | null;
   anchorLabel: string;
 };
-type AnchorFilter = "all" | "general" | "table" | "relationship";
-type DiscussionAnchor = { type: Exclude<AnchorFilter, "all" | "general">; id: string };
+type DiscussionAnchor = { type: "table" | "relationship"; id: string };
 type Thread = {
   id: string;
   featureType: CollaborationFeatureType | null;
@@ -35,6 +38,7 @@ type Thread = {
   anchorLabel: string;
   contexts: CollaborationContext[];
   status: "open" | "resolved";
+  canDelete: boolean;
   unread: boolean;
   latestMessageId: string | null;
   latestMessage: string | null;
@@ -46,11 +50,40 @@ type DiscussionMessageData = { id: string; threadId?: string; authorId: string; 
 type MessageCursor = { createdAt: string; id: string };
 type MessageHistoryPage = { hasMore: boolean; nextCursor: MessageCursor | null };
 type MessageHistoryState = MessageHistoryPage & { messages: DiscussionMessageData[] };
+type PendingDelete = { type: "thread"; threadId: string } | { type: "message"; threadId: string; message: DiscussionMessageData };
 type RawRecord = Record<string, unknown>;
 
 function resizeDiscussionTextarea(element: HTMLTextAreaElement, maxHeight = 144): void {
   element.style.height = "auto";
   element.style.height = `${Math.min(element.scrollHeight, maxHeight)}px`;
+}
+
+type DiscussionTextareaProps = Omit<ComponentProps<typeof Textarea>, "value" | "onChange" | "rows" | "maxLength"> & {
+  value: string;
+  onChange: (value: string) => void;
+};
+
+function DiscussionTextarea({ value, onChange, className, ...props }: DiscussionTextareaProps) {
+  const textarea = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (textarea.current) resizeDiscussionTextarea(textarea.current);
+  }, [value]);
+
+  return (
+    <Textarea
+      {...props}
+      ref={textarea}
+      rows={1}
+      value={value}
+      onChange={(event) => {
+        onChange(event.target.value);
+        resizeDiscussionTextarea(event.currentTarget);
+      }}
+      maxLength={4000}
+      className={className}
+    />
+  );
 }
 
 function DiscussionComposer({
@@ -70,26 +103,14 @@ function DiscussionComposer({
   disabled: boolean;
   submitLabel: string;
 }) {
-  const textarea = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    if (textarea.current) resizeDiscussionTextarea(textarea.current);
-  }, [value]);
-
   return (
     <div className="shrink-0 border-t border-border p-3">
       <form onSubmit={onSubmit} className="relative">
         <label htmlFor={id} className="sr-only">{submitLabel}</label>
-        <Textarea
-          ref={textarea}
+        <DiscussionTextarea
           id={id}
-          rows={1}
           value={value}
-          onChange={(event) => {
-            onChange(event.target.value);
-            resizeDiscussionTextarea(event.currentTarget);
-          }}
-          maxLength={4000}
+          onChange={onChange}
           placeholder={placeholder}
           className="!min-h-11 max-h-36 resize-none overflow-y-auto rounded-2xl bg-muted/40 px-3 py-2 pr-12 shadow-none"
           required
@@ -137,7 +158,21 @@ function groupMessages(messages: DiscussionMessageData[]): DiscussionMessageData
   return groups;
 }
 
-function DiscussionMessage({ message, isOwn, showAvatar }: { message: DiscussionMessageData; isOwn: boolean; showAvatar: boolean }) {
+function DiscussionMessage({ message, isOwn, showAvatar, canEdit, editing, editDraft, editOriginalBody, disabled, onEdit, onDelete, onEditDraftChange, onCancelEdit, onSaveEdit }: {
+  message: DiscussionMessageData;
+  isOwn: boolean;
+  showAvatar: boolean;
+  canEdit: boolean;
+  editing: boolean;
+  editDraft: string;
+  editOriginalBody: string;
+  disabled: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+  onEditDraftChange: (value: string) => void;
+  onCancelEdit: () => void;
+  onSaveEdit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
   const avatar = (
     <MessageAvatar aria-hidden={!showAvatar}>
       {showAvatar && (
@@ -153,7 +188,27 @@ function DiscussionMessage({ message, isOwn, showAvatar }: { message: Discussion
     </Bubble>
   );
   const time = messageTime(message.createdAt);
-  return (
+  if (editing && canEdit) {
+    return (
+      <form onSubmit={onSaveEdit} className="flex w-full min-w-0 flex-col gap-2">
+        <DiscussionTextarea
+          autoFocus
+          aria-label="Edit your message"
+          value={editDraft}
+          onChange={onEditDraftChange}
+          className="!min-h-11 max-h-36 w-full resize-none overflow-y-auto rounded-2xl bg-muted/40 px-3 py-2 shadow-none"
+          disabled={disabled}
+        />
+        {message.body !== editOriginalBody && <p className="text-xs text-destructive" role="alert">This message changed. Cancel and edit the latest version.</p>}
+        <div className="flex justify-end gap-1">
+          <Button type="button" variant="ghost" size="sm" onClick={onCancelEdit} disabled={disabled}>Cancel</Button>
+          <Button type="submit" size="sm" disabled={disabled || !editDraft.trim() || message.body !== editOriginalBody}>{disabled ? "Saving…" : "Save"}</Button>
+        </div>
+      </form>
+    );
+  }
+
+  const messageRow = (
     <Message align={isOwn ? "end" : "start"}>
       {isOwn ? (
         <>
@@ -183,19 +238,46 @@ function DiscussionMessage({ message, isOwn, showAvatar }: { message: Discussion
       )}
     </Message>
   );
+  if (!canEdit) return messageRow;
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger
+        className="block w-full min-w-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        role="group"
+        tabIndex={0}
+        aria-label={`Message from ${message.authorName}`}
+      >
+        {messageRow}
+      </ContextMenuTrigger>
+      <ContextMenuContent className="min-w-36" positionerClassName="z-[210]">
+        <ContextMenuGroup>
+          <ContextMenuItem onClick={onEdit}>
+            <Pencil aria-hidden="true" />
+            Edit
+          </ContextMenuItem>
+          <ContextMenuItem variant="destructive" onClick={onDelete}>
+            <Trash2 aria-hidden="true" />
+            Delete
+          </ContextMenuItem>
+        </ContextMenuGroup>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
 }
 
 function normalizeContext(raw: RawRecord, fallback?: Partial<CollaborationContext>): CollaborationContext | null {
   const rawFeatureType = raw.featureType ?? raw.feature_type ?? fallback?.featureType;
   const rawAnchorType = raw.anchorType ?? raw.anchor_type ?? fallback?.anchorType;
   if (!["diagram", "note", "drawing", "flowchart"].includes(String(rawFeatureType))) return null;
-  if (!["general", "table", "relationship", "block", "shape", "point"].includes(String(rawAnchorType))) return null;
+  if (rawAnchorType != null && !["general", "table", "relationship", "block", "shape", "point"].includes(String(rawAnchorType))) return null;
   const rawFileId = raw.fileId ?? raw.file_id ?? fallback?.fileId;
   if (rawFileId == null) return null;
   return {
     featureType: rawFeatureType as CollaborationFeatureType,
     fileId: String(rawFileId),
-    anchorType: rawAnchorType as CollaborationAnchorType,
+    fileName: raw.fileName == null && raw.file_name == null ? fallback?.fileName ?? null : String(raw.fileName ?? raw.file_name),
+    anchorType: (rawAnchorType ?? "general") as CollaborationAnchorType,
     anchorId: raw.anchorId == null && raw.anchor_id == null && fallback?.anchorId == null
       ? null
       : String(raw.anchorId ?? raw.anchor_id ?? fallback?.anchorId),
@@ -242,6 +324,7 @@ function normalizeThread(raw: RawRecord): Thread {
     anchorLabel: primary?.anchorLabel ?? String(raw.anchorLabel ?? raw.anchor_label ?? "General"),
     contexts: contexts.length > 0 ? contexts : primary ? [primary] : [],
     status: rawStatus === "resolved" ? "resolved" : "open",
+    canDelete: Boolean(raw.canDelete ?? raw.can_delete),
     unread: Boolean(raw.unread),
     latestMessageId: raw.latestMessageId == null && raw.latest_message_id == null ? null : String(raw.latestMessageId ?? raw.latest_message_id),
     latestMessage: raw.latestMessage == null && raw.latest_message == null ? null : String(raw.latestMessage ?? raw.latest_message),
@@ -331,15 +414,15 @@ function relativeMessageTime(value: string | null): string {
 }
 
 function featureLabel(value: CollaborationFeatureType | null): string {
-  return value === "diagram" ? "ERD" : value ? value[0].toUpperCase() + value.slice(1) : "File";
+  return value === "diagram" ? "ERD" : value === "note" ? "Notes" : value === "drawing" ? "Drawing" : value === "flowchart" ? "Flowchart" : "File";
 }
 
-const anchorFilters: Array<{ value: AnchorFilter; label: string }> = [
-  { value: "all", label: "All" },
-  { value: "general", label: "General" },
-  { value: "table", label: "Tables" },
-  { value: "relationship", label: "Relationships" },
-];
+const featureVisuals: Record<CollaborationFeatureType, { Icon: LucideIcon; className: string }> = {
+  diagram: { Icon: Database, className: "bg-feature-erd/10 text-feature-erd" },
+  note: { Icon: FileText, className: "bg-feature-notes/10 text-feature-notes" },
+  drawing: { Icon: PenTool, className: "bg-feature-drawing/10 text-feature-drawing" },
+  flowchart: { Icon: Network, className: "bg-feature-flowchart/10 text-feature-flowchart" },
+};
 
 export function DiscussionsPanel({
   projectId,
@@ -362,7 +445,6 @@ export function DiscussionsPanel({
   const activeTab = mode === "comments" ? "comments" : "discussions";
   const isCommentRail = mode === "comments";
   const [discussionScope, setDiscussionScope] = useState<"file" | "project">("file");
-  const [anchorFilter, setAnchorFilter] = useState<AnchorFilter>("all");
   const [screen, setScreen] = useState<"list" | "compose" | "thread">("list");
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -374,6 +456,10 @@ export function DiscussionsPanel({
   const [sending, setSending] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [threadError, setThreadError] = useState("");
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [editOriginalBody, setEditOriginalBody] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [draft, setDraft] = useState("");
   const [composeAnchor, setComposeAnchor] = useState<DiscussionAnchor | null>(null);
   const [activeCommentAnchor, setActiveCommentAnchor] = useState<DiscussionAnchor | null>(null);
@@ -410,7 +496,7 @@ export function DiscussionsPanel({
           const previousMessageId = seenMessages.current.get(thread.id);
           if (thread.latestMessageId && thread.latestAuthorId !== userId
             && ((previousMessageId && thread.latestMessageId !== previousMessageId) || (!previousMessageId && thread.unread))) {
-            toast.info(`New activity in ${thread.anchorLabel || "General"}`);
+            toast.info(`New activity in ${thread.contexts[0]?.fileName || "Project discussion"}`);
           }
         }
       }
@@ -606,15 +692,21 @@ export function DiscussionsPanel({
   }, [fileContext.featureType, focusAnchor, isCommentRail, loadAnchor, loadThreads, threads]);
 
   const handleOpenChange = (next: boolean) => {
+    if (!next && pendingDelete) return;
     setOpen(next);
     if (next) {
       void loadThreads();
       if (screen === "thread" && isCommentRail && activeCommentAnchor) void loadAnchor(activeCommentAnchor, true, false, selectedThreadId || undefined);
       else if (screen === "thread" && selectedThreadId) void loadThread(selectedThreadId, true);
+    } else {
+      cancelEditMessage();
+      setPendingDelete(null);
     }
   };
 
   const openThread = async (thread: Thread) => {
+    cancelEditMessage();
+    setPendingDelete(null);
     const context = thread.contexts[0] || normalizeContext(thread);
     const anchor = context?.anchorType && ["table", "relationship"].includes(context.anchorType) && context.anchorId
       ? { type: context.anchorType as DiscussionAnchor["type"], id: context.anchorId }
@@ -648,7 +740,7 @@ export function DiscussionsPanel({
   };
 
   const startCompose = () => {
-    const nextAnchor = (isCommentRail ? activeCommentAnchor : anchorContext) ?? null;
+    const nextAnchor = activeTab === "comments" ? (isCommentRail ? activeCommentAnchor : anchorContext) ?? null : null;
     if (activeTab === "comments" && !nextAnchor) {
       toast.info("Select a table or relationship before adding a comment.");
       return;
@@ -656,6 +748,7 @@ export function DiscussionsPanel({
     setComposeAnchor(nextAnchor);
     setDraft("");
     setThreadError("");
+    cancelEditMessage();
     setScreen("compose");
   };
 
@@ -674,8 +767,8 @@ export function DiscussionsPanel({
         body: JSON.stringify({
           body,
           context: {
-            type: activeTab === "comments" ? composeAnchor?.type : composeAnchor?.type ?? "general",
-            ...(activeTab === "comments" || composeAnchor ? { id: composeAnchor?.id } : {}),
+            type: activeTab === "comments" ? composeAnchor?.type : "general",
+            ...(activeTab === "comments" ? { id: composeAnchor?.id } : {}),
             featureType: fileContext.featureType,
             fileId: fileContext.fileId,
           },
@@ -723,6 +816,91 @@ export function DiscussionsPanel({
     }
   };
 
+  const startEditMessage = (message: DiscussionMessageData) => {
+    if (activeTab !== "discussions" || message.authorId !== userId) return;
+    setEditingMessageId(message.id);
+    setEditDraft(message.body);
+    setEditOriginalBody(message.body);
+  };
+
+  const cancelEditMessage = () => {
+    setEditingMessageId(null);
+    setEditDraft("");
+    setEditOriginalBody("");
+  };
+
+  const saveMessageEdit = async (message: DiscussionMessageData, event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const body = editDraft.trim();
+    const threadId = selectedThreadId;
+    if (activeTab !== "discussions" || message.authorId !== userId || !threadId || !body || message.body !== editOriginalBody || sending) return;
+    setSending(true);
+    try {
+      await requestJson(`${endpoint}/${encodeURIComponent(threadId)}/messages/${encodeURIComponent(message.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body, expectedBody: editOriginalBody }),
+      });
+      setMessageHistory((current) => ({
+        ...current,
+        messages: current.messages.map((item) => item.id === message.id ? { ...item, body } : item),
+      }));
+      cancelEditMessage();
+      notifyLocalUpdate();
+    } catch (cause) {
+      await loadThread(threadId, true, true);
+      toast.error(cause instanceof Error ? cause.message : "Couldn't update this message. Try again.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const deleteThread = async (threadId: string) => {
+    const thread = threads.find((item) => item.id === threadId);
+    if (activeTab !== "discussions" || !thread?.canDelete || sending) return;
+    setSending(true);
+    try {
+      await requestJson(`${endpoint}/${encodeURIComponent(thread.id)}`, { method: "DELETE" });
+      setPendingDelete(null);
+      if (selectedThreadId === threadId) {
+        setSelectedThreadId(null);
+        setScreen("list");
+        setMessageHistory({ messages: [], hasMore: false, nextCursor: null });
+        cancelEditMessage();
+      }
+      notifyLocalUpdate();
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Couldn't delete this discussion. Try again.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const deleteMessage = async (threadId: string, message: DiscussionMessageData) => {
+    if (activeTab !== "discussions" || selectedThreadId !== threadId || message.authorId !== userId || sending) return;
+    setSending(true);
+    try {
+      await requestJson(`${endpoint}/${encodeURIComponent(threadId)}/messages/${encodeURIComponent(message.id)}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expectedBody: message.body }),
+      });
+      setMessageHistory((current) => ({
+        ...current,
+        messages: current.messages.filter((item) => item.id !== message.id),
+      }));
+      if (editingMessageId === message.id) cancelEditMessage();
+      setPendingDelete(null);
+      await loadThreads();
+      notifyLocalUpdate();
+    } catch (cause) {
+      await loadThread(threadId, true, true);
+      toast.error(cause instanceof Error ? cause.message : "Couldn't delete this message. Try again.");
+    } finally {
+      setSending(false);
+    }
+  };
+
   const changeStatus = async () => {
     const thread = threads.find((item) => item.id === selectedThreadId);
     if (!thread || sending) return;
@@ -748,21 +926,20 @@ export function DiscussionsPanel({
   };
 
   const activeThread = threads.find((thread) => thread.id === selectedThreadId);
-  const filteredThreads = useMemo(
-    () => activeTab === "discussions" && anchorFilter !== "all"
-      ? threads.filter((thread) => thread.anchorType === anchorFilter)
-      : threads,
-    [activeTab, anchorFilter, threads],
-  );
   const commentGroups = useMemo(() => groupCommentThreads(threads), [threads]);
   const messageGroups = useMemo(() => groupMessages(messages), [messages]);
-  const title = screen === "compose"
-    ? activeTab === "comments" ? "New comment" : "New discussion"
-    : screen === "thread" ? activeThread?.anchorLabel || (activeTab === "comments" ? "Comment" : "Discussion")
-      : activeTab === "comments" ? "Comments" : "Discussions";
+  const title = activeTab === "discussions"
+    ? "Discussions"
+    : screen === "compose" ? "New comment"
+      : screen === "thread" ? activeThread?.anchorLabel || "Comment"
+        : "Comments";
+  const relatedFile = screen === "list"
+    ? discussionScope === "file" ? fileContext.label : null
+    : screen === "compose" ? fileContext.label
+      : activeThread?.contexts[0]?.fileName || (activeThread?.fileId === fileContext.fileId ? fileContext.label : null);
   const description = activeTab === "comments"
     ? isCommentRail ? `Latest activity on ${fileContext.label}` : `Comments on ${fileContext.label}`
-    : discussionScope === "project" ? `All discussions in this Project` : `Discussions related to ${fileContext.label}`;
+    : relatedFile ? `Related to ${relatedFile}` : screen === "list" ? "All project discussions" : "Project discussion";
   const descriptionId = isCommentRail ? "erd-comments-description" : "erd-discussions-description";
 
   return (
@@ -790,32 +967,69 @@ export function DiscussionsPanel({
         aria-describedby={descriptionId}
       >
         <div className="shrink-0 border-b border-border px-4 py-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              {screen !== "list" && (
-                <Button variant="ghost" size="sm" className="mb-2 -ml-2 min-h-11 px-2" onClick={() => setScreen("list")}>
-                  <ArrowLeft aria-hidden="true" />
-                  Back to list
+          {activeTab === "discussions" ? (
+            <div className="grid grid-cols-[minmax(0,1fr)_7rem_minmax(0,1fr)] items-center gap-2 max-sm:grid-cols-[2rem_minmax(0,1fr)_auto] max-sm:grid-rows-[auto_auto]">
+              {screen === "list" ? <span aria-hidden="true" className="size-7 max-sm:col-start-1 max-sm:row-start-2" /> : (
+                <Button type="button" variant="ghost" size="icon-xs" className="justify-self-start max-sm:col-start-1 max-sm:row-start-2" aria-label="Back to discussion list" onClick={() => setScreen("list")}>
+                  <ArrowLeft aria-hidden="true" className="size-4" />
                 </Button>
               )}
-              <h2 className="truncate text-sm font-semibold">{title}</h2>
-              <p id={descriptionId} className="mt-1 truncate text-xs text-muted-foreground">{description}</p>
+              <div className="col-start-2 row-start-1 min-w-0 max-w-28 justify-self-center text-center max-sm:col-span-3 max-sm:col-start-1 max-sm:max-w-none max-sm:justify-self-stretch">
+                <h2 className="truncate text-base font-semibold">{title}</h2>
+                <p id={descriptionId} className="mt-0.5 truncate text-xs text-muted-foreground">{description}</p>
+              </div>
+              <div className="col-start-3 row-start-1 flex min-w-0 items-center justify-self-end gap-0.5 max-sm:col-start-2 max-sm:col-span-2 max-sm:row-start-2">
+                {screen === "thread" && activeThread && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-xs" aria-label="Discussion actions"><MoreHorizontal aria-hidden="true" className="size-4" /></Button>} />
+                    <DropdownMenuContent align="end" className="w-44" positionerClassName="z-[210]">
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem onClick={() => void changeStatus()} disabled={sending}>
+                          {activeThread.status === "open" ? <Check aria-hidden="true" /> : <RotateCcw aria-hidden="true" />}
+                          {activeThread.status === "open" ? "Resolve" : "Reopen"}
+                        </DropdownMenuItem>
+                        {activeThread.canDelete && (
+                          <DropdownMenuItem variant="destructive" onClick={() => setPendingDelete({ type: "thread", threadId: activeThread.id })}>
+                            <Trash2 aria-hidden="true" />
+                            Delete Thread
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+                <Button type="button" variant="ghost" size="icon-xs" aria-label="Close discussions" onClick={() => setOpen(false)}>
+                  <X aria-hidden="true" className="size-4" />
+                </Button>
+              </div>
             </div>
-            <Button variant="ghost" size="icon" className="size-11 shrink-0" aria-label={isCommentRail ? "Close comments" : "Close discussions"} onClick={() => setOpen(false)}>
-              <span aria-hidden="true">×</span>
-            </Button>
-          </div>
-          {!isCommentRail && <p className="mt-3 text-xs text-muted-foreground">Project-level questions and design decisions</p>}
+          ) : (
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                {screen !== "list" && (
+                  <Button variant="ghost" size="sm" className="mb-2 -ml-2 min-h-11 px-2" onClick={() => setScreen("list")}>
+                    <ArrowLeft aria-hidden="true" />
+                    Back to list
+                  </Button>
+                )}
+                <h2 className="truncate text-sm font-semibold">{title}</h2>
+                <p id={descriptionId} className="mt-1 truncate text-xs text-muted-foreground">{description}</p>
+              </div>
+              <Button variant="ghost" size="icon" className="size-11 shrink-0" aria-label="Close comments" onClick={() => setOpen(false)}>
+                <X aria-hidden="true" />
+              </Button>
+            </div>
+          )}
         </div>
 
         {screen === "list" && (
           <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
             {activeTab === "discussions" ? (
-              <div className="shrink-0 overflow-x-auto border-b border-border/70 px-3 py-2">
+              <div className="shrink-0 border-b border-border/70 px-3 py-2">
                 <Tabs value={discussionScope} onValueChange={(value) => setDiscussionScope(value as "file" | "project")} className="w-full">
-                  <TabsList variant="line" className="w-full min-w-max justify-start gap-1 overflow-x-auto p-0">
-                    <TabsTrigger value="file" className="min-h-11 flex-none px-3">This file</TabsTrigger>
-                    <TabsTrigger value="project" className="min-h-11 flex-none px-3">All Project</TabsTrigger>
+                  <TabsList className="mx-auto max-sm:min-h-11">
+                    <TabsTrigger value="file" className="max-sm:min-h-11">This File</TabsTrigger>
+                    <TabsTrigger value="project" className="max-sm:min-h-11">All Project</TabsTrigger>
                   </TabsList>
                 </Tabs>
               </div>
@@ -836,9 +1050,9 @@ export function DiscussionsPanel({
                   <Button variant="outline" className="mt-3 min-h-11" onClick={() => void loadThreads()}>Retry</Button>
                 </div>
               )}
-              {!loadingThreads && !loadError && (isCommentRail ? commentGroups.length : filteredThreads.length) === 0 && (
+              {!loadingThreads && !loadError && (isCommentRail ? commentGroups.length : threads.length) === 0 && (
                 <div className="mx-4 mt-4 rounded-lg border border-dashed border-border px-4 py-8 text-center">
-                  <p className="text-sm font-medium">{activeTab === "comments" ? "No comments on this file yet." : threads.length === 0 ? "No discussions in this view yet." : "No matching discussions yet."}</p>
+                  <p className="text-sm font-medium">{activeTab === "comments" ? "No comments on this file yet." : "No discussions in this view yet."}</p>
                   <p className="mt-1 text-sm text-muted-foreground">{activeTab === "comments" ? "Use the node context menu to start one." : "Start a thread to capture a question or design decision."}</p>
                 </div>
               )}
@@ -872,29 +1086,33 @@ export function DiscussionsPanel({
                   </button>
                 );
               })}
-              {!loadError && !isCommentRail && filteredThreads.map((thread) => {
-                const StatusIcon = thread.status === "resolved" ? CheckCircle2 : MessageCircle;
-                const statusLabel = thread.status === "resolved" ? "Resolved" : thread.unread ? "New activity" : "Open";
+              {!loadError && !isCommentRail && threads.map((thread) => {
+                const visual = thread.featureType ? featureVisuals[thread.featureType] : null;
+                const FileIcon = visual?.Icon ?? MessageSquareText;
+                const fileName = thread.contexts[0]?.fileName
+                  || (thread.fileId === fileContext.fileId ? fileContext.label : "Project discussion");
                 return (
                   <button
                     type="button"
                     key={thread.id}
-                    className={cn("flex min-h-20 w-full items-center gap-3 border-b border-border/70 px-4 py-3 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring", thread.unread && "bg-primary/5")}
+                    className={cn("flex min-h-[4.5rem] w-full items-center gap-3 border-b border-border/70 px-4 py-3 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring", thread.unread && "bg-primary/5")}
                     onClick={() => void openThread(thread)}
                   >
-                    <span role="img" aria-label={statusLabel} className={cn("relative flex size-10 shrink-0 items-center justify-center rounded-full", thread.status === "resolved" ? "bg-emerald-500/10 text-emerald-500" : thread.unread ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground")}>
-                      <StatusIcon aria-hidden="true" className="size-5" />
+                    <span aria-hidden="true" className={cn("relative flex size-10 shrink-0 items-center justify-center rounded-full", visual?.className ?? "bg-muted text-muted-foreground")}>
+                      <FileIcon />
                       {thread.unread && <span aria-hidden="true" className="absolute right-0.5 top-0.5 size-2 rounded-full bg-primary ring-2 ring-popover" />}
                     </span>
-                    <span className="min-w-0 flex-1">
+                    <span className="sr-only">{featureLabel(thread.featureType)} file</span>
+                    <span className="flex min-w-0 flex-1 flex-col gap-1">
                       <span className="flex min-w-0 items-center gap-2">
-                        <span className={cn("truncate text-sm", thread.unread ? "font-semibold text-foreground" : "font-medium")}>{thread.anchorLabel || (activeTab === "comments" ? "Comment" : "General")}</span>
+                        <span className={cn("min-w-0 flex-1 truncate text-sm", thread.unread ? "font-semibold text-foreground" : "font-medium")}>{fileName}</span>
                         <span className="ml-auto shrink-0 text-xs text-muted-foreground">{relativeMessageTime(thread.lastMessageAt)}</span>
                       </span>
-                      <span className="mt-1 flex min-w-0 items-center gap-2">
-                        {thread.featureType && <span className="max-w-[9rem] truncate rounded border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">{featureLabel(thread.featureType)} · {thread.fileId === fileContext.fileId ? "Current file" : "Project file"}</span>}
-                        <span className={cn("min-w-0 flex-1 truncate text-sm", thread.unread ? "text-foreground" : "text-muted-foreground")}>{thread.latestMessage || "No messages yet"}</span>
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className={cn("min-w-0 flex-1 truncate text-sm", thread.unread ? "text-foreground" : "text-muted-foreground")}>{thread.latestMessage || ""}</span>
+                        {thread.status === "resolved" && <Badge variant="outline" className="shrink-0 gap-1 font-normal text-muted-foreground"><CheckCircle2 aria-hidden="true" />Resolved</Badge>}
                       </span>
+                      {thread.unread && <span className="sr-only">New activity</span>}
                     </span>
                   </button>
                 );
@@ -912,10 +1130,10 @@ export function DiscussionsPanel({
         {screen === "compose" && (
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
             <div className="flex flex-1 flex-col gap-4 p-4">
-              <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+              {activeTab === "comments" && <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
                 <span className="text-xs uppercase tracking-wide text-muted-foreground">Context</span>
-                <p className="mt-1 font-medium">{activeTab === "comments" ? `${composeAnchor?.type || "node"} · ${fileContext.label}` : `${fileContext.label}${composeAnchor ? ` · ${composeAnchor.type}` : ""}`}</p>
-              </div>
+                <p className="mt-1 font-medium">{`${composeAnchor?.type || "node"} · ${fileContext.label}`}</p>
+              </div>}
               {threadError && <p role="alert" className="text-sm text-destructive">{threadError}</p>}
             </div>
             <DiscussionComposer id="collaboration-message" value={draft} onChange={setDraft} onSubmit={submitThread} placeholder={activeTab === "comments" ? "Write a comment..." : "Write a question or design decision..."} disabled={sending} submitLabel={sending ? "Sending…" : activeTab === "comments" ? "Add comment" : "Start discussion"} />
@@ -924,7 +1142,7 @@ export function DiscussionsPanel({
 
         {screen === "thread" && activeThread && (
           <div className="flex min-h-0 flex-1 flex-col">
-            <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+            {activeTab === "comments" && <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
               <div className="min-w-0">
                 <span className="block truncate text-sm text-muted-foreground">{activeThread.anchorType === "general" ? "General" : activeThread.anchorType}</span>
                 {activeThread.featureType && <span className="block truncate text-xs text-muted-foreground">{featureLabel(activeThread.featureType)} · {isCommentRail || activeThread.fileId === fileContext.fileId ? "Current file" : "Project file"}</span>}
@@ -933,7 +1151,7 @@ export function DiscussionsPanel({
                 {activeThread.status === "open" ? <Check aria-hidden="true" /> : <RotateCcw aria-hidden="true" />}
                 {activeThread.status === "open" ? "Resolve" : "Reopen"}
               </Button>
-            </div>
+            </div>}
             {threadError && (
               <div className="m-4 rounded-lg border border-destructive/40 p-4 text-sm" role="alert">
                 <p>{threadError}</p>
@@ -962,7 +1180,21 @@ export function DiscussionsPanel({
                           <MessageGroup key={group[0].id}>
                             {group.map((message, index) => (
                               <MessageScrollerItem key={message.id} messageId={message.id} scrollAnchor={index === 0}>
-                                <DiscussionMessage message={message} isOwn={message.authorId === userId} showAvatar={index === group.length - 1} />
+                                <DiscussionMessage
+                                  message={message}
+                                  isOwn={message.authorId === userId}
+                                  showAvatar={index === group.length - 1}
+                                  canEdit={activeTab === "discussions" && message.authorId === userId}
+                                  editing={editingMessageId === message.id}
+                                  editDraft={editDraft}
+                                  editOriginalBody={editOriginalBody}
+                                  disabled={sending}
+                                  onEdit={() => startEditMessage(message)}
+                                  onDelete={() => setPendingDelete({ type: "message", threadId: activeThread.id, message })}
+                                  onEditDraftChange={setEditDraft}
+                                  onCancelEdit={cancelEditMessage}
+                                  onSaveEdit={(event) => { void saveMessageEdit(message, event); }}
+                                />
                               </MessageScrollerItem>
                             ))}
                           </MessageGroup>
@@ -979,6 +1211,21 @@ export function DiscussionsPanel({
           </div>
         )}
       </PopoverContent>
+      <ConfirmModal
+        isOpen={pendingDelete !== null}
+        title={pendingDelete?.type === "message" ? "Delete message?" : "Delete discussion?"}
+        message={pendingDelete?.type === "message"
+          ? "This message will be permanently deleted."
+          : "This permanently deletes the discussion and all its messages. This action cannot be undone."}
+        confirmText={pendingDelete?.type === "message" ? "Delete message" : "Delete Thread"}
+        cancelText="Cancel"
+        variant="danger"
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => {
+          if (pendingDelete?.type === "message") void deleteMessage(pendingDelete.threadId, pendingDelete.message);
+          else if (pendingDelete) void deleteThread(pendingDelete.threadId);
+        }}
+      />
     </Popover>
   );
 }

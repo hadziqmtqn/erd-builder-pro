@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { MessageScroller, MessageScrollerContent, MessageScrollerProvider, MessageScrollerViewport } from '@/components/ui/message-scroller';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import ConfirmModal from '@/components/ConfirmModal';
 import { apiFetch } from '@/lib/api';
 
 export type CommentAnchor = { type: 'table' | 'relationship'; id: string };
@@ -97,8 +97,10 @@ export function ERDCommentsProvider({ config, children }: { config: ERDCommentsC
   const textarea = useRef<HTMLTextAreaElement>(null);
   const editTextarea = useRef<HTMLTextAreaElement>(null);
   const requestId = useRef(0);
+  const markerRequestId = useRef(0);
 
   const loadMarkers = useCallback(async () => {
+    const current = ++markerRequestId.current;
     try {
       const data = await request(`${base}/markers?${scope}`);
       const items: Marker[] = (data.markers || []).map((item: any) => {
@@ -119,7 +121,9 @@ export function ERDCommentsProvider({ config, children }: { config: ERDCommentsC
           } : null,
         };
       });
-      setMarkers(new Map(items.map((item) => [keyOf({ type: item.anchorType, id: item.anchorId }), item])));
+      if (current === markerRequestId.current) {
+        setMarkers(new Map(items.map((item) => [keyOf({ type: item.anchorType, id: item.anchorId }), item])));
+      }
     } catch { /* The canvas stays usable if comments are unavailable. */ }
   }, [base, scope]);
 
@@ -145,8 +149,10 @@ export function ERDCommentsProvider({ config, children }: { config: ERDCommentsC
       setThreads(nextThreads);
       const page = messageHistoryPage(data);
       setMessageHistory((existing) => quiet ? mergeLiveMessages(existing, nextMessages, page) : { ...page, messages: nextMessages });
-      setEditingMessageId(null);
-      setEditDraft('');
+      if (!quiet) {
+        setEditingMessageId(null);
+        setEditDraft('');
+      }
       if (markRead && nextThreads.length) {
         await Promise.all(nextThreads.map((thread) => request(`${base}/${encodeURIComponent(thread.id)}/read?${scope}`, { method: 'POST' })));
         if (current === requestId.current) await loadMarkers();
@@ -197,22 +203,38 @@ export function ERDCommentsProvider({ config, children }: { config: ERDCommentsC
 
   useEffect(() => {
     void loadMarkers();
+    const refresh = () => {
+      void loadMarkers();
+      if (active && document.visibilityState === 'visible') void loadAnchor(active, false, true);
+    };
     const onUpdate = (event: Event) => {
       const detail = (event as CustomEvent<{ teamId?: string; projectId?: string }>).detail;
       if (detail?.teamId && String(detail.teamId) !== config.teamId) return;
       if (detail?.projectId && String(detail.projectId) !== config.projectId) return;
-      void loadMarkers();
-      if (active && document.visibilityState === 'visible') void loadAnchor(active, false, true);
+      refresh();
+    };
+    const onWorkspaceSync = (event: Event) => {
+      const detail = (event as CustomEvent<{ teamId?: string; eventType?: string }>).detail;
+      if (detail?.teamId !== config.teamId || detail.eventType !== 'cloud.workspace.sync') return;
+      refresh();
+    };
+    const onReconnect = (event: Event) => {
+      if ((event as CustomEvent<{ teamId?: string }>).detail?.teamId !== config.teamId) return;
+      refresh();
     };
     const onOpen = (event: Event) => {
       const anchor = (event as CustomEvent<CommentAnchor>).detail;
       if (anchor && ['table', 'relationship'].includes(anchor.type) && anchor.id) open(anchor);
     };
     window.addEventListener('collaboration-updated', onUpdate);
+    window.addEventListener('cloud-workspace-sync', onWorkspaceSync);
+    window.addEventListener('cloud-live-sync-reconnected', onReconnect);
     window.addEventListener('erd-comment-open-request', onOpen);
     const interval = window.setInterval(() => { if (document.visibilityState === 'visible') void loadMarkers(); }, 15000);
     return () => {
       window.removeEventListener('collaboration-updated', onUpdate);
+      window.removeEventListener('cloud-workspace-sync', onWorkspaceSync);
+      window.removeEventListener('cloud-live-sync-reconnected', onReconnect);
       window.removeEventListener('erd-comment-open-request', onOpen);
       window.clearInterval(interval);
     };
@@ -339,7 +361,10 @@ export function ERDCommentsProvider({ config, children }: { config: ERDCommentsC
   return (
     <Context.Provider value={value}>
       {children}
-      <Popover open={!!active && !!anchorElement} onOpenChange={(next) => { if (!next) { setActive(null); setAnchorElement(null); requestId.current++; } }}>
+      <Popover open={!!active && !!anchorElement} onOpenChange={(next) => {
+        if (!next && deleteDialogOpen) return;
+        if (!next) { setActive(null); setAnchorElement(null); requestId.current++; }
+      }}>
         <PopoverContent anchor={anchorElement} side="right" align="start" sideOffset={12} className="z-200 flex max-h-[min(420px,70vh)] w-[min(340px,calc(100vw-24px))] flex-col gap-0 overflow-hidden p-0" aria-label="Table or relationship comments">
           {activeThread && <div className="absolute right-2 top-2 z-10"><DropdownMenu>
               <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon" className="size-8" aria-label="Comment thread actions"><MoreHorizontal aria-hidden="true" className="size-4" /></Button>} />
@@ -405,18 +430,16 @@ export function ERDCommentsProvider({ config, children }: { config: ERDCommentsC
           {error ? <p role="alert" className="px-3 pb-3 text-xs text-destructive">{error}</p> : null}
         </PopoverContent>
       </Popover>
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete thread?</AlertDialogTitle>
-            <AlertDialogDescription>This permanently deletes the thread and all of its comments.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={sending}>Cancel</AlertDialogCancel>
-            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={(event) => { event.preventDefault(); void deleteThread(); }} disabled={sending}>Delete Thread</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmModal
+        isOpen={deleteDialogOpen}
+        title="Delete thread?"
+        message="This permanently deletes the thread and all of its comments."
+        confirmText="Delete Thread"
+        cancelText="Cancel"
+        variant="danger"
+        onCancel={() => setDeleteDialogOpen(false)}
+        onConfirm={() => { void deleteThread(); }}
+      />
     </Context.Provider>
   );
 }

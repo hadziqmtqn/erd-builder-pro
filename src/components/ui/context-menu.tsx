@@ -9,6 +9,10 @@ function ContextMenu({ ...props }: ContextMenuPrimitive.Root.Props) {
   return <ContextMenuPrimitive.Root data-slot="context-menu" {...props} />
 }
 
+function ContextMenuGroup({ ...props }: ContextMenuPrimitive.Group.Props) {
+  return <ContextMenuPrimitive.Group data-slot="context-menu-group" {...props} />
+}
+
 const ContextMenuTrigger = React.forwardRef<
   HTMLDivElement,
   ContextMenuPrimitive.Trigger.Props
@@ -26,12 +30,13 @@ function ContextMenuContent({
   sideOffset = 4,
   anchor,
   className,
+  positionerClassName,
   ...props
 }: ContextMenuPrimitive.Popup.Props &
-  Pick<ContextMenuPrimitive.Positioner.Props, "sideOffset" | "anchor">) {
+  Pick<ContextMenuPrimitive.Positioner.Props, "sideOffset" | "anchor"> & { positionerClassName?: string }) {
   return (
     <ContextMenuPrimitive.Portal>
-      <ContextMenuPrimitive.Positioner className="isolate z-50" sideOffset={sideOffset} anchor={anchor}>
+      <ContextMenuPrimitive.Positioner className={cn("isolate z-50", positionerClassName)} sideOffset={sideOffset} anchor={anchor}>
         <ContextMenuPrimitive.Popup
           data-slot="context-menu-content"
           className={cn(
@@ -116,6 +121,7 @@ function ContextMenuSeparator({ className, ...props }: ContextMenuPrimitive.Sepa
 
 export {
   ContextMenu,
+  ContextMenuGroup,
   ContextMenuTrigger,
   ContextMenuContent,
   ContextMenuItem,

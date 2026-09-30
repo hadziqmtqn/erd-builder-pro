@@ -677,9 +677,6 @@ model DiscussionContext {
   threadId    String   @map("thread_id")
   featureType String   @map("feature_type")
   fileId      String   @map("file_id")
-  anchorType  String   @map("anchor_type")
-  anchorId    String?  @map("anchor_id")
-  anchorLabel String   @map("anchor_label")
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@index([threadId], map: "discussion_contexts_thread")
