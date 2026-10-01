@@ -370,6 +370,21 @@ function mergeLiveMessages(current: MessageHistoryState, incoming: DiscussionMes
   };
 }
 
+type ActiveDetailRefreshTarget =
+  | { kind: "thread"; threadId: string }
+  | { kind: "anchor"; anchor: DiscussionAnchor; threadId: string | null };
+
+export function getActiveDetailRefreshTarget(
+  screen: "list" | "compose" | "thread",
+  activeTab: "discussions" | "comments",
+  activeCommentAnchor: DiscussionAnchor | null,
+  selectedThreadId: string | null,
+): ActiveDetailRefreshTarget | null {
+  if (screen !== "thread") return null;
+  if (activeTab === "comments" && activeCommentAnchor) return { kind: "anchor", anchor: activeCommentAnchor, threadId: selectedThreadId };
+  return selectedThreadId ? { kind: "thread", threadId: selectedThreadId } : null;
+}
+
 type CommentThreadGroup = {
   key: string;
   representative: Thread;
@@ -614,6 +629,17 @@ export function DiscussionsPanel({
     }
   }, [clearThreadView, endpoint, fileContext.fileId, fileContext.featureType, focusAnchor, loadThreads, onContextSelected]);
 
+  const refreshActiveDetail = useCallback((markRead: boolean) => {
+    if (!open) return;
+    const target = getActiveDetailRefreshTarget(screen, activeTab, activeCommentAnchor, selectedThreadId);
+    if (!target) return;
+    if (target.kind === "anchor") {
+      void loadAnchor(target.anchor, markRead, true, target.threadId || undefined);
+    } else {
+      void loadThread(target.threadId, markRead, true);
+    }
+  }, [activeCommentAnchor, activeTab, loadAnchor, loadThread, open, screen, selectedThreadId]);
+
   const loadOlderMessages = useCallback(async () => {
     const cursor = messageHistory.nextCursor;
     const threadId = selectedThreadId;
@@ -659,14 +685,12 @@ export function DiscussionsPanel({
       const detail = (event as CustomEvent<{ teamId?: string; eventType?: string; projectId?: string }>).detail;
       if (detail?.teamId !== teamId || (detail.eventType && detail.eventType !== "cloud.workspace.sync")) return;
       void loadThreads(true);
-      if (open && screen === "thread" && isCommentRail && activeCommentAnchor) void loadAnchor(activeCommentAnchor, document.visibilityState === "visible", true, selectedThreadId || undefined);
-      else if (open && screen === "thread" && selectedThreadId) void loadThread(selectedThreadId, document.visibilityState === "visible", true);
+      refreshActiveDetail(document.visibilityState === "visible");
     };
     const onReconnect = (event: Event) => {
       if ((event as CustomEvent<{ teamId?: string }>).detail?.teamId !== teamId) return;
       void loadThreads();
-      if (open && screen === "thread" && isCommentRail && activeCommentAnchor) void loadAnchor(activeCommentAnchor, document.visibilityState === "visible", true, selectedThreadId || undefined);
-      else if (open && screen === "thread" && selectedThreadId) void loadThread(selectedThreadId, document.visibilityState === "visible", true);
+      refreshActiveDetail(document.visibilityState === "visible");
     };
     const onLocalUpdate = (event: Event) => {
       const detail = (event as CustomEvent<{ teamId?: string; projectId?: string }>).detail;
@@ -681,13 +705,16 @@ export function DiscussionsPanel({
       window.removeEventListener("cloud-live-sync-reconnected", onReconnect);
       window.removeEventListener("collaboration-updated", onLocalUpdate);
     };
-  }, [activeCommentAnchor, isCommentRail, loadAnchor, loadThread, loadThreads, open, projectId, screen, selectedThreadId, teamId]);
+  }, [loadThreads, projectId, refreshActiveDetail, teamId]);
 
   useEffect(() => {
     if (!open) return;
-    const interval = window.setInterval(() => void loadThreads(true), 15000);
+    const interval = window.setInterval(() => {
+      void loadThreads(true);
+      if (!document.hidden) refreshActiveDetail(true);
+    }, 15000);
     return () => window.clearInterval(interval);
-  }, [loadThreads, open]);
+  }, [loadThreads, open, refreshActiveDetail]);
 
   useEffect(() => {
     if (!isCommentRail) return;
