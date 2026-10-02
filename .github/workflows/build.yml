@@ -291,9 +291,12 @@ jobs:
         with:
           path: artifacts
 
-      - name: Generate release notes
+      - name: Generate GitHub release notes
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           CURRENT_TAG="${GITHUB_REF_NAME}"
           if [[ "$CURRENT_TAG" == *-* ]]; then
             PREV_TAG=$(git describe --tags --abbrev=0 "${CURRENT_TAG}^" 2>/dev/null || true)
@@ -301,11 +304,18 @@ jobs:
             PREV_TAG=$(git describe --tags --abbrev=0 --exclude='*-*' "${CURRENT_TAG}^" 2>/dev/null || true)
           fi
 
+          NOTE_ARGS=("repos/${GITHUB_REPOSITORY}/releases/generate-notes" --method POST --field "tag_name=${CURRENT_TAG}")
           if [ -n "$PREV_TAG" ]; then
-            bash scripts/generate-release-notes.sh "$PREV_TAG" "$CURRENT_TAG" > release-notes.md
-          else
-            bash scripts/generate-release-notes.sh "$CURRENT_TAG" > release-notes.md
+            NOTE_ARGS+=(--field "previous_tag_name=${PREV_TAG}")
           fi
+          gh api "${NOTE_ARGS[@]}" --jq '.body' > release-notes.md
+
+          cat >> release-notes.md <<'NOTICE'
+
+          ### Desktop app signing
+
+          Windows installers are not Authenticode-signed. The macOS app is not signed with an Apple Developer ID or notarized. We distribute these desktop builds through GitHub Releases, not the Microsoft Store or Apple App Store. SmartScreen or Gatekeeper may show a warning or prevent launch.
+          NOTICE
 
           echo "Generated release notes:"
           cat release-notes.md
@@ -437,22 +447,3 @@ jobs:
             artifacts/build-macos/*_x86_64.app.tar.gz
             artifacts/build-macos/*_x86_64.app.tar.gz.sig
             latest.json
-
-      - name: Append unsigned notice to release
-        if: ${{ startsWith(github.ref, 'refs/tags/') }}
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ github.ref_name }}
-          append_body: true
-          body: |
-            > ⚠️ **Important Notice**
-            >
-            > This desktop application is **not registered with Apple or Microsoft**, so it:
-            > - Will likely be **flagged by Gatekeeper (macOS)** or **SmartScreen (Windows)** on first launch
-            > - Cannot receive automatic updates through official store channels
-            > - May require manual security overrides to run (System Settings → Privacy & Security → Open Anyway)
-            >
-            > To update, re-download the latest build from this releases page.
-            > We're actively working on code signing and platform registration. Stay tuned.
-            >
-            > 💡 **Alternative**: For the smoothest experience, consider using the [CLI app](https://www.npmjs.com/package/erdbpro), [Docker](https://hub.docker.com/r/bekenweb/erd-builder-pro), or self-hosting on your own server — no OS security warnings, always up-to-date.
