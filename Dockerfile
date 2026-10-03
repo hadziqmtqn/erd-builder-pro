@@ -62,6 +62,7 @@ COPY --from=build /app/dist ./dist
 
 # Copy server files
 COPY --from=build /app/server ./server
+COPY --from=build /app/scripts/reset-password.ts ./scripts/reset-password.ts
 # Copy shared types (used by server indirectly via type resolution)
 COPY --from=build /app/shared ./shared
 COPY --from=build /app/tsconfig.json ./
