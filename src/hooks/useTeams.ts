@@ -126,17 +126,23 @@ export function useTeams(isGuest = false, isSso = false, onActiveTeamUnavailable
 
   useEffect(() => {
     const clearQuarantinedTeam = (event: Event) => {
-      const teamId = (event as CustomEvent<{ teamId?: string }>).detail?.teamId;
+      const detail = (event as CustomEvent<{ teamId?: string; status?: string }>).detail;
+      const teamId = detail?.teamId;
       if (!teamId) return;
-      if (teamId === activeTeamId) {
+      if (teamId === activeTeamId && detail?.status !== "active") {
         setActiveTeamId(null);
         writeActiveTeamId(null);
+        onActiveTeamUnavailable?.();
       }
       void fetchTeams();
     };
     window.addEventListener("team-quarantined", clearQuarantinedTeam);
-    return () => window.removeEventListener("team-quarantined", clearQuarantinedTeam);
-  }, [activeTeamId, fetchTeams]);
+    window.addEventListener("team-status-changed", clearQuarantinedTeam);
+    return () => {
+      window.removeEventListener("team-quarantined", clearQuarantinedTeam);
+      window.removeEventListener("team-status-changed", clearQuarantinedTeam);
+    };
+  }, [activeTeamId, fetchTeams, onActiveTeamUnavailable]);
 
   useEffect(() => {
     if (isGuest || !isSso || !activeTeamId) return;

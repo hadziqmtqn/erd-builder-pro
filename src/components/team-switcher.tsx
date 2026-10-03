@@ -1,4 +1,4 @@
-import { Check, ChevronsUpDown, Plus, Settings2, UserCog, UserRound, UsersRound } from "lucide-react";
+import { Check, ChevronsUpDown, Plus, Settings2, UserRound, UsersRound } from "lucide-react";
 
 import {
   DropdownMenu,
@@ -30,7 +30,6 @@ export function TeamSwitcher({
   onSelect,
   onAdd,
   onManage,
-  onUserManage,
 }: {
   teams: SwitcherTeam[];
   activeTeamId: string | null;
@@ -41,7 +40,6 @@ export function TeamSwitcher({
   onSelect: (teamId: string | null) => void;
   onAdd: () => void;
   onManage: (team: SwitcherTeam) => void;
-  onUserManage: () => void;
 }) {
   const { isMobile } = useSidebar();
   const activeTeam = teams.find((team) => team.id === activeTeamId) || null;
@@ -146,10 +144,6 @@ export function TeamSwitcher({
               <>
                 <DropdownMenuSeparator className="my-1.5" />
                 <DropdownMenuGroup>
-                  <DropdownMenuItem onClick={onUserManage} className="cursor-pointer gap-2 px-2.5 py-2 transition-colors hover:bg-brand/10 hover:text-foreground focus:bg-brand/10 focus:text-foreground focus:[&>svg]:text-brand">
-                    <UserCog className="size-4 text-muted-foreground transition-colors" />
-                    <span>User Management</span>
-                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={onAdd} className="cursor-pointer gap-2 px-2.5 py-2 transition-colors hover:bg-brand/10 hover:text-foreground focus:bg-brand/10 focus:text-foreground focus:[&>svg]:text-brand">
                     <Plus className="size-4 text-muted-foreground transition-colors" />
                     <span>Add Team</span>

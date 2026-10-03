@@ -367,10 +367,10 @@ export function verifySignedEntitlement(
   if (previousGeneration !== undefined && claims.binding_generation < previousGeneration) {
     throw new LicenseClientError("BINDING_GENERATION_MISMATCH", 409);
   }
-  if (claims?.organization_type !== "team" || !Number.isInteger(maxMembers) || maxMembers < 1) {
-    throw new LicenseClientError("LICENSE_ENTITLEMENT_INVALID", 502);
-  }
-  if (maxTeams !== undefined && (!Number.isInteger(maxTeams) || maxTeams < 1)) {
+  const personalCapacity = claims?.organization_type === "personal" && maxTeams === 0 && maxMembers === 0;
+  const teamCapacity = claims?.organization_type === "team" && Number.isInteger(maxMembers) && maxMembers >= 1
+    && (maxTeams === undefined || (Number.isInteger(maxTeams) && maxTeams >= 1));
+  if (!personalCapacity && !teamCapacity) {
     throw new LicenseClientError("LICENSE_ENTITLEMENT_INVALID", 502);
   }
 
@@ -449,6 +449,7 @@ export async function checkSelfHostInstanceLicense(data: { teamCount: number; me
   const signedEntitlement = typeof response.signed_entitlement === "string" ? response.signed_entitlement : "";
   if (!signedEntitlement) throw new LicenseClientError("LICENSE_RESPONSE_INVALID", 502);
   const entitlement = verifySignedEntitlement(signedEntitlement, installationId, stored.bindingGeneration);
+  if (entitlement.licenseId !== stored.licenseId || entitlement.bindingGeneration !== stored.bindingGeneration) throw new LicenseClientError("LICENSE_BINDING_MISMATCH", 403);
   const state: StoredInstanceLicense = {
     ...stored,
     installationId,

@@ -7,7 +7,7 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      # Volume mount for SQLite — data persists across container restarts
+      # Persistent data volume for SQLite state and Self-host license files.
       - erd-data:/app/data
     restart: unless-stopped
     # OPS-002: Keep Self-host logs local even when the host daemon uses a remote default.
@@ -23,6 +23,9 @@ services:
       # Keep server/runtime formatting and logs on the deployment timezone.
       - APP_TIMEZONE=${APP_TIMEZONE:-Asia/Jakarta}
       - TZ=${APP_TIMEZONE:-Asia/Jakarta}
+      # Keep license state and its sibling installation identity on the persistent erd-data volume.
+      # Existing installs must copy both current state files before switching to this path.
+      - "ERDBPRO_LICENSE_STATE_FILE=${ERDBPRO_LICENSE_STATE_FILE:-/app/data/.erdbpro/license-state.json}"
     # ── Database: uncomment ONE section ──
     #
     # Option 1: Pure PostgreSQL (recommended for production)

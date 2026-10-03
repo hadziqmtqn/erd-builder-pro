@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/api";
 
-type Membership = { team: { id: string; name: string }; role: string; status: string; joinedAt: string };
+type Membership = { team: { id: string; name: string; status?: string }; role: string; status: string; joinedAt: string };
 type ManagedUser = { id: string; name: string; email: string; createdAt?: string | null; created_at?: string | null; teamMemberships?: Membership[]; team_memberships?: Membership[] };
 type Invitation = { id: string; email: string; createdAt: string; expiresAt: string; acceptedAt: string | null; team: { id: string; name: string } };
 type Tab = "all" | "no-team" | "former" | "invitations";
@@ -26,7 +26,7 @@ const date = (value?: string | null) => {
 };
 const memberships = (user: ManagedUser) => {
   const values = Array.isArray(user.teamMemberships) ? user.teamMemberships : [];
-  return values.length ? values.map((member) => `${member.team?.name || "Unknown Team"} (${member.status})`).join(", ") : "No Team";
+  return values.length ? values.map((member) => `${member.team?.name || "Unknown Team"} (Team: ${member.team?.status || "unknown"}; membership: ${member.status})`).join(", ") : "No Team";
 };
 const emptyPagination: PaginationInfo = { page: 1, pageSize: 20, total: 0, totalPages: 1 };
 const normalizeUser = (user: ManagedUser): ManagedUser => ({

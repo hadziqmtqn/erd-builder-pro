@@ -62,7 +62,7 @@ export async function login(req: ExpressRequest, res: ExpressResponse): Promise<
       if ((result as any).blocked) {
         const inactive = (result as any).code === "MEMBER_INACTIVE";
         res.status(403).json({
-          error: inactive ? "Your Team membership is inactive. Contact the SuperAdmin to restore access." : "Your Team license is not active. Contact the SuperAdmin.",
+          error: inactive ? "Your Team membership is inactive. Contact the SuperAdmin to restore access." : (result as any).code === "TEAM_INACTIVE" ? "Your Team workspace is inactive. Contact the SuperAdmin." : (result as any).code === "INSTANCE_CAPACITY_EXCEEDED" ? "This installation exceeds its license capacity. Contact the SuperAdmin." : "Your Team license is not active. Contact the SuperAdmin.",
           code: (result as any).code,
         });
         return;

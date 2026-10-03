@@ -14,6 +14,7 @@ import {
   Trash2,
   FileText,
   LayoutDashboard,
+  Shield,
   ArrowUpRight,
   ExternalLink,
   Loader2,
@@ -105,7 +106,6 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onTeamsRefresh: () => void;
   onTeamSelect: (teamId: string | null) => void;
   onTeamManage: (team: SwitcherTeam) => void;
-  onUserManage: () => void;
   onTeamCreate: (input: { name: string }) => Promise<unknown>;
   onTeamCreated: (team: any) => void;
   ssoPortalUrl?: string | null;
@@ -139,7 +139,6 @@ export const AppSidebar = React.memo(({
   onTeamsRefresh,
   onTeamSelect,
   onTeamManage,
-  onUserManage,
   onTeamCreate,
   onTeamCreated,
   ssoPortalUrl,
@@ -294,7 +293,6 @@ export const AppSidebar = React.memo(({
           onSelect={onTeamSelect}
           onAdd={() => setIsTeamCreateOpen(true)}
           onManage={onTeamManage}
-          onUserManage={onUserManage}
         />
         <SidebarGroup className="py-0 group-data-[collapsible=icon]:hidden">
           <SidebarGroupContent className="relative">
@@ -314,7 +312,7 @@ export const AppSidebar = React.memo(({
             </button>
           </SidebarGroupContent>
         </SidebarGroup>
-        <SidebarGroup className="group-data-[collapsible=icon]:p-0">
+        <SidebarGroup className="py-0 group-data-[collapsible=icon]:p-0">
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
@@ -338,7 +336,21 @@ export const AppSidebar = React.memo(({
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-        <SidebarGroup className="group-data-[collapsible=icon]:p-0">
+        {isSelfHosted && Boolean(user?.isSuperAdmin || user?.is_super_admin) && (
+          <SidebarGroup className="py-0 group-data-[collapsible=icon]:p-0">
+            <NavMain items={[{
+              title: "Instance Administration",
+              url: "#",
+              icon: Shield,
+              isActive: location.pathname === "/team-workspaces" || location.pathname === "/users",
+              items: [
+                { title: "Team Workspaces", url: "/team-workspaces", isActive: location.pathname === "/team-workspaces" },
+                { title: "User Management", url: "/users", isActive: location.pathname === "/users" },
+              ],
+            }]} />
+          </SidebarGroup>
+        )}
+        <SidebarGroup className="py-0 group-data-[collapsible=icon]:p-0">
           <SidebarGroupLabel className="flex items-center justify-between">
             Features
             {!isOnline && (

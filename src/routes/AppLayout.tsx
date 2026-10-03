@@ -281,7 +281,6 @@ function AppLayoutInner() {
     }
     navigate(`/teams/${team.id}`);
   }, [navigate]);
-  const handleUserManage = useCallback(() => navigate("/users"), [navigate]);
   const handleTeamCreated = useCallback(async (team: TeamSummary) => {
     await refreshTeamScope();
     navigate(`/teams/${team.id}`);
@@ -882,7 +881,6 @@ function AppLayoutInner() {
           onTeamsRefresh={() => { void teamState.fetchTeams(); }}
           onTeamSelect={handleTeamSelect}
           onTeamManage={handleTeamManage}
-          onUserManage={handleUserManage}
           onTeamCreate={teamState.createTeam}
           onTeamCreated={handleTeamCreated}
           ssoPortalUrl={user?.isSso ? (user.ssoPortalUrl ?? user.sso_portal_url) : null}
