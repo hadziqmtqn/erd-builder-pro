@@ -19,10 +19,11 @@ const { instanceLicenseUsage } = await import("./instance-license-usage.js");
 beforeEach(() => vi.clearAllMocks());
 
 describe("instance license usage", () => {
-  it("counts active members once even when they belong to multiple Teams", async () => {
+  it("counts distinct active members only in active Teams", async () => {
     await expect(instanceLicenseUsage()).resolves.toEqual({ teamCount: 2, memberCount: 2 });
+    expect(mocks.teamCount).toHaveBeenCalledWith({ where: { type: { not: "personal" }, status: "active" } });
     expect(mocks.members).toHaveBeenCalledWith({
-      where: { status: "active" },
+      where: { status: "active", team: { type: { not: "personal" }, status: "active" } },
       select: { userId: true },
       distinct: ["userId"],
     });

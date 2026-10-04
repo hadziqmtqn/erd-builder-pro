@@ -8,18 +8,19 @@ import { isProvisionedMembership, isProvisionedTeam, membershipProvisioningSigna
 import { cloudCapabilities } from "../../lib/cloud-capability.js";
 import { withTeamCapacityTransaction } from "../../lib/team-capacity-transaction.js";
 import { instanceLicenseUsage } from "../../lib/instance-license-usage.js";
+import { reportSelfHostCapacityChange } from "../../lib/self-host-capacity-report.js";
 
 export const TEAM_ROLES = ["manager", "staff"] as const;
 export type TeamRole = (typeof TEAM_ROLES)[number];
 
 const messages: Record<string, string> = {
-  SELF_HOST_ONLY: "Teams are available only on a self-hosted server.", SUPER_ADMIN_REQUIRED: "Only the SuperAdmin can create Teams.", TEAM_MANAGER_REQUIRED: "Only a Team Manager can manage this Team.", TEAM_NAME_TAKEN: "A Team with this name already exists.", TEAM_LIMIT_REACHED: "This installation has reached its Team limit.", MEMBER_LIMIT_REACHED: "This installation has reached its active member limit.", MEMBER_ALREADY_EXISTS: "This person is already a member of this Team.", MEMBER_BANNED: "This member has been banned from this Team.", USER_NOT_FOUND: "No account was found with that email address.", SUPER_ADMIN_CANNOT_BE_MEMBER: "A SuperAdmin cannot be added as a Team member.", LAST_MANAGER_REQUIRED: "A Team must retain at least one Manager.", MEMBER_INACTIVE: "Your Team membership is inactive. Contact the SuperAdmin to restore access.", TEAM_INTEGRITY_UNAVAILABLE: "This Team is unavailable because its membership records could not be verified. Contact the SuperAdmin.", LICENSE_SYNC_REQUIRED: "License verification is temporarily unavailable. Team and member capacity changes are disabled until this installation can reach ERDBPro SaaS.",
+  SELF_HOST_ONLY: "Teams are available only on a self-hosted server.", SUPER_ADMIN_REQUIRED: "Only the SuperAdmin can create Teams.", TEAM_MANAGER_REQUIRED: "Only a Team Manager can manage this Team.", TEAM_NAME_TAKEN: "A Team with this name already exists.", TEAM_LIMIT_REACHED: "This installation has reached its active Team limit.", MEMBER_LIMIT_REACHED: "This installation has reached its active member limit.", MEMBER_ALREADY_EXISTS: "This person is already a member of this Team.", MEMBER_BANNED: "This member has been banned from this Team.", USER_NOT_FOUND: "No account was found with that email address.", SUPER_ADMIN_CANNOT_BE_MEMBER: "A SuperAdmin cannot be added as a Team member.", LAST_MANAGER_REQUIRED: "A Team must retain at least one Manager.", MEMBER_INACTIVE: "Your Team membership is inactive. Contact the SuperAdmin to restore access.", TEAM_INTEGRITY_UNAVAILABLE: "This Team is unavailable because its membership records could not be verified. Contact the SuperAdmin.", LICENSE_SYNC_REQUIRED: "License verification is temporarily unavailable. Team and member capacity changes are disabled until this installation can reach ERDBPro SaaS.",
   CLOUD_TEAM_MANAGED_EXTERNALLY: "Cloud Teams and members are managed from your ERDBPro account.",
   INTEGRITY_QUARANTINE_NOT_APPLICABLE: "This Team no longer has an active integrity issue that can be quarantined.",
   MEMBER_INTEGRITY_QUARANTINE_NOT_APPLICABLE: "This membership no longer has an active integrity issue that can be quarantined.",
   TEAM_INACTIVE: "This Team is inactive.",
   TEAM_STATUS_CHANGE_NOT_ALLOWED: "Only a verified active or inactive Team can change status. Quarantined Teams require integrity recovery.",
-  INSTANCE_CAPACITY_EXCEEDED: "This installation exceeds its license capacity. The SuperAdmin can reduce active Teams or members from Team Workspaces.",
+  INSTANCE_CAPACITY_EXCEEDED: "This installation exceeds its license capacity. Deactivate verified Teams or memberships until active usage fits.",
   MEMBER_QUARANTINED: "This membership is quarantined and cannot be reactivated through Team management.",
 };
 export class TeamServiceError extends Error { constructor(public readonly code: string, public readonly status: number, message = messages[code] || "We couldn't complete this Team request.") { super(message); this.name = "TeamServiceError"; } }
@@ -104,7 +105,7 @@ export async function quarantineTeam(id: string, actorId: string, superAdmin: bo
   localMutation();
   admin(superAdmin);
   database();
-  return withTeamCapacityTransaction(async (tx) => {
+  const quarantined = await withTeamCapacityTransaction(async (tx) => {
     const value = await tx.team.findUnique({ where: { id } });
     if (!value || value.type === "personal") return false;
     if (value.status === "quarantined" || isProvisionedTeam(value)) throw new TeamServiceError("INTEGRITY_QUARANTINE_NOT_APPLICABLE", 409);
@@ -132,13 +133,15 @@ export async function quarantineTeam(id: string, actorId: string, superAdmin: bo
     });
     return true;
   });
+  if (quarantined) reportSelfHostCapacityChange();
+  return quarantined;
 }
 
 export async function quarantineMember(teamId: string, userId: string, actorId: string, superAdmin: boolean): Promise<boolean> {
   localMutation();
   admin(superAdmin);
   database();
-  return withTeamCapacityTransaction(async (tx) => {
+  const quarantined = await withTeamCapacityTransaction(async (tx) => {
     const value = await tx.team.findUnique({ where: { id: teamId } });
     if (!value || value.type === "personal") return false;
     if (value.status !== "active" || !isProvisionedTeam(value)) throw new TeamServiceError("MEMBER_INTEGRITY_QUARANTINE_NOT_APPLICABLE", 409);
@@ -172,6 +175,8 @@ export async function quarantineMember(teamId: string, userId: string, actorId: 
     });
     return true;
   });
+  if (quarantined) reportSelfHostCapacityChange();
+  return quarantined;
 }
 
 export async function canManageTeam(teamId: string, userId: string, superAdmin?: boolean) { const db = database(); const isSuperAdmin = superAdmin ?? Boolean((await db.user.findUnique({ where: { id: userId }, select: { isSuperAdmin: true } }))?.isSuperAdmin); if (isSuperAdmin) return true; return (await db.teamMember.findFirst({ where: { teamId, userId, status: "active" }, select: { role: true } }))?.role === "manager"; }
@@ -227,7 +232,7 @@ async function mutationTeam(db: any, id: string, actorId: string, superAdmin: bo
 export async function createTeam(data: { name: string; userId: string; isSuperAdmin: boolean }) {
   localMutation(); admin(data.isSuperAdmin); database();
   await requireActiveInstanceLicense({ refresh: true });
-  return withTeamCapacityTransaction(async (db) => {
+  const created = await withTeamCapacityTransaction(async (db) => {
     const plan = verifyStoredInstanceLicense().entitlement;
     const name = data.name.trim();
     if (await db.team.findFirst({ where: { name: { equals: name, mode: "insensitive" } } })) throw new TeamServiceError("TEAM_NAME_TAKEN", 409);
@@ -239,6 +244,8 @@ export async function createTeam(data: { name: string; userId: string; isSuperAd
     await db.teamAuditEvent.create({ data: { teamId: id, actorId: data.userId, action: "team_created", targetType: "team", targetId: id, metadata: "{}" } });
     return response(created, true);
   });
+  reportSelfHostCapacityChange();
+  return created;
 }
 export async function updateTeam(id: string, name: string, userId: string, superAdmin: boolean) { localMutation(); const db = database(); const value = await managedTeam(id, userId, superAdmin); if (!value) return null; const normalized = name.trim(); const duplicate = await db.team.findFirst({ where: { id: { not: id }, name: { equals: normalized, mode: "insensitive" } }, select: { id: true } }); if (duplicate) throw new TeamServiceError("TEAM_NAME_TAKEN", 409); await db.team.update({ where: { id }, data: { name: normalized } }); return getTeam(id, userId, superAdmin); }
 export async function changeTeamStatus(id: string, status: "active" | "inactive", actorId: string, superAdmin: boolean) {
@@ -246,7 +253,7 @@ export async function changeTeamStatus(id: string, status: "active" | "inactive"
   if (!["active", "inactive"].includes(status)) throw new TeamServiceError("TEAM_STATUS_CHANGE_NOT_ALLOWED", 422);
   if (status === "active") await requireActiveInstanceLicense({ refresh: true });
   else await requireActiveInstanceLicense();
-  return withTeamCapacityTransaction(async (db) => {
+  const changed = await withTeamCapacityTransaction(async (db) => {
     const value = await db.team.findUnique({ where: { id }, include: teamInclude() });
     if (!value || value.type === "personal") return false;
     if (!["active", "inactive"].includes(value.status)) throw new TeamServiceError("TEAM_STATUS_CHANGE_NOT_ALLOWED", 409);
@@ -270,6 +277,8 @@ export async function changeTeamStatus(id: string, status: "active" | "inactive"
     await db.teamAuditEvent.create({ data: { teamId: id, actorId, action: status === "active" ? "team_activated" : "team_deactivated", targetType: "team", targetId: id, metadata: JSON.stringify({ previousStatus: value.status, status }) } });
     return true;
   });
+  if (changed) reportSelfHostCapacityChange();
+  return changed;
 }
 export async function addMember(teamId: string, email: string, actorId: string, superAdmin: boolean, account: { name?: string; password?: string; role?: TeamRole } = {}) {
   localMutation();
@@ -287,16 +296,17 @@ export async function addMember(teamId: string, email: string, actorId: string, 
     if (existing?.status === "banned") throw new TeamServiceError("MEMBER_BANNED", 403);
     if (existing?.status === "quarantined") throw new TeamServiceError("MEMBER_QUARANTINED", 403);
     if (existing?.status === "active") throw new TeamServiceError("MEMBER_ALREADY_EXISTS", 409);
-    const active = user && await db.teamMember.findFirst({ where: { userId: user.id, status: "active", team: { type: { not: "personal" }, status: "active" } } });
+    const alreadyCounted = user && await db.teamMember.findFirst({ where: { userId: user.id, status: "active", team: { type: { not: "personal" }, status: "active" } } });
     const current = await usage(db);
-    if (!active && plan.maxMembers !== null && current.memberCount >= plan.maxMembers) throw new TeamServiceError("MEMBER_LIMIT_REACHED", 409);
-    enforceCapacity(plan, { ...current, memberCount: current.memberCount + (active ? 0 : 1) });
+    if (!alreadyCounted && plan.maxMembers !== null && current.memberCount >= plan.maxMembers) throw new TeamServiceError("MEMBER_LIMIT_REACHED", 409);
+    enforceCapacity(plan, { ...current, memberCount: current.memberCount + (alreadyCounted ? 0 : 1) });
     user = user || await db.user.create({ data: { email: email.trim().toLowerCase(), name: account.name!.trim(), password: hashPassword(account.password!), isSuperAdmin: false } });
     const id = existing?.id || randomUUID(); const joinedAt = existing?.joinedAt || new Date(); const role = account.role || "staff";
     const provisioningSignature = membershipProvisioningSignature({ id, teamId, userId: user.id, role, status: "active", joinedAt });
     await db.teamMember.upsert({ where: { teamId_userId: { teamId, userId: user.id } }, create: { id, teamId, userId: user.id, role, status: "active", joinedAt, provisioningSignature }, update: { role, status: "active", joinedAt, provisioningSignature } });
     await db.teamAuditEvent.create({ data: { teamId, actorId, action: "member_activated", targetType: "team_member", targetId: id, metadata: JSON.stringify({ userId: user.id, role }) } });
   });
+  reportSelfHostCapacityChange();
   return getTeam(teamId, actorId, superAdmin);
 }
 export async function updateMemberRole(teamId: string, userId: string, role: TeamRole, actorId: string, superAdmin: boolean) {
@@ -315,7 +325,7 @@ export async function updateMemberRole(teamId: string, userId: string, role: Tea
 }
 async function deactivateMembership(teamId: string, userId: string, actorId: string, status: "inactive" | "banned", superAdmin: boolean) {
   if (!await managedTeam(teamId, actorId, superAdmin)) return false;
-  return withTeamCapacityTransaction(async (db) => {
+  const deactivated = await withTeamCapacityTransaction(async (db) => {
     const value = await mutationTeam(db, teamId, actorId, superAdmin);
     if (!value) return false;
     if (!superAdmin && value.status !== "active") throw new TeamServiceError("TEAM_INACTIVE", 409);
@@ -328,6 +338,8 @@ async function deactivateMembership(teamId: string, userId: string, actorId: str
     await db.teamAuditEvent.create({ data: { teamId, actorId, action: status === "inactive" ? "member_deactivated" : "member_banned", targetType: "team_member", targetId: member.id, metadata: JSON.stringify({ userId, status }) } });
     return true;
   });
+  if (deactivated) reportSelfHostCapacityChange();
+  return deactivated;
 }
 export async function removeMember(teamId: string, userId: string, actorId: string, superAdmin: boolean) {
   localMutation(); if (!superAdmin && userId === actorId) throw new TeamServiceError("CANNOT_REMOVE_SELF", 409, "You cannot deactivate your own Team membership.");

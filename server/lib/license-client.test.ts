@@ -24,6 +24,7 @@ const originalKeyId = process.env.ERDBPRO_LICENSE_PUBLIC_KEY_ID;
 const originalNodeEnv = process.env.NODE_ENV;
 const originalApiUrl = process.env.ERDBPRO_LICENSE_API_URL;
 const originalStateFile = process.env.ERDBPRO_LICENSE_STATE_FILE;
+const originalIdentityFile = process.env.ERDBPRO_INSTALLATION_IDENTITY_FILE;
 let temporaryDirectory: string | null = null;
 
 afterEach(() => {
@@ -39,11 +40,19 @@ afterEach(() => {
   else process.env.ERDBPRO_LICENSE_API_URL = originalApiUrl;
   if (originalStateFile === undefined) delete process.env.ERDBPRO_LICENSE_STATE_FILE;
   else process.env.ERDBPRO_LICENSE_STATE_FILE = originalStateFile;
+  if (originalIdentityFile === undefined) delete process.env.ERDBPRO_INSTALLATION_IDENTITY_FILE;
+  else process.env.ERDBPRO_INSTALLATION_IDENTITY_FILE = originalIdentityFile;
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   if (temporaryDirectory) rmSync(temporaryDirectory, { recursive: true, force: true });
   temporaryDirectory = null;
 });
+
+function useTemporaryDirectory() {
+  temporaryDirectory = mkdtempSync(path.join(tmpdir(), "erdbpro-license-test-"));
+  process.env.ERDBPRO_LICENSE_STATE_FILE = path.join(temporaryDirectory, "license-state.json");
+  process.env.ERDBPRO_INSTALLATION_IDENTITY_FILE = path.join(temporaryDirectory, "installation-identity.json");
+}
 
 function encode(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -89,7 +98,7 @@ function signedEntitlement(
 describe("self-host license entitlement verification", () => {
   it("preserves the canonical SaaS error code", async () => {
     vi.stubEnv("DATABASE_URL", "postgresql://localhost/erd");
-    temporaryDirectory = mkdtempSync(path.join(tmpdir(), "erdbpro-license-test-"));
+    useTemporaryDirectory();
     process.env.ERDBPRO_LICENSE_API_URL = "https://license.example.test";
     process.env.ERDBPRO_LICENSE_STATE_FILE = path.join(temporaryDirectory, "license-state.json");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
@@ -131,7 +140,7 @@ describe("self-host license entitlement verification", () => {
 
   it("activates one instance license and reports global usage", async () => {
     vi.stubEnv("DATABASE_URL", "postgresql://localhost/erd");
-    temporaryDirectory = mkdtempSync(path.join(tmpdir(), "erdbpro-license-test-"));
+    useTemporaryDirectory();
     process.env.ERDBPRO_LICENSE_API_URL = "https://license.example.test";
     process.env.ERDBPRO_LICENSE_STATE_FILE = path.join(temporaryDirectory, "license-state.json");
     const installationId = getInstallationId();
@@ -161,7 +170,7 @@ describe("self-host license entitlement verification", () => {
     { plan_code: "personal", organization_type: "personal", limits: { max_teams: 0, max_members: 0 } },
   ])("refreshes $plan_code limits without replacing license binding or installation identity", async (overrides) => {
     vi.stubEnv("DATABASE_URL", "postgresql://localhost/erd");
-    temporaryDirectory = mkdtempSync(path.join(tmpdir(), "erdbpro-license-test-"));
+    useTemporaryDirectory();
     process.env.ERDBPRO_LICENSE_API_URL = "https://license.example.test";
     process.env.ERDBPRO_LICENSE_STATE_FILE = path.join(temporaryDirectory, "license-state.json");
     const installationId = getInstallationId();
@@ -185,7 +194,7 @@ describe("self-host license entitlement verification", () => {
     { binding_generation: 3 },
   ])("rejects a check response for a different license or binding without overwriting local state", async (overrides) => {
     vi.stubEnv("DATABASE_URL", "postgresql://localhost/erd");
-    temporaryDirectory = mkdtempSync(path.join(tmpdir(), "erdbpro-license-test-"));
+    useTemporaryDirectory();
     process.env.ERDBPRO_LICENSE_API_URL = "https://license.example.test";
     process.env.ERDBPRO_LICENSE_STATE_FILE = path.join(temporaryDirectory, "license-state.json");
     const installationId = getInstallationId();
@@ -198,7 +207,7 @@ describe("self-host license entitlement verification", () => {
   });
 
   it("keeps legacy Team leases when state is upgraded for an instance lease", () => {
-    temporaryDirectory = mkdtempSync(path.join(tmpdir(), "erdbpro-license-test-"));
+    useTemporaryDirectory();
     const stateFile = path.join(temporaryDirectory, "license-state.json");
     process.env.ERDBPRO_LICENSE_STATE_FILE = stateFile;
     const installationId = getInstallationId();
@@ -295,7 +304,7 @@ describe("self-host license entitlement verification", () => {
   });
 
   it("keeps a signed instance lease available only during offline grace", () => {
-    temporaryDirectory = mkdtempSync(path.join(tmpdir(), "erdbpro-license-test-"));
+    useTemporaryDirectory();
     process.env.ERDBPRO_LICENSE_STATE_FILE = path.join(temporaryDirectory, "license-state.json");
     const installationId = getInstallationId();
     const now = Math.floor(Date.now() / 1000);

@@ -37,8 +37,8 @@ function record(id: string, status = "active") {
   const value = { id, name: id, type: "team", status, createdAt: new Date("2026-01-01"), cloudEntitlement: null, projects: [{ id: "retained-project" }] };
   return { ...value, provisioningSignature: teamProvisioningSignature(value) };
 }
-function membership(teamId: string, userId: string, role = "staff") {
-  const value = { id: `${teamId}-${userId}`, teamId, userId, role, status: "active", joinedAt: new Date("2026-01-01") };
+function membership(teamId: string, userId: string, role = "staff", status = "active") {
+  const value = { id: `${teamId}-${userId}`, teamId, userId, role, status, joinedAt: new Date("2026-01-01") };
   return { ...value, provisioningSignature: membershipProvisioningSignature(value), user: { id: userId, email: `${userId}@example.test`, name: userId } };
 }
 function matches(member: any, where: any = {}) {
@@ -48,7 +48,9 @@ function matches(member: any, where: any = {}) {
   if (where.role && member.role !== where.role) return false;
   if (where.team) {
     const parent = records.find(value => value.id === member.teamId);
-    if (!parent || parent.status !== where.team.status || parent.type === "personal") return false;
+    if (!parent) return false;
+    if (where.team.status !== undefined && parent.status !== where.team.status) return false;
+    if (where.team.type?.not === "personal" && parent.type === "personal") return false;
   }
   return true;
 }
@@ -91,6 +93,11 @@ beforeEach(() => {
   });
   mocks.db.teamMember.findFirst.mockImplementation(async ({ where }) => memberships.find(member => matches(member, where)) || null);
   mocks.db.teamMember.count.mockImplementation(async ({ where }) => memberships.filter(member => matches(member, where)).length);
+  mocks.db.teamMember.upsert.mockImplementation(async ({ where, create, update }) => {
+    const value = memberships.find(member => member.teamId === where.teamId_userId.teamId && member.userId === where.teamId_userId.userId);
+    if (value) { Object.assign(value, update); return value; }
+    memberships.push(create); return create;
+  });
   mocks.db.teamMember.update.mockImplementation(async ({ where, data }) => {
     const value = memberships.find(member => member.id === where.id);
     Object.assign(value, data); return value;
@@ -106,9 +113,9 @@ afterEach(() => {
 });
 
 describe("SH-001 / SH-003 capacity reconciliation", () => {
-  it("counts distinct active users only in active non-Personal Teams", async () => {
+  it("counts active Teams and distinct active members only", async () => {
     records.push(record("two"), record("inactive", "inactive"), record("quarantine", "quarantined"), { ...record("personal"), type: "personal" });
-    memberships.push(membership("two", "staff"), membership("inactive", "old"), membership("quarantine", "bad"), membership("personal", "owner"));
+    memberships.push(membership("two", "staff"), membership("inactive", "manager", "staff", "inactive"), membership("inactive", "paused", "staff", "inactive"), membership("quarantine", "bad", "staff", "quarantined"), membership("personal", "owner"));
     await expect(instanceLicenseUsage()).resolves.toEqual({ teamCount: 2, memberCount: 2 });
   });
   it("keeps admin recovery metadata available while document access and Manager management are denied over quota", async () => {
@@ -118,15 +125,16 @@ describe("SH-001 / SH-003 capacity reconciliation", () => {
     await expect(teams.getTeam("one", "manager", false)).rejects.toMatchObject({ code: "INSTANCE_CAPACITY_EXCEEDED" });
     await expect(teams.canUserLogin("staff")).resolves.toEqual({ allowed: false, code: "INSTANCE_CAPACITY_EXCEEDED" });
   });
-  it("recovers from member overage by deactivating a membership with audit and without deleting the account", async () => {
+  it("releases the member seat after deactivation while retaining the account", async () => {
     mocks.plan.maxMembers = 1;
     await expect(teams.removeMember("one", "staff", "admin", true)).resolves.toBe(true);
     expect(memberships.find(member => member.userId === "staff").status).toBe("inactive");
     expect(mocks.db.teamAuditEvent.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: "member_deactivated", actorId: "admin" }) });
     expect(mocks.db.session.deleteMany).toHaveBeenCalledWith({ where: { userId: "staff" } });
+    await expect(instanceLicenseUsage()).resolves.toEqual({ teamCount: 1, memberCount: 1 });
     await expect(teams.canAccessTeam("one", "manager", false)).resolves.toBe(true);
   });
-  it("deactivates over-capacity Teams while retaining projects, memberships and a valid signature", async () => {
+  it("restores access after a downgraded installation deactivates excess Teams", async () => {
     records.push(record("two"));
     mocks.plan.maxTeams = 1;
     const before = structuredClone(memberships);
@@ -145,7 +153,7 @@ describe("SH-001 / SH-003 capacity reconciliation", () => {
     expect(mocks.db.team.updateMany).not.toHaveBeenCalled();
     expect(mocks.db.teamAuditEvent.create).not.toHaveBeenCalled();
   });
-  it("rejects activation whose retained members would exceed the unique-user quota", async () => {
+  it("rejects activation when its active members would exceed the member limit", async () => {
     records.push(record("old", "inactive")); memberships.push(membership("old", "new-user"));
     await expect(teams.changeTeamStatus("old", "active", "admin", true)).rejects.toMatchObject({ code: "MEMBER_LIMIT_REACHED" });
     expect(mocks.db.team.updateMany).not.toHaveBeenCalled();
@@ -155,6 +163,17 @@ describe("SH-001 / SH-003 capacity reconciliation", () => {
     await teams.changeTeamStatus("old", "active", "admin", true);
     await expect(instanceLicenseUsage()).resolves.toEqual({ teamCount: 2, memberCount: 2 });
     expect(isProvisionedTeam(records[1])).toBe(true);
+  });
+  it("counts a member again when the user's only other membership is inactive", async () => {
+    memberships.push(membership("old", "new-user", "staff", "inactive")); records.push(record("old", "inactive"));
+    await expect(teams.addMember("one", "new-user@example.test", "admin", true)).rejects.toMatchObject({ code: "MEMBER_LIMIT_REACHED" });
+    expect(mocks.db.teamMember.upsert).not.toHaveBeenCalled();
+  });
+  it("allows Team creation when only inactive Teams occupy the remaining record rows", async () => {
+    records.push(record("old", "inactive"));
+    await expect(teams.createTeam({ name: "three", userId: "admin", isSuperAdmin: true })).resolves.toBeTruthy();
+    await expect(instanceLicenseUsage()).resolves.toEqual({ teamCount: 2, memberCount: 2 });
+    expect(records).toHaveLength(3);
   });
   it("does not restore quarantined Teams or re-sign manually changed records", async () => {
     records.push(record("bad", "quarantined"));
@@ -207,7 +226,7 @@ describe("SH-001 / SH-003 capacity reconciliation", () => {
     await expect(teams.changeTeamStatus("one", "quarantined" as "active", "admin", true)).rejects.toMatchObject({ code: "TEAM_STATUS_CHANGE_NOT_ALLOWED" });
     expect(mocks.db.$transaction).not.toHaveBeenCalled();
   });
-  it("charges a new active seat when the user only has membership in an inactive Team", async () => {
+  it("charges a seat when the user's only membership is in an inactive Team", async () => {
     records.push(record("old", "inactive")); memberships.push(membership("old", "new-user"));
     await expect(teams.addMember("one", "new-user@example.test", "admin", true)).rejects.toMatchObject({ code: "MEMBER_LIMIT_REACHED" });
     expect(mocks.db.teamMember.upsert).not.toHaveBeenCalled();

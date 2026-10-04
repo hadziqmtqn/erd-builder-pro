@@ -79,6 +79,11 @@ export function TeamInventoryRoute() {
     (inventory.license.maxTeams !== null && inventory.usage.teamCount > inventory.license.maxTeams)
     || (inventory.license.maxMembers !== null && inventory.usage.memberCount > inventory.license.maxMembers)
   );
+  const description = overCapacity
+    ? "License capacity exceeded. Deactivate Teams or memberships until active usage fits; data remains stored."
+    : inventory && !inventory.license
+      ? "Check or activate the instance license in Settings to change Team status."
+      : "Review status and manage local Team workspaces.";
 
   useEffect(() => { if (isSuperAdmin) void load(); }, [isSuperAdmin, load]);
 
@@ -94,7 +99,7 @@ export function TeamInventoryRoute() {
             <Button variant="ghost" size="icon" onClick={() => navigate("/")} aria-label="Back to dashboard"><ArrowLeft /></Button>
             <div>
               <h1 className="text-2xl font-semibold">Team Workspaces</h1>
-              <p className="mt-1 text-sm text-muted-foreground">All local Team records, including inactive and quarantined workspaces. This view does not expose file contents.</p>
+              <p role={overCapacity ? "alert" : undefined} className={`mt-1 text-sm ${overCapacity ? "text-destructive" : "text-muted-foreground"}`}>{description}</p>
             </div>
           </div>
           <Button variant="outline" onClick={() => void load()} disabled={loading}>
@@ -102,14 +107,6 @@ export function TeamInventoryRoute() {
           </Button>
         </header>
 
-        {inventory && <p className="text-sm text-muted-foreground">
-          License usage: {inventory.usage.teamCount} active Teams · {inventory.usage.memberCount} distinct active members.
-        </p>}
-        {overCapacity && <p role="alert" className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-          License capacity exceeded. Team access is paused. Deactivate a verified Team or use Review to deactivate members until usage fits the current plan. All data is retained.
-        </p>}
-        {inventory?.license && <p className="text-sm text-muted-foreground">Plan limits: {inventory.license.maxTeams ?? "Unlimited"} active Teams · {inventory.license.maxMembers ?? "Unlimited"} active members.</p>}
-        {inventory && !inventory.license && <p className="text-sm text-muted-foreground">Check or activate the instance license in Settings before changing Team status.</p>}
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
 
         <div className="rounded-lg border">
@@ -142,7 +139,7 @@ export function TeamInventoryRoute() {
         </div>
       </div>
       <ConfirmModal isOpen={Boolean(pendingTeam)} title={pendingTeam?.status === "active" ? "Deactivate this Team?" : "Activate this Team?"}
-        message={pendingTeam?.status === "active" ? `${pendingTeam.name} will stop accepting Team access. Its documents and memberships will be retained.` : `${pendingTeam?.name || "This Team"} will become available to its active members after license capacity is checked.`}
+        message={pendingTeam?.status === "active" ? `${pendingTeam.name} will stop accepting Team access. Its documents and memberships will be retained; inactive Teams do not use an active Team slot.` : `${pendingTeam?.name || "This Team"} will become available to its active members if active Team and member limits allow it.`}
         confirmText={pendingTeam?.status === "active" ? "Deactivate" : "Activate"} cancelText="Cancel" variant="warning"
         onCancel={() => setPendingTeam(null)} onConfirm={() => { const team = pendingTeam; setPendingTeam(null); if (team) void changeStatus(team); }} />
     </main>

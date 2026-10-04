@@ -99,6 +99,12 @@ describe.skipIf(!enabled)("SH-003 PostgreSQL capacity concurrency (isolated sche
     expect(results.find(result => result.status === "rejected")).toMatchObject({ reason: { code: "TEAM_LIMIT_REACHED" } });
     expect(await fixture.client.team.count()).toBe(1);
   });
+  it("allows another active Team when inactive records do not occupy active capacity", async () => {
+    await team("inactive", "inactive");
+    await expect(teams.createTeam({ name: "new", userId: "admin", isSuperAdmin: true })).resolves.toBeTruthy();
+    expect(await fixture.client.team.count()).toBe(2);
+    expect(await fixture.client.team.count({ where: { status: "active" } })).toBe(1);
+  });
   it("allows only one concurrent member addition to use the last distinct-user seat", async () => {
     await team("one"); await user("manager"); await user("alice"); await user("bob"); await member("one", "manager", "manager");
     fixture.plan.maxMembers = 2;
@@ -107,21 +113,26 @@ describe.skipIf(!enabled)("SH-003 PostgreSQL capacity concurrency (isolated sche
     expect(results.find(result => result.status === "rejected")).toMatchObject({ reason: { code: "MEMBER_LIMIT_REACHED" } });
     expect(await fixture.client.teamMember.count({ where: { status: "active" } })).toBe(2);
   });
-  it("serializes concurrent Team reactivation at the last slot", async () => {
-    await team("one", "inactive"); await team("two", "inactive");
-    const results = await Promise.allSettled([teams.changeTeamStatus("one", "active", "admin", true), teams.changeTeamStatus("two", "active", "admin", true)]);
+  it("serializes reactivation at the last active Team slot", async () => {
+    await team("one"); await team("two", "inactive"); await team("three", "inactive");
+    fixture.plan.maxTeams = 2;
+    const results = await Promise.allSettled([teams.changeTeamStatus("two", "active", "admin", true), teams.changeTeamStatus("three", "active", "admin", true)]);
     expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
-    expect(await fixture.client.team.count({ where: { status: "active" } })).toBe(1);
+    expect(results.find(result => result.status === "rejected")).toMatchObject({ reason: { code: "TEAM_LIMIT_REACHED" } });
+    expect(await fixture.client.team.count({ where: { status: "active" } })).toBe(2);
     expect(await fixture.client.teamAuditEvent.count({ where: { action: "team_activated" } })).toBe(1);
   });
-  it("retains Team documents and memberships while recovering from a downgrade", async () => {
+  it("restores access by deactivating an excess active Team after downgrade", async () => {
     await team("one"); await team("two"); await user("member"); await member("two", "member");
     await pool.query(`INSERT INTO "${schema}".retained_projects VALUES ('project', 'two', 'original data')`);
     await expect(teams.canAccessTeam("one", "admin", true)).resolves.toBe(false);
     await expect(teams.getTeam("two", "admin", true)).resolves.toMatchObject({ capacity: { exceeded: true } });
     await teams.changeTeamStatus("two", "inactive", "admin", true);
     await expect(teams.canAccessTeam("one", "admin", true)).resolves.toBe(true);
+    await expect(teams.canAccessTeam("two", "admin", true)).resolves.toBe(false);
+    await expect(teams.getTeam("two", "admin", true)).resolves.toMatchObject({ capacity: { exceeded: false } });
     expect(await fixture.client.teamMember.count()).toBe(1);
+    expect(await fixture.client.team.count()).toBe(2);
     expect((await pool.query(`SELECT content FROM "${schema}".retained_projects`)).rows).toEqual([{ content: "original data" }]);
     expect(await fixture.client.teamAuditEvent.count({ where: { action: "team_deactivated" } })).toBe(1);
   });

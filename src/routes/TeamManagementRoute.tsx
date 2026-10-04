@@ -309,14 +309,14 @@ export function TeamManagementRoute() {
           </div>
         </header>
 
-        {team.capacity?.exceeded && <p role="alert" className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">License capacity exceeded. Deactivate members here or return to Team Workspaces to deactivate a Team. Existing data is retained.</p>}
-        {team.status === "inactive" && <p className="text-sm text-muted-foreground">This Team is inactive. Its documents and memberships are retained. Activate it from Team Workspaces after checking capacity.</p>}
+        {team.capacity?.exceeded && <p role="alert" className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">License capacity exceeded. Deactivate excess Teams or members to bring active usage within the limit. Data remains stored.</p>}
+        {team.status === "inactive" && <p className="text-sm text-muted-foreground">This Team is inactive. Its documents and memberships remain stored; its members count again if the Team is reactivated.</p>}
         <div className="grid gap-4">
           <Card className="min-w-0">
             <CardHeader className="flex flex-row items-start justify-between gap-4">
               <div className="space-y-1.5">
               <CardTitle className="flex items-center gap-2"><Users className="size-4" /> Members</CardTitle>
-              <CardDescription>{team.memberCount || 0} active memberships. {team.status === "inactive" ? "These memberships do not consume active member seats while this Team is inactive." : "The global SuperAdmin is not counted."}</CardDescription>
+              <CardDescription>{team.memberCount || 0} active memberships. Unique members count once across active Teams.</CardDescription>
               </div>
               <Button disabled={team.status === "inactive" || team.capacity?.exceeded} onClick={() => setMemberDialogOpen(true)}><UserPlus /> Add member</Button>
             </CardHeader>

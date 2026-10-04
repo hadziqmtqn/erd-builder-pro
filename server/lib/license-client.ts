@@ -26,6 +26,10 @@ const UUID_CANONICAL = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[
 const CAPABILITY_KEY = /^[a-z][a-z0-9_]*$/;
 const OFFLINE_GRACE_SECONDS = 72 * 60 * 60;
 
+export type SelfHostCapacityReport = {
+  kind: "daily" | "capacity_change";
+};
+
 export type LicenseCapabilities = Readonly<Record<string, boolean>>;
 
 export function normalizeLicenseCapabilities(value: unknown): LicenseCapabilities {
@@ -392,6 +396,7 @@ function instancePayload(data: {
   installationId: string;
   teamCount: number;
   memberCount: number;
+  capacityReport?: SelfHostCapacityReport;
 }) {
   return {
     protocol_version: PROTOCOL_VERSION,
@@ -401,6 +406,7 @@ function instancePayload(data: {
     app_version: (process.env.APP_VERSION || "unknown").slice(0, 100),
     platform: process.platform.slice(0, 100),
     device_name: (process.env.ERDBPRO_DEPLOYMENT_NAME || "Self-host deployment").slice(0, 100),
+    ...(data.capacityReport ? { usage_report: data.capacityReport } : {}),
     usage: { team_count: data.teamCount, member_count: data.memberCount },
   };
 }
@@ -436,14 +442,14 @@ export async function activateSelfHostInstanceLicense(data: {
   return { entitlement, state };
 }
 
-export async function checkSelfHostInstanceLicense(data: { teamCount: number; memberCount: number }) {
+export async function checkSelfHostInstanceLicense(data: { teamCount: number; memberCount: number }, capacityReport?: SelfHostCapacityReport) {
   if (!isLocalPostgres()) throw new LicenseClientError("SELF_HOST_ONLY", 403);
   const stored = getStoredInstanceLicense();
   if (!stored) throw new LicenseClientError("LICENSE_NOT_ACTIVATED", 409);
   const installationId = getInstallationId();
   const response = await requestLicenseApi(
     "check",
-    instancePayload({ ...data, installationId }),
+    instancePayload({ ...data, installationId, ...(capacityReport ? { capacityReport } : {}) }),
     stored.clientToken,
   );
   const signedEntitlement = typeof response.signed_entitlement === "string" ? response.signed_entitlement : "";
@@ -459,7 +465,14 @@ export async function checkSelfHostInstanceLicense(data: { teamCount: number; me
     lastCheckedAt: new Date().toISOString(),
   };
   storeInstanceLicense(state);
-  return { entitlement, state };
+  const report = response.capacity_report;
+  return {
+    entitlement,
+    state,
+    capacityReport: capacityReport && report?.accepted === true && report?.kind === capacityReport.kind
+      ? { accepted: true, exceeded: report.exceeded === true }
+      : capacityReport ? { accepted: false, exceeded: false } : undefined,
+  };
 }
 
 export function verifyStoredInstanceLicense(options: { allowGrace?: boolean; now?: number } = {}): { state: StoredInstanceLicense; entitlement: VerifiedEntitlement } {
