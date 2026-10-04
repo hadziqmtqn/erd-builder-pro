@@ -48,6 +48,10 @@ export const authenticate = async (req: ExpressRequest, res: ExpressResponse, ne
             return res.status(403).json({
               error: access.code === "MEMBER_INACTIVE"
                 ? "Your Team membership is inactive. Contact the SuperAdmin to restore access."
+                : access.code === "TEAM_INACTIVE"
+                  ? "Your Team workspace is inactive. Contact the SuperAdmin."
+                : access.code === "INSTANCE_CAPACITY_EXCEEDED"
+                  ? "This installation exceeds its license capacity. Contact the SuperAdmin."
                 : access.code === "TEAM_INTEGRITY_UNAVAILABLE"
                   ? "Your Team is unavailable. Contact the SuperAdmin."
                 : "Your Team license is not active. Contact the SuperAdmin.",

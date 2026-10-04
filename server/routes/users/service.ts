@@ -45,7 +45,7 @@ export async function listUsers(kind: "all" | "no-team" | "former", page = 1, pa
   const memberRows = userIds.length ? await db.teamMember.findMany({
     where: { userId: { in: userIds } },
     orderBy: { joinedAt: "desc" },
-    select: { userId: true, role: true, status: true, joinedAt: true, team: { select: { id: true, name: true } } },
+    select: { userId: true, role: true, status: true, joinedAt: true, team: { select: { id: true, name: true, status: true } } },
   }) : [];
   const membershipsByUser = new Map<string, any[]>();
   for (const member of memberRows) {

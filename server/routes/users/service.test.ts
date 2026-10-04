@@ -23,13 +23,15 @@ describe("User management listing", () => {
       { id: "member-1", name: "Member One", email: "member@example.com", createdAt: "2026-09-07T00:00:00.000Z" },
     ]);
     mocks.database.teamMember.findMany.mockResolvedValue([
-      { userId: "member-1", role: "staff", status: "active", joinedAt: "2026-09-07T00:00:00.000Z", team: { id: "team-1", name: "Team TM" } },
+      { userId: "member-1", role: "staff", status: "active", joinedAt: "2026-09-07T00:00:00.000Z", team: { id: "team-1", name: "Team TM", status: "quarantined" } },
     ]);
 
     const result = await users.listUsers("all", 1, 20, "member");
 
     expect(result.data[0]).toMatchObject({ createdAt: "2026-09-07T00:00:00.000Z" });
     expect(result.data[0].teamMemberships[0].team.name).toBe("Team TM");
+    expect(result.data[0].teamMemberships[0]).toMatchObject({ status: "active", team: { status: "quarantined" } });
+    expect(mocks.database.teamMember.findMany).toHaveBeenCalledWith(expect.objectContaining({ select: expect.objectContaining({ team: { select: { id: true, name: true, status: true } } }) }));
     expect(result.pagination).toEqual({ page: 1, pageSize: 20, total: 1, totalPages: 1 });
     expect(mocks.database.user.findMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 0, take: 20 }));
   });

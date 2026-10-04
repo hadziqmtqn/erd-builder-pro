@@ -36,6 +36,15 @@ export async function list(_req: ExpressRequest, res: ExpressResponse): Promise<
   }
 }
 
+export async function inventory(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+  try {
+    const current = actor(req);
+    res.json(await teams.listTeamInventory(current.isSuperAdmin));
+  } catch (error) {
+    handleTeamError(res, error, "Failed to fetch Team inventory");
+  }
+}
+
 export async function get(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   try {
     const current = actor(req);
@@ -109,6 +118,18 @@ export async function update(req: ExpressRequest, res: ExpressResponse): Promise
     res.json(team);
   } catch (error) {
     handleTeamError(res, error, "Failed to update Team");
+  }
+}
+
+export async function changeStatus(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+  try {
+    requireLocalTeamManagement();
+    const current = actor(req);
+    const changed = await teams.changeTeamStatus(req.params.id, req.body.status, current.userId, current.isSuperAdmin);
+    if (!changed) { res.status(404).json({ error: "Team not found" }); return; }
+    res.json({ success: true });
+  } catch (error) {
+    handleTeamError(res, error, "Failed to change Team status");
   }
 }
 

@@ -2,7 +2,7 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 
 import { authenticate, rejectInSsoMode } from "../../lib/middleware.js";
-import { validate, addTeamMemberSchema, createTeamSchema, updateTeamMemberSchema, updateTeamSchema } from "../../lib/validation.js";
+import { validate, addTeamMemberSchema, createTeamSchema, updateTeamMemberSchema, updateTeamSchema, updateTeamStatusSchema } from "../../lib/validation.js";
 import * as controller from "./controller.js";
 
 const router = Router();
@@ -15,12 +15,14 @@ const licenseRequestLimiter = rateLimit({
 });
 
 router.use(authenticate);
+router.get("/inventory", rejectInSsoMode, controller.inventory);
 router.get("/", controller.list);
 router.post("/", rejectInSsoMode, licenseRequestLimiter, validate(createTeamSchema), controller.create);
 router.get("/:id", controller.get);
 router.get("/:id/integrity-review", rejectInSsoMode, controller.reviewIntegrity);
 router.post("/:id/integrity/quarantine", rejectInSsoMode, controller.quarantineTeam);
 router.post("/:id/members/:userId/integrity/quarantine", rejectInSsoMode, controller.quarantineMember);
+router.patch("/:id/status", rejectInSsoMode, validate(updateTeamStatusSchema), controller.changeStatus);
 router.patch("/:id", rejectInSsoMode, validate(updateTeamSchema), controller.update);
 router.post("/:id/members", rejectInSsoMode, validate(addTeamMemberSchema), controller.addMember);
 router.patch("/:id/members/:userId", rejectInSsoMode, validate(updateTeamMemberSchema), controller.updateMember);

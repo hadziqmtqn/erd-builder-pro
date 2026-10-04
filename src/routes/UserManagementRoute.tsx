@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import ConfirmModal from "@/components/ConfirmModal";
@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/api";
 
-type Membership = { team: { id: string; name: string }; role: string; status: string; joinedAt: string };
+type Membership = { team: { id: string; name: string; status?: string }; role: string; status: string; joinedAt: string };
 type ManagedUser = { id: string; name: string; email: string; createdAt?: string | null; created_at?: string | null; teamMemberships?: Membership[]; team_memberships?: Membership[] };
 type Invitation = { id: string; email: string; createdAt: string; expiresAt: string; acceptedAt: string | null; team: { id: string; name: string } };
 type Tab = "all" | "no-team" | "former" | "invitations";
@@ -26,7 +26,7 @@ const date = (value?: string | null) => {
 };
 const memberships = (user: ManagedUser) => {
   const values = Array.isArray(user.teamMemberships) ? user.teamMemberships : [];
-  return values.length ? values.map((member) => `${member.team?.name || "Unknown Team"} (${member.status})`).join(", ") : "No Team";
+  return values.length ? values.map((member) => `${member.team?.name || "Unknown Team"} (Team: ${member.team?.status || "unknown"}; membership: ${member.status})`).join(", ") : "No Team";
 };
 const emptyPagination: PaginationInfo = { page: 1, pageSize: 20, total: 0, totalPages: 1 };
 const normalizeUser = (user: ManagedUser): ManagedUser => ({
@@ -99,8 +99,8 @@ export function UserManagementRoute() {
   };
 
   return <main className="-m-4 flex-1 overflow-auto bg-background"><div className="flex w-full flex-col gap-6 p-6 lg:p-8">
-    <header className="flex items-start gap-3"><Button variant="ghost" size="icon" onClick={() => navigate("/")} aria-label="Back to dashboard"><ArrowLeft /></Button><div><h1 className="flex items-center gap-2 text-2xl font-semibold"><UserCog className="size-5" /> User Management</h1><p className="mt-1 text-sm text-muted-foreground">Manage commercial Team accounts. Personal SuperAdmin access is not listed here.</p></div></header>
-    <Card><CardHeader><CardTitle>Users</CardTitle><CardDescription>Removed and banned members remain visible only to the SuperAdmin.</CardDescription></CardHeader><CardContent>
+    <header className="flex items-start gap-3"><Button variant="ghost" size="icon" onClick={() => navigate("/")} aria-label="Back to dashboard"><ArrowLeft /></Button><div><h1 className="flex items-center gap-2 text-2xl font-semibold"><UserCog className="size-5" /> User Management</h1><p className="mt-1 text-sm text-muted-foreground">Manage Team accounts, memberships, and invitations.</p></div></header>
+    <Card><CardContent>
       <Tabs value={tab} onValueChange={(value) => { setTab(value as Tab); setPagination((current) => ({ ...current, page: 1 })); }}><div className="flex flex-wrap items-center justify-between gap-3"><TabsList><TabsTrigger value="all">All users</TabsTrigger><TabsTrigger value="no-team">No Team</TabsTrigger><TabsTrigger value="former">Former members</TabsTrigger><TabsTrigger value="invitations">Invitations</TabsTrigger></TabsList>{tab !== "invitations" && <div className="relative w-full sm:ml-auto sm:w-72"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={search} onChange={(event) => { setSearch(event.target.value); setPagination((current) => ({ ...current, page: 1 })); }} placeholder="Search name or email" aria-label="Search users by name or email" className="pl-9" /></div>}</div>
         {(["all", "no-team", "former"] as Tab[]).map((value) => <TabsContent key={value} value={value} className="mt-4"><UsersTable users={users} loading={loading} action={action} onReset={(target) => setResetTarget(target)} pagination={pagination} onPageChange={(page) => setPagination((current) => ({ ...current, page }))} /></TabsContent>)}
         <TabsContent value="invitations" className="mt-4"><InvitationsTable invitations={invitations} loading={loading} /></TabsContent>

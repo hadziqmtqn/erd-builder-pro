@@ -95,6 +95,7 @@ export const createTeamSchema = z.object({
 });
 
 export const updateTeamSchema = createTeamSchema;
+export const updateTeamStatusSchema = z.object({ status: z.enum(["active", "inactive"]) });
 
 export const addTeamMemberSchema = z.object({
   email: z.string().trim().email().max(255),

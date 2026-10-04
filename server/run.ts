@@ -10,6 +10,7 @@ import { logger } from "./lib/logger.js";
 import { isDesktopMode, useLocalAuth } from "./lib/config.js";
 import { startCloudAiConfigRefresh, startCloudAiUsageRetention } from "./lib/cloud-ai.js";
 import { startCloudTelemetry } from "./lib/cloud-telemetry.js";
+import { startSelfHostCapacityReportScheduler } from "./lib/self-host-capacity-report.js";
 import { setDbReady, setDbError } from "./lib/db-state.js";
 import { attachCloudLiveSync } from "./lib/cloud-live-sync.js";
 
@@ -272,6 +273,7 @@ async function startup(): Promise<void> {
     // This gets the frontend past "Connecting..." while background init runs.
     setDbReady();
     logger.info("Database ready; running background initialization");
+    startSelfHostCapacityReportScheduler();
     startCloudAiConfigRefresh();
     startCloudAiUsageRetention();
     startCloudTelemetry();

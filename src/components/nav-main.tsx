@@ -1,4 +1,5 @@
 import { ChevronRight, type LucideIcon } from "lucide-react"
+import { Link } from "react-router-dom"
 
 import {
   Collapsible,
@@ -27,6 +28,7 @@ export function NavMain({
     items?: {
       title: string
       url: string
+      isActive?: boolean
     }[]
     onClick?: () => void
   }[]
@@ -42,10 +44,10 @@ export function NavMain({
             >
               <CollapsibleTrigger
                 render={
-                  <SidebarMenuButton tooltip={item.title} className="cursor-pointer">
+                  <SidebarMenuButton tooltip={item.title} isActive={item.isActive} className="cursor-pointer">
                     {item.icon && <item.icon className={item.iconClassName} />}
                     <span>{item.title}</span>
-                    <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                    <ChevronRight className="ml-auto transition-transform duration-200 group-data-[open]/collapsible:rotate-90" />
                   </SidebarMenuButton>
                 }
               />
@@ -53,7 +55,7 @@ export function NavMain({
                 <SidebarMenuSub>
                   {item.items?.map((subItem) => (
                     <SidebarMenuSubItem key={subItem.title}>
-                      <SidebarMenuSubButton render={<a href={subItem.url} />} className="cursor-pointer">
+                      <SidebarMenuSubButton render={<Link to={subItem.url} />} isActive={subItem.isActive} className="cursor-pointer">
                         <span>{subItem.title}</span>
                       </SidebarMenuSubButton>
                     </SidebarMenuSubItem>

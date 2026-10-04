@@ -47,6 +47,18 @@ describe("installation identity", () => {
     expect(getInstallationIdentity().installationId).toBe("018f3f7e-1c33-43f2-a4e4-19b55e61d3fa");
   });
 
+  it("creates nested parent directories for a fresh license-state path", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "erd-installation-"));
+    temporaryDirectories.push(directory);
+    const statePath = path.join(directory, "mounted-volume", ".erdbpro", "license-state.json");
+    process.env.ERDBPRO_LICENSE_STATE_FILE = statePath;
+
+    const identity = getInstallationIdentity();
+
+    expect(readFileSync(path.join(path.dirname(statePath), "installation-identity.json"), "utf8"))
+      .toContain(identity.installationId);
+  });
+
   it("claims the Team provisioning baseline only once outside the database", () => {
     const directory = mkdtempSync(path.join(tmpdir(), "erd-installation-"));
     temporaryDirectories.push(directory);

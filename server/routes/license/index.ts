@@ -4,6 +4,7 @@ import { authenticate, rejectInSsoMode } from "../../lib/middleware.js";
 import { requireAdmin } from "../../lib/security.js";
 import { activateSelfHostInstanceLicense, checkSelfHostInstanceLicense, LicenseClientError, verifyStoredInstanceLicense } from "../../lib/license-client.js";
 import { instanceLicenseUsage } from "../../lib/instance-license-usage.js";
+import { reportSelfHostCapacityChange, startSelfHostCapacityReportScheduler } from "../../lib/self-host-capacity-report.js";
 
 const router = Router();
 router.use(authenticate);
@@ -32,6 +33,8 @@ router.post("/activate", async (req, res) => {
   try {
     const usage = await instanceLicenseUsage();
     const result = await activateSelfHostInstanceLicense({ licenseKey, ...(typeof req.body?.activation_grant === "string" ? { activationGrant: req.body.activation_grant.trim() } : {}), ...usage });
+    startSelfHostCapacityReportScheduler();
+    reportSelfHostCapacityChange();
     res.json({ ...statusPayload(result.entitlement, result.state.lastCheckedAt), usage });
   } catch (error) {
     const status = error instanceof LicenseClientError ? error.status : 500;

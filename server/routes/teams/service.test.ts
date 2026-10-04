@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   ssoMode: vi.fn(() => false),
@@ -9,6 +9,9 @@ const mocks = vi.hoisted(() => ({
     teamMember: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), upsert: vi.fn(), update: vi.fn() },
     user: { findUnique: vi.fn(), create: vi.fn() },
     $transaction: vi.fn(),
+    $queryRaw: vi.fn(),
+    session: { deleteMany: vi.fn() },
+    teamAuditEvent: { create: vi.fn() },
   },
   license: {
     getStored: vi.fn(() => ({ lastCheckedAt: new Date().toISOString() })),
@@ -36,6 +39,20 @@ vi.mock("../../lib/license-client.js", () => ({
 }));
 
 const teams = await import("./service.js");
+beforeEach(() => {
+  vi.resetAllMocks();
+  mocks.ssoMode.mockReturnValue(false);
+  mocks.provisionedTeam = false;
+  mocks.provisionedMembership.mockReturnValue(false);
+  mocks.license.getStored.mockReturnValue({ lastCheckedAt: new Date().toISOString() });
+  mocks.license.verifyStored.mockReturnValue({ entitlement: { maxTeams: 10, maxMembers: 10 } });
+  mocks.license.check.mockResolvedValue({ entitlement: { maxTeams: 10, maxMembers: 10 } });
+    mocks.license.verifyStored.mockReturnValue({ entitlement: { maxTeams: 10, maxMembers: 10 } });
+  mocks.database.$transaction.mockImplementation(async (operation) => operation(mocks.database));
+  mocks.database.$queryRaw.mockResolvedValue([{ locked: 1 }]);
+  mocks.database.team.count.mockResolvedValue(0);
+  mocks.database.teamMember.findMany.mockResolvedValue([]);
+});
 
 describe("Team integrity", () => {
   it("lists locally provisioned Teams in Cloud SSO mode without a self-host instance license", async () => {
@@ -96,12 +113,13 @@ describe("Team integrity", () => {
     mocks.database.team.count.mockResolvedValue(1);
     mocks.database.teamMember.findMany.mockResolvedValue([{ userId: "user-1" }]);
     mocks.license.check.mockResolvedValue({ entitlement: { maxTeams: 1, maxMembers: 10 } });
+    mocks.license.verifyStored.mockReturnValue({ entitlement: { maxTeams: 1, maxMembers: 10 } });
 
     await expect(teams.createTeam({ name: "Downgraded Team", userId: "admin", isSuperAdmin: true }))
       .rejects.toMatchObject({ code: "TEAM_LIMIT_REACHED" });
     expect(mocks.license.check).toHaveBeenCalledWith({ teamCount: 1, memberCount: 1 });
     expect(mocks.database.teamMember.findMany).toHaveBeenCalledWith({
-      where: { status: "active" },
+      where: { status: "active", team: { type: { not: "personal" }, status: "active" } },
       select: { userId: true },
       distinct: ["userId"],
     });
@@ -116,6 +134,7 @@ describe("Team integrity", () => {
     mocks.database.teamMember.findFirst.mockReset().mockResolvedValue(null);
     mocks.database.user.findUnique.mockResolvedValue({ id: "user-2", email: "user-2@example.com", isSuperAdmin: false });
     mocks.license.check.mockResolvedValue({ entitlement: { maxTeams: 10, maxMembers: 1 } });
+    mocks.license.verifyStored.mockReturnValue({ entitlement: { maxTeams: 10, maxMembers: 1 } });
 
     await expect(teams.addMember("team-1", "user-2@example.com", "admin", true))
       .rejects.toMatchObject({ code: "MEMBER_LIMIT_REACHED" });
@@ -132,6 +151,7 @@ describe("Team integrity", () => {
     expect(mocks.license.verifyStored).toHaveBeenCalledWith({ allowGrace: true });
 
     mocks.license.check.mockResolvedValue({ entitlement: { maxTeams: 10, maxMembers: 10 } });
+    mocks.license.verifyStored.mockReturnValue({ entitlement: { maxTeams: 10, maxMembers: 10 } });
     mocks.license.getStored.mockReturnValue({ lastCheckedAt: new Date().toISOString() });
   });
 
@@ -147,6 +167,7 @@ describe("Team integrity", () => {
     mocks.database.teamMember.upsert.mockReset().mockResolvedValue({});
     mocks.database.user.findUnique.mockResolvedValue({ id: "user-1", email: "user@example.com", isSuperAdmin: false });
     mocks.license.check.mockResolvedValue({ entitlement: { maxTeams: 10, maxMembers: 1 } });
+    mocks.license.verifyStored.mockReturnValue({ entitlement: { maxTeams: 10, maxMembers: 1 } });
 
     await teams.addMember("team-2", "user@example.com", "admin", true, { role: "staff" });
 
@@ -197,6 +218,7 @@ describe("Team integrity", () => {
   it("quarantines an invalid Team without changing its signature and audits atomically", async () => {
     const team = { id: "team-1", type: "team", status: "active", createdAt: new Date("2026-01-01T00:00:00Z"), cloudEntitlement: null, provisioningSignature: "invalid" };
     const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ locked: 1 }]),
       team: { findUnique: vi.fn().mockResolvedValue(team), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       teamAuditEvent: { create: vi.fn().mockResolvedValue({}) },
     };
@@ -215,6 +237,7 @@ describe("Team integrity", () => {
   it("quarantines only an invalid active membership and keeps its signature", async () => {
     const member = { id: "membership-1", teamId: "team-1", userId: "user-1", role: "staff", status: "active", joinedAt: new Date("2026-01-01T00:00:00Z"), provisioningSignature: "invalid" };
     const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ locked: 1 }]),
       team: { findUnique: vi.fn().mockResolvedValue({ id: "team-1", type: "team", status: "active" }) },
       teamMember: { findFirst: vi.fn().mockResolvedValue(member), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       teamAuditEvent: { create: vi.fn().mockResolvedValue({}) },
@@ -235,7 +258,7 @@ describe("Team integrity", () => {
   });
 
   it("does not quarantine records with valid signatures", async () => {
-    const tx = { team: { findUnique: vi.fn().mockResolvedValue({ id: "team-1", type: "team", status: "active" }) } };
+    const tx = { $queryRaw: vi.fn().mockResolvedValue([{ locked: 1 }]), team: { findUnique: vi.fn().mockResolvedValue({ id: "team-1", type: "team", status: "active" }) } };
     mocks.database.$transaction.mockReset().mockImplementation(async (operation: (client: typeof tx) => unknown) => operation(tx));
     mocks.provisionedTeam = true;
 
@@ -253,6 +276,7 @@ describe("Team integrity", () => {
     mocks.database.teamMember.findMany.mockReset().mockResolvedValue([{ userId: "user-1" }]);
     mocks.database.user.findUnique.mockReset().mockResolvedValue({ id: "user-1", email: "user@example.com", isSuperAdmin: false });
     mocks.license.check.mockReset().mockResolvedValue({ entitlement: { maxTeams: 10, maxMembers: 10 } });
+    mocks.license.verifyStored.mockReturnValue({ entitlement: { maxTeams: 10, maxMembers: 10 } });
 
     await expect(teams.addMember("team-1", "user@example.com", "admin", true)).rejects.toMatchObject({ code: "MEMBER_QUARANTINED" });
 
