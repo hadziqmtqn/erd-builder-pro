@@ -164,6 +164,46 @@ describe("self-host license entitlement verification", () => {
     });
   });
 
+  it("sends a capacity report and recognizes the SaaS acknowledgement", async () => {
+    vi.stubEnv("DATABASE_URL", "postgresql://localhost/erd");
+    useTemporaryDirectory();
+    process.env.ERDBPRO_LICENSE_API_URL = "https://license.example.test";
+    const installationId = getInstallationId();
+    const issuedAt = Math.floor(Date.now() / 1000);
+    const token = signedEntitlement(
+      installationId,
+      ["team_files"],
+      "erd-self-host-instance-license",
+      issuedAt,
+      issuedAt + 3600,
+    );
+    storeInstanceLicense({
+      installationId,
+      clientToken: "instance-client-token",
+      signedEntitlement: token,
+      licenseId: "01a070a2-beb5-705e-9227-9f4c66e98241",
+      bindingGeneration: 2,
+      codeLastFour: "ABCD",
+      lastCheckedAt: new Date().toISOString(),
+    });
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      signed_entitlement: token,
+      capacity_report: { accepted: true, kind: "daily", exceeded: false },
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await checkSelfHostInstanceLicense(
+      { teamCount: 2, memberCount: 8 },
+      { kind: "daily" },
+    );
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
+      usage: { team_count: 2, member_count: 8 },
+      usage_report: { kind: "daily" },
+    });
+    expect(result.capacityReport).toEqual({ accepted: true, exceeded: false });
+  });
+
   it.each([
     { plan_code: "package-b", limits: { max_teams: 5, max_members: 50 } },
     { plan_code: "package-a", limits: { max_teams: 1, max_members: 2 } },

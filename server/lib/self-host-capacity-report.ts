@@ -93,11 +93,11 @@ export function startSelfHostCapacityReportScheduler(): void {
   const installationId = state.installationId;
   const jitterMs = jitterForInstallation(installationId);
   const now = new Date();
-  const today'sTarget = new Date(now);
-  today'sTarget.setHours(1, 0, 0, 0);
-  today'sTarget.setTime(today'sTarget.getTime() + jitterMs);
-  const initialDelay = today'sTarget.getTime() > now.getTime()
-    ? today'sTarget.getTime() - now.getTime()
+  const todayTarget = new Date(now);
+  todayTarget.setHours(1, 0, 0, 0);
+  todayTarget.setTime(todayTarget.getTime() + jitterMs);
+  const initialDelay = todayTarget.getTime() > now.getTime()
+    ? todayTarget.getTime() - now.getTime()
     : Math.max(1000, jitterMs);
 
   schedule(initialDelay, () => void runDailyReport(jitterMs));
