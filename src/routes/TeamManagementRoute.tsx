@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useWorkspace } from "@/providers/WorkspaceContext";
 import { TeamMemberDialog } from "@/components/team/TeamMemberDialog";
 import ConfirmModal from "@/components/ConfirmModal";
+import { TeamIntegrityReview, type IntegrityReview, type PendingIntegrityQuarantine } from "@/components/team/TeamIntegrityReview";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 type TeamDetail = TeamSummary & {
@@ -22,12 +23,6 @@ type TeamDetail = TeamSummary & {
   status?: string;
   capacity?: { exceeded: boolean };
 };
-type IntegrityReview = {
-  team: { id: string; name: string; status: string };
-  teamSignatureValid: boolean;
-  members: Array<{ id: string; userId: string; name: string | null; email: string | null; status: string; signatureValid: boolean }>;
-};
-type PendingIntegrityQuarantine = { kind: "team"; name: string } | { kind: "member"; userId: string; name: string };
 
 const TEAM_ROLE_LABELS = { manager: "Manager", staff: "Staff" } as const;
 type PendingMemberAction = { kind: "remove" | "ban"; userId: string; name: string | null };
@@ -100,9 +95,9 @@ export function TeamManagementRoute() {
   }, [fetchTeam, id, isSso]);
 
   useEffect(() => {
-    setBreadcrumbLabel(team?.name || "Team management");
+    setBreadcrumbLabel(team?.name || integrityReview?.team.name || "Team management");
     return () => setBreadcrumbLabel(null);
-  }, [setBreadcrumbLabel, team?.name]);
+  }, [setBreadcrumbLabel, team?.name, integrityReview?.team.name]);
 
   useEffect(() => { setTeamName(team?.name || ""); }, [team?.name]);
 
@@ -174,9 +169,8 @@ export function TeamManagementRoute() {
       toast.success(pending.kind === "team" ? "Team quarantined; its data was retained." : "Membership quarantined; its data was retained.");
       if (pending.kind === "team") {
         window.dispatchEvent(new CustomEvent("team-quarantined", { detail: { teamId: id } }));
-        navigate("/", { replace: true });
       }
-      else await fetchTeam();
+      await fetchTeam();
     } catch (cause: any) {
       toast.error(cause?.message || "Integrity issue could not be quarantined.");
     } finally {
@@ -208,46 +202,13 @@ export function TeamManagementRoute() {
   }
 
   if (!team && integrityReview) {
-    const invalidMembers = integrityReview.members.filter((member) => member.status === "active" && !member.signatureValid);
-    const canQuarantineTeam = !integrityReview.teamSignatureValid && integrityReview.team.status !== "quarantined";
-    const canQuarantineMembers = integrityReview.teamSignatureValid && integrityReview.team.status === "active" && invalidMembers.length > 0;
     return (
-      <main className="flex flex-1 flex-col items-start gap-4 p-6">
-        <Button variant="ghost" onClick={() => navigate(backPath)}><ArrowLeft /> Back</Button>
-        <div>
-          <h1 className="text-xl font-semibold">Team integrity issue</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{integrityReview.team.name} management is blocked. This review only allows quarantine when a provisioning signature is invalid; it never changes signatures or deletes data, and every action is audited.</p>
-        </div>
-        {!integrityReview.teamSignatureValid && (
-          <Card className="w-full max-w-2xl">
-            <CardHeader><CardTitle>Team signature is invalid</CardTitle><CardDescription>Disable this Team to block access while preserving its projects and other data.</CardDescription></CardHeader>
-            <CardContent>
-              {canQuarantineTeam
-                ? <Button variant="destructive" disabled={action !== null} onClick={() => setPendingIntegrityQuarantine({ kind: "team", name: integrityReview.team.name })}>Quarantine Team</Button>
-                : <p className="text-sm text-muted-foreground">This Team is already quarantined. Its data is retained.</p>}
-            </CardContent>
-          </Card>
-        )}
-        {integrityReview.teamSignatureValid && invalidMembers.length > 0 && (
-          <Card className="w-full max-w-2xl">
-            <CardHeader><CardTitle>Membership signatures are invalid</CardTitle><CardDescription>Disable only the affected memberships. The user account and other Team memberships stay intact.</CardDescription></CardHeader>
-            <CardContent className="space-y-3">
-              {invalidMembers.map((member) => (
-                <div key={member.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3">
-                  <div><p className="font-medium">{member.name || "Unnamed member"}</p><p className="text-sm text-muted-foreground">{member.email || "—"}</p></div>
-                  <Button variant="destructive" size="sm" disabled={action !== null} onClick={() => setPendingIntegrityQuarantine({ kind: "member", userId: member.userId, name: member.name || member.email || "this member" })}>Quarantine membership</Button>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        )}
-        {!canQuarantineTeam && !canQuarantineMembers && integrityReview.teamSignatureValid && invalidMembers.length === 0 && (
-          <p className="text-sm text-muted-foreground">No active invalid signatures were found. Check this installation’s license and capacity limits.</p>
-        )}
+      <main className="-m-4 flex-1 overflow-auto bg-background">
+        <TeamIntegrityReview review={integrityReview} busy={action !== null} onQuarantine={setPendingIntegrityQuarantine} />
         <ConfirmModal
           isOpen={Boolean(pendingIntegrityQuarantine)}
           title={pendingIntegrityQuarantine?.kind === "team" ? "Quarantine this Team?" : "Quarantine this membership?"}
-          message={`${pendingIntegrityQuarantine?.name || "This record"} will be deactivated. Its data and signature will be kept, and the action will be recorded in the audit log.`}
+          message={`${pendingIntegrityQuarantine?.name || "This record"} will lose access. Its data will stay stored and the action will be recorded.`}
           confirmText="Quarantine"
           cancelText="Cancel"
           variant="danger"
