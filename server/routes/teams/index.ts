@@ -4,6 +4,7 @@ import rateLimit from "express-rate-limit";
 import { authenticate, rejectInSsoMode } from "../../lib/middleware.js";
 import { validate, addTeamMemberSchema, createTeamSchema, updateTeamMemberSchema, updateTeamSchema, updateTeamStatusSchema } from "../../lib/validation.js";
 import * as controller from "./controller.js";
+import * as recovery from "./recovery-controller.js";
 
 const router = Router();
 const licenseRequestLimiter = rateLimit({
@@ -13,6 +14,13 @@ const licenseRequestLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: "Too many activation attempts. Please wait a few minutes and try again." },
 });
+const recoveryRequestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many recovery requests. Please wait a few minutes and try again." },
+});
 
 router.use(authenticate);
 router.get("/inventory", rejectInSsoMode, controller.inventory);
@@ -20,6 +28,8 @@ router.get("/", controller.list);
 router.post("/", rejectInSsoMode, licenseRequestLimiter, validate(createTeamSchema), controller.create);
 router.get("/:id", controller.get);
 router.get("/:id/integrity-review", rejectInSsoMode, controller.reviewIntegrity);
+router.get("/:id/recovery", rejectInSsoMode, recovery.inventory);
+router.post("/:id/recovery", rejectInSsoMode, recoveryRequestLimiter, recovery.recover);
 router.post("/:id/integrity/quarantine", rejectInSsoMode, controller.quarantineTeam);
 router.post("/:id/members/:userId/integrity/quarantine", rejectInSsoMode, controller.quarantineMember);
 router.patch("/:id/status", rejectInSsoMode, validate(updateTeamStatusSchema), controller.changeStatus);
