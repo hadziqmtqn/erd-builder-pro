@@ -74,6 +74,7 @@ import { closeRepositoryPreview, ERD_REPOSITORY_APPLIED_EVENT } from '@/lib/repo
 import { AIChatToggle } from '@/components/ai/AIChatToggle';
 import { getDbClientCache, setDbClientCache } from '@/hooks/useDataViewerHelpers';
 import { isFileCreator } from '@/lib/fileOwnership';
+import { getAppPageTitle } from '@/lib/app-page-title';
 
 // ── Inner component that uses AIAction context ──
 
@@ -616,30 +617,13 @@ function AppLayoutInner() {
 
   // ── Update browser tab title (route-aware) ──
   useEffect(() => {
-    const pageTitle = (() => {
-      // If there's an active file open, always use its name
-      if (activeFileName) return `${activeFileName} | ERD Builder Pro`;
-
-      // Derive title from route
-      const path = location.pathname;
-      if (path === '/') return `Dashboard | ERD Builder Pro`;
-      if (path === '/trash') return `Trash | ERD Builder Pro`;
-      if (path === '/table/db-client') return `DB Client | ERD Builder Pro`;
-      if (path.startsWith('/table/')) {
-        const label = breadcrumbLabel || featureLabel || 'Tables';
-        return `${label} | ERD Builder Pro`;
-      }
-      // Editor routes without a loaded file yet — show type label
-      if (path.startsWith('/notes/')) return `Notes | ERD Builder Pro`;
-      if (path.startsWith('/diagrams/')) return `${searchParams.get('feature') === 'db-client' ? 'DB Client' : 'Diagram'} | ERD Builder Pro`;
-      if (path.startsWith('/db-client/')) return `${breadcrumbLabel || 'DB Client'} | ERD Builder Pro`;
-      if (path.startsWith('/flowcharts/')) return `Flowchart | ERD Builder Pro`;
-      if (path.startsWith('/drawings/')) return `Drawing | ERD Builder Pro`;
-
-      // 404 / unknown routes
-      return `ERD Builder Pro`;
-    })();
-    document.title = pageTitle;
+    document.title = getAppPageTitle({
+      pathname: location.pathname,
+      activeFileName,
+      breadcrumbLabel,
+      featureLabel,
+      searchFeature: searchParams.get('feature'),
+    });
   }, [activeFileName, featureLabel, breadcrumbLabel, location.pathname, searchParams]);
 
   // ── Desktop-only keyboard shortcut: CMD+, (macOS) / CTRL+, (Win/Linux) → open Settings
