@@ -401,11 +401,17 @@ export function WorkspaceProvider({
     }
   }, [updateEntity, saveDiagram, viewportRef, syncDrafts, broadcastNodeUpdate]);
 
-  const { handleNoteChange, notesSaveTimeout } = useNoteChangeHandler({
+  const { handleNoteChange, notesSaveTimeout, noteCloudSyncTimeoutRef } = useNoteChangeHandler({
     activeNoteUid, isIncomingSyncRef, notesRef, lastLoadedNoteIdRef,
     lastSaveCallRef, bumpContentVersion, saveNote, setNotes,
     broadcastMessage, syncDrafts, isRefreshing, isNoteItemLoading,
   });
+  const cancelPendingNoteSaves = useCallback(() => {
+    if (notesSaveTimeout.current) clearTimeout(notesSaveTimeout.current);
+    if (noteCloudSyncTimeoutRef.current) clearTimeout(noteCloudSyncTimeoutRef.current);
+    notesSaveTimeout.current = null;
+    noteCloudSyncTimeoutRef.current = null;
+  }, [notesSaveTimeout, noteCloudSyncTimeoutRef]);
 
   const { handleDrawingChange, drawingsSaveTimeoutRef } = useDrawingChangeHandler({
     activeDrawingId, isIncomingSyncRef, drawingsRef, lastLoadedDrawingIdRef,
@@ -1082,7 +1088,7 @@ export function WorkspaceProvider({
 
     handleViewChange, handleNoteSelect, handleDiagramSelect, handleDrawingSelect, handleFlowchartSelect, refreshActiveDocument,
     refreshTeamScope, teamScopeVersion,
-    handleNoteChange, handleDrawingChange, handleFlowchartChange, handleEntityUpdate,
+    handleNoteChange, cancelPendingNoteSaves, handleDrawingChange, handleFlowchartChange, handleEntityUpdate,
 
     handleSidebarDiagramCreate, handleSidebarNoteCreate, handleSidebarDrawingCreate,
     handleSidebarFlowchartCreate, handleSidebarProjectCreate, handleSidebarProjectUpdate, handleSidebarProjectDelete,
@@ -1174,7 +1180,7 @@ export function WorkspaceProvider({
     // Navigation/Content/Entity handlers — stable enough via hooks
     handleViewChange, handleNoteSelect, handleDiagramSelect, handleDrawingSelect, handleFlowchartSelect, refreshActiveDocument,
     refreshTeamScope, teamScopeVersion, isTeamScopeRefreshing,
-    handleNoteChange, handleDrawingChange, handleFlowchartChange, handleEntityUpdate,
+    handleNoteChange, cancelPendingNoteSaves, handleDrawingChange, handleFlowchartChange, handleEntityUpdate,
     // Sidebar handlers
     handleSidebarDiagramCreate, handleSidebarNoteCreate, handleSidebarDrawingCreate,
     handleSidebarFlowchartCreate, handleSidebarProjectCreate, handleSidebarProjectUpdate, handleSidebarProjectDelete,

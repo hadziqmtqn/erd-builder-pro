@@ -194,7 +194,7 @@ export async function proxy(req: Request, res: Response): Promise<void> {
         await finalizeCloudAiCredit(cloudRequestId, true, "CLOUD_AI_PROVIDER_ERROR");
         cloudCreditFinalized = true;
       }
-      logger.error({ status: response.status }, "AI provider error");
+      logger.error({ error_code: "CLOUD_AI_PROVIDER_ERROR", status: response.status }, "AI provider error");
       // Use 502 Bad Gateway — upstream provider failure, not an auth error.
       // The global 401 interceptor in the frontend must NOT catch this.
       res.status(502).json({

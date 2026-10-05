@@ -85,7 +85,10 @@ describe.skipIf(!enabled)("SH-003 PostgreSQL capacity concurrency (isolated sche
   });
   afterAll(async () => {
     await fixture.client?.$disconnect();
-    if (schemaCreated) await pool.query(`DROP SCHEMA "${schema}" CASCADE`);
+    if (schemaCreated) {
+      await pool.query(`DROP SCHEMA "${schema}" CASCADE`);
+      expect((await pool.query("SELECT nspname FROM pg_namespace WHERE nspname = $1", [schema])).rows).toEqual([]);
+    }
     await pool?.end();
     if (directory) rmSync(directory, { recursive: true, force: true });
     if (originalIdentity === undefined) delete process.env.ERDBPRO_INSTALLATION_IDENTITY_FILE;

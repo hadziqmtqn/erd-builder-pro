@@ -28,7 +28,7 @@ export type CollaborationContext = {
   anchorId: string | null;
   anchorLabel: string;
 };
-type DiscussionAnchor = { type: "table" | "relationship"; id: string };
+type DiscussionAnchor = { type: Exclude<CollaborationAnchorType, "general">; id: string };
 type Thread = {
   id: string;
   featureType: CollaborationFeatureType | null;
@@ -51,6 +51,7 @@ type MessageCursor = { createdAt: string; id: string };
 type MessageHistoryPage = { hasMore: boolean; nextCursor: MessageCursor | null };
 type MessageHistoryState = MessageHistoryPage & { messages: DiscussionMessageData[] };
 type PendingDelete = { type: "thread"; threadId: string } | { type: "message"; threadId: string; message: DiscussionMessageData };
+type PendingCommentOpen = { type: DiscussionAnchor["type"]; id: string };
 type RawRecord = Record<string, unknown>;
 
 function resizeDiscussionTextarea(element: HTMLTextAreaElement, maxHeight = 144): void {
@@ -439,6 +440,17 @@ const featureVisuals: Record<CollaborationFeatureType, { Icon: LucideIcon; class
   flowchart: { Icon: Network, className: "bg-feature-flowchart/10 text-feature-flowchart" },
 };
 
+const commentAnchors: Record<CollaborationFeatureType, ReadonlySet<DiscussionAnchor["type"]>> = {
+  diagram: new Set(["table", "relationship"]),
+  note: new Set(["block"]),
+  drawing: new Set(["point"]),
+  flowchart: new Set(["shape"]),
+};
+
+export function isCommentAnchorForFeature(featureType: CollaborationFeatureType, anchorType: unknown): anchorType is DiscussionAnchor["type"] {
+  return typeof anchorType === "string" && commentAnchors[featureType].has(anchorType as DiscussionAnchor["type"]);
+}
+
 export function DiscussionsPanel({
   projectId,
   teamId,
@@ -446,7 +458,6 @@ export function DiscussionsPanel({
   fileContext,
   anchorContext,
   onContextSelected,
-  mode = "discussions",
 }: {
   projectId: string;
   teamId: string;
@@ -454,11 +465,10 @@ export function DiscussionsPanel({
   fileContext: { featureType: CollaborationFeatureType; fileId: string; label: string };
   anchorContext?: DiscussionAnchor | null;
   onContextSelected?: (context: CollaborationContext) => void;
-  mode?: "discussions" | "comments";
 }) {
   const [open, setOpen] = useState(false);
-  const activeTab = mode === "comments" ? "comments" : "discussions";
-  const isCommentRail = mode === "comments";
+  const [activeTab, setActiveTab] = useState<"discussions" | "comments">("discussions");
+  const isCommentRail = activeTab === "comments";
   const [discussionScope, setDiscussionScope] = useState<"file" | "project">("file");
   const [screen, setScreen] = useState<"list" | "compose" | "thread">("list");
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
@@ -476,6 +486,7 @@ export function DiscussionsPanel({
   const [editOriginalBody, setEditOriginalBody] = useState("");
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [draft, setDraft] = useState("");
+  const [pendingCommentOpen, setPendingCommentOpen] = useState<PendingCommentOpen | null>(null);
   const [composeAnchor, setComposeAnchor] = useState<DiscussionAnchor | null>(null);
   const [activeCommentAnchor, setActiveCommentAnchor] = useState<DiscussionAnchor | null>(null);
   const messages = messageHistory.messages;
@@ -502,6 +513,14 @@ export function DiscussionsPanel({
     setPendingDelete(null);
     setActiveCommentAnchor(null);
   }, []);
+  const handleTabChange = useCallback((value: string) => {
+    const nextTab = value as "discussions" | "comments";
+    if (nextTab === activeTab) return;
+    clearThreadView();
+    setPendingCommentOpen(null);
+    setDraft("");
+    setActiveTab(nextTab);
+  }, [activeTab, clearThreadView]);
   const resourcePath = activeTab === "comments" ? "comments" : "discussions";
   const endpoint = `/api/projects/${encodeURIComponent(projectId)}/${resourcePath}`;
   const listEndpoint = useMemo(() => requestPath(endpoint, {
@@ -555,7 +574,7 @@ export function DiscussionsPanel({
       fileId: fileContext.fileId,
       anchorType: anchor.type,
       anchorId: anchor.id,
-      anchorLabel: anchor.type === "table" ? "Table" : "Relationship",
+      anchorLabel: anchor.type === "table" ? "Table" : anchor.type === "relationship" ? "Relationship" : anchor.type[0].toUpperCase() + anchor.type.slice(1),
     });
   }, [fileContext.featureType, fileContext.fileId, onContextSelected]);
 
@@ -717,31 +736,42 @@ export function DiscussionsPanel({
   }, [loadThreads, open, refreshActiveDetail]);
 
   useEffect(() => {
-    if (!isCommentRail) return;
     const onCommentRequest = (event: Event) => {
-      const detail = (event as CustomEvent<{ type?: DiscussionAnchor["type"]; id?: string }>).detail;
-      if (fileContext.featureType !== "diagram" || !detail?.type || !detail.id) return;
-      const anchor = { type: detail.type, id: detail.id } satisfies DiscussionAnchor;
-      setActiveCommentAnchor(anchor);
-      setComposeAnchor(anchor);
+      const detail = (event as CustomEvent<{ featureType?: CollaborationFeatureType; fileId?: string; type?: CollaborationAnchorType; id?: string }>).detail;
+      if (!detail?.id || detail.featureType !== fileContext.featureType
+        || (detail.fileId && String(detail.fileId) !== fileContext.fileId)
+        || !isCommentAnchorForFeature(fileContext.featureType, detail.type)) return;
+      setPendingCommentOpen({ type: detail.type, id: detail.id });
       setDraft("");
       setThreadError("");
-      focusAnchor(anchor);
+      setActiveTab("comments");
       setOpen(true);
-      void (async () => {
-        const snapshot = threads.length > 0 ? threads : await loadThreads();
-        const group = groupCommentThreads(snapshot).find((candidate) => candidate.representative.anchorType === anchor.type && candidate.representative.anchorId === anchor.id);
-        if (group) {
-          setScreen("thread");
-          await loadAnchor(anchor, true, false, group.representative.id);
-        } else {
-          setScreen("compose");
-        }
-      })();
     };
-    window.addEventListener("erd-comment-open-request", onCommentRequest);
-    return () => window.removeEventListener("erd-comment-open-request", onCommentRequest);
-  }, [fileContext.featureType, focusAnchor, isCommentRail, loadAnchor, loadThreads, threads]);
+    window.addEventListener("project-comment-open-request", onCommentRequest);
+    return () => window.removeEventListener("project-comment-open-request", onCommentRequest);
+  }, [fileContext.fileId, fileContext.featureType]);
+
+  useEffect(() => {
+    if (activeTab !== "comments" || !pendingCommentOpen) return;
+    let cancelled = false;
+    const anchor = pendingCommentOpen;
+    setActiveCommentAnchor(anchor);
+    setComposeAnchor(anchor);
+    void (async () => {
+      const snapshot = await loadThreads();
+      if (cancelled) return;
+      const group = groupCommentThreads(snapshot).find((candidate) => candidate.representative.anchorType === anchor.type && candidate.representative.anchorId === anchor.id);
+      if (group) {
+        setScreen("thread");
+        setSelectedThreadId(group.representative.id);
+        await loadAnchor(anchor, true, false, group.representative.id);
+      } else {
+        setScreen("compose");
+      }
+      if (!cancelled) setPendingCommentOpen(null);
+    })();
+    return () => { cancelled = true; };
+  }, [activeTab, loadAnchor, loadThreads, pendingCommentOpen]);
 
   const handleOpenChange = (next: boolean) => {
     if (!next && pendingDelete) return;
@@ -761,11 +791,12 @@ export function DiscussionsPanel({
     cancelEditMessage();
     setPendingDelete(null);
     const context = thread.contexts[0] || normalizeContext(thread);
-    const anchor = context?.anchorType && ["table", "relationship"].includes(context.anchorType) && context.anchorId
-      ? { type: context.anchorType as DiscussionAnchor["type"], id: context.anchorId }
-      : thread.anchorType && ["table", "relationship"].includes(thread.anchorType) && thread.anchorId
-        ? { type: thread.anchorType as DiscussionAnchor["type"], id: thread.anchorId }
-        : null;
+    const anchorType = context?.anchorType ?? thread.anchorType;
+    const anchorId = context?.anchorId ?? thread.anchorId;
+    const anchorFeature = context?.featureType ?? thread.featureType ?? fileContext.featureType;
+    const anchor = anchorId && isCommentAnchorForFeature(anchorFeature, anchorType)
+      ? { type: anchorType, id: anchorId }
+      : null;
     if (isCommentRail && anchor) {
       setActiveCommentAnchor(anchor);
       setScreen("thread");
@@ -785,8 +816,10 @@ export function DiscussionsPanel({
   };
 
   const openCommentGroup = async (group: CommentThreadGroup) => {
+    const featureType = group.representative.featureType ?? fileContext.featureType;
     const anchor = group.representative.anchorType && group.representative.anchorId
-      ? { type: group.representative.anchorType as DiscussionAnchor["type"], id: group.representative.anchorId }
+      && isCommentAnchorForFeature(featureType, group.representative.anchorType)
+      ? { type: group.representative.anchorType, id: group.representative.anchorId }
       : null;
     if (!anchor) return;
     await openThread(group.representative);
@@ -795,7 +828,7 @@ export function DiscussionsPanel({
   const startCompose = () => {
     const nextAnchor = activeTab === "comments" ? (isCommentRail ? activeCommentAnchor : anchorContext) ?? null : null;
     if (activeTab === "comments" && !nextAnchor) {
-      toast.info("Select a table or relationship before adding a comment.");
+      toast.info("Select an item on this file before adding a comment.");
       return;
     }
     setComposeAnchor(nextAnchor);
@@ -1070,6 +1103,15 @@ export function DiscussionsPanel({
               </Button>
             </div>
           )}
+        </div>
+
+        <div className="shrink-0 border-b border-border/70 px-3 py-2">
+          <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+            <TabsList className="mx-auto max-sm:min-h-11">
+              <TabsTrigger value="discussions" className="max-sm:min-h-11">Discussions</TabsTrigger>
+              <TabsTrigger value="comments" className="max-sm:min-h-11">Comments</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
 
         {screen === "list" && (

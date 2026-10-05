@@ -7,3 +7,4 @@ export { TrailingNode } from './TrailingNode';
 export { ExecutableCodeBlock } from './ExecutableCodeBlock';
 export { CompanionReference, NOTES_COMPANION_EVENT, openNotesCompanion } from './CompanionReference';
 export type { CompanionType } from './CompanionReference';
+export { NoteCommentAnchor } from './NoteCommentAnchor';

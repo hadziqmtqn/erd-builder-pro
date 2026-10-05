@@ -283,11 +283,11 @@ export function useNotes(isGuest: boolean = false) {
     return false;
   };
 
-  const saveNote = useCallback(async (note: Note) => {
+  const saveNote = useCallback(async (note: Note, options?: { syncPending?: boolean }) => {
     if (!note.id && !note.uid) return false;
     
     try {
-      const isSyncPending = !isGuestCheck();
+      const isSyncPending = options?.syncPending ?? !isGuestCheck();
       const dataToSave = JSON.stringify({ content: note.content, title: note.title, project_id: note.project_id });
       
       if (isGuestCheck()) {

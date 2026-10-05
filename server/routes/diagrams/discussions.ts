@@ -5,6 +5,7 @@ import { publishCloudWorkspaceSync } from "../../lib/cloud-live-sync.js";
 import { prisma } from "../../lib/prisma.js";
 import { currentTeamScope } from "../../lib/team-scope.js";
 import { handleError } from "../../lib/utils.js";
+import { resolveCommentAnchorLabel, type CommentFeature } from "./comment-anchors.js";
 
 const router = Router({ mergeParams: true });
 const notFound = { error: "Resource not found" };
@@ -14,7 +15,6 @@ const HISTORY_PAGE_SIZE = 50;
 const featureTypeSchema = z.enum(["diagram", "note", "drawing", "flowchart"]);
 const anchorTypeSchema = z.enum(["general", "table", "relationship", "block", "shape", "point"]);
 const legacyAnchorTypeSchema = z.enum(["general", "table", "relationship"]);
-const erdCommentAnchorTypeSchema = z.enum(["table", "relationship"]);
 const collaborationContextSchema = z.object({
   type: anchorTypeSchema,
   id: z.string().trim().min(1).max(128).optional(),
@@ -56,7 +56,7 @@ const historyCursorSchema = z.object({
 const resourceKindSchema = z.enum(["discussion", "comment"]);
 
 type ResourceKind = z.infer<typeof resourceKindSchema>;
-type FeatureType = z.infer<typeof featureTypeSchema>;
+type FeatureType = CommentFeature;
 type AnchorType = z.infer<typeof anchorTypeSchema>;
 type ScopedFile = { id: number; uid: string | null; projectId: number | bigint; label: string; featureType: FeatureType };
 type ScopedResource = { projectId: number | bigint; projectName: string; currentFile: ScopedFile | null };
@@ -233,36 +233,6 @@ function notifyTeam(teamId: string): void {
   void publishCloudWorkspaceSync({ teamId, eventType: "cloud.workspace.sync", revision: randomUUID() });
 }
 
-function anchorLabel(type: AnchorType): string {
-  return type === "general" ? "General" : type[0].toUpperCase() + type.slice(1);
-}
-
-async function resolveAnchorLabel(file: ScopedFile | null, type: AnchorType, id: string | undefined, resource: ScopedResource): Promise<string | null> {
-  if (type === "general") return "General";
-  if (!file || !id) return null;
-  if (file.featureType !== "diagram") return `${file.label} · ${anchorLabel(type)}`;
-  if (type !== "table" && type !== "relationship") return null;
-  if (!prisma) return null;
-  if (type === "table") {
-    const rows = await prisma.$queryRawUnsafe<Array<{ label: string }>>(
-      'SELECT "name" AS "label" FROM "entities" WHERE "id" = $1 AND "diagram_id" = $2 LIMIT 1', id, file.id,
-    );
-    return rows[0]?.label || null;
-  }
-  if (type === "relationship") {
-    const rows = await prisma.$queryRawUnsafe<Array<{ label: string }>>(`
-      SELECT COALESCE(NULLIF(r."label", ''), NULLIF(concat_ws(' → ', source."name", target."name"), ''), 'Relationship') AS "label"
-      FROM "relationships" r
-      LEFT JOIN "entities" source ON source."id" = r."source_entity_id"
-      LEFT JOIN "entities" target ON target."id" = r."target_entity_id"
-      WHERE r."id" = $1 AND r."diagram_id" = $2
-      LIMIT 1
-    `, id, file.id);
-    return rows[0]?.label || null;
-  }
-  return `${resource.projectName} · ${anchorLabel(type)}`;
-}
-
 type CreateThreadInput = z.infer<typeof createThreadSchema>;
 
 function contextInput(req: Request, input: CreateThreadInput): { type: AnchorType; id?: string; featureType?: FeatureType; fileId?: string } {
@@ -284,7 +254,7 @@ async function contextForRequest(req: Request, resource: ScopedResource, input: 
   if (kind === "discussion" && (raw.type !== "general" || raw.id)) return null;
   if (kind === "comment" && (!file || raw.type === "general" || !raw.id)) return null;
   if (kind === "discussion" && !isProjectRoute(req) && !file) return null;
-  const label = kind === "discussion" ? file?.label || "General" : await resolveAnchorLabel(file, raw.type, raw.id, resource);
+  const label = kind === "discussion" ? file?.label || "General" : await resolveCommentAnchorLabel(file, raw.type, raw.id);
   if (!label) return null;
   return { file, type: raw.type, id: raw.id, label };
 }
@@ -456,7 +426,7 @@ router.get("/markers", async (req, res) => {
     if (!actor || !prisma || resourceKind(req) !== "comment") { res.status(404).json(notFound); return; }
     const resource = await scopedResource(req, actor);
     const file = resource && contextParams(resource, req);
-    if (!resource || !file || file.featureType !== "diagram") { res.status(404).json(notFound); return; }
+    if (!resource || !file) { res.status(404).json(notFound); return; }
     const scope = [resource.projectId, actor.teamId, file.featureType, file.fileId];
     const markers = await prisma.$queryRawUnsafe<Array<Record<string, any>>>(`
       SELECT t."anchor_type" AS "anchorType", t."anchor_id" AS "anchorId",
@@ -503,8 +473,8 @@ router.get("/anchor", async (req, res) => {
     if (!paging.valid) { res.status(400).json({ error: "Invalid message cursor" }); return; }
     const featureType = featureTypeSchema.safeParse(req.query.feature_type).data;
     const fileId = typeof req.query.file_id === "string" ? req.query.file_id : "";
-    const anchorTypeResult = erdCommentAnchorTypeSchema.safeParse(req.query.anchor_type);
-    const anchorType = anchorTypeResult.success ? anchorTypeResult.data : undefined;
+    const anchorTypeResult = anchorTypeSchema.safeParse(req.query.anchor_type);
+    const anchorType = anchorTypeResult.success && anchorTypeResult.data !== "general" ? anchorTypeResult.data : undefined;
     const anchorId = typeof req.query.anchor_id === "string" ? req.query.anchor_id : "";
     if (!anchorType || !anchorId || anchorId.length > 128) {
       res.status(400).json({ error: "Invalid comment anchor" });
@@ -515,12 +485,14 @@ router.get("/anchor", async (req, res) => {
       res.status(404).json(notFound);
       return;
     }
-    const scopedFile = contextParams(resource, req)!;
-    if (scopedFile.featureType !== featureType) {
+    const scopedFile = resource.currentFile;
+    if (!scopedFile || scopedFile.featureType !== featureType) {
       res.status(404).json(notFound);
       return;
     }
-    const scopedFileId = scopedFile.fileId;
+    const anchorLabel = await resolveCommentAnchorLabel(scopedFile, anchorType, anchorId);
+    if (!anchorLabel) { res.status(404).json(notFound); return; }
+    const scopedFileId = String(scopedFile.id);
     const threads = await prisma.$queryRawUnsafe<Array<Record<string, any>>>(`
       SELECT t."id", t."feature_type" AS "featureType", t."file_id" AS "fileId",
         t."anchor_type" AS "anchorType", t."anchor_id" AS "anchorId", t."anchor_label" AS "anchorLabel",
@@ -555,7 +527,7 @@ router.get("/anchor", async (req, res) => {
       fileId: resource.currentFile?.uid || scopedFileId,
       anchorType,
       anchorId,
-      anchorLabel: threads[0]?.anchorLabel || anchorLabel(anchorType),
+      anchorLabel: threads[0]?.anchorLabel || anchorLabel,
     };
     res.json({ threads, ...history, contexts: [context] });
   } catch (error) {

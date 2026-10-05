@@ -10,6 +10,7 @@ interface DrawingsViewProps {
   deleteDrawing: (id: number | string) => Promise<void>;
   isReadOnly?: boolean;
   isLoading?: boolean;
+  commentsEnabled?: boolean;
 }
 
 export const DrawingsView = React.memo(({
@@ -19,7 +20,8 @@ export const DrawingsView = React.memo(({
   handleDrawingChange,
   deleteDrawing,
   isReadOnly = false,
-  isLoading = false
+  isLoading = false,
+  commentsEnabled = false,
 }: DrawingsViewProps) => {
   // Only show full loader if we are loading AND don't have the drawing data yet.
   const showLoader = isLoading && !activeDrawing;
@@ -45,6 +47,7 @@ export const DrawingsView = React.memo(({
         onChange={handleDrawingChange} 
         onDelete={deleteDrawing} 
         isReadOnly={isReadOnly}
+        commentsEnabled={commentsEnabled}
       />
     </div>
   );

@@ -4,6 +4,9 @@ import { Drawing } from '../types';
 import { compressImage } from '../lib/image-compression';
 import { apiFetch } from '../lib/api';
 import { useWorkspace } from '../providers/WorkspaceContext';
+import DrawingCommentMarkers from '@/components/diagram/DrawingCommentMarkers';
+import { Button } from '@/components/ui/button';
+import { MessageSquare } from 'lucide-react';
 
 interface ExcalidrawEditorProps {
   drawing: Drawing;
@@ -12,11 +15,14 @@ interface ExcalidrawEditorProps {
   onDelete: (id: number) => void;
   isReadOnly?: boolean;
   compact?: boolean;
+  commentsEnabled?: boolean;
 }
 
-export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, isReadOnly = false, compact = false }: ExcalidrawEditorProps) {
+export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, isReadOnly = false, compact = false, commentsEnabled = false }: ExcalidrawEditorProps) {
   const { resolvedTheme } = useWorkspace();
   const [excalidrawAPI, setExcalidrawAPI] = useState<any>(null);
+  const [selectedCommentElementId, setSelectedCommentElementId] = useState<string | null>(null);
+  const commentMarkerContainerRef = useRef<HTMLDivElement>(null);
   const lastDataRef = useRef(drawing.data);
   const isReady = useRef(false);
   const drawingRef = useRef(drawing);
@@ -302,6 +308,12 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
       return;
     }
 
+    const selectedIds = commentsEnabled && !isReadOnly && !compact
+      ? Object.keys(appState?.selectedElementIds || {}).filter(id => appState.selectedElementIds[id] && elements.some(element => element.id === id && element.isDeleted !== true))
+      : [];
+    const nextSelectedId = selectedIds[0] ?? null;
+    setSelectedCommentElementId(current => current === nextSelectedId ? current : nextSelectedId);
+
     // Store the latest scene data for batched emission via rAF
     latestSceneRef.current = { elements: elements as any[], appState, files };
 
@@ -315,7 +327,7 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
         emitLatestScene();
       });
     }
-  }, [emitLatestScene, scheduleFileProcessing]);
+  }, [commentsEnabled, compact, emitLatestScene, isReadOnly, scheduleFileProcessing]);
 
   const uiOptions = useMemo(() => ({
     canvasActions: {
@@ -327,7 +339,7 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
   return (
     <div className="flex flex-col h-full bg-background text-foreground overflow-hidden">
       {/* Excalidraw Area */}
-      <div className="flex-1 relative">
+      <div ref={commentMarkerContainerRef} className="flex-1 relative">
         <Excalidraw
           excalidrawAPI={setExcalidrawAPI}
           initialData={initialData}
@@ -343,8 +355,25 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
               <MainMenu.DefaultItems.ChangeCanvasBackground />
               <MainMenu.DefaultItems.Export />
               <MainMenu.DefaultItems.Help />
-            </MainMenu>}
+          </MainMenu>}
         </Excalidraw>
+        {commentsEnabled && !isReadOnly && !compact && excalidrawAPI && (
+          <DrawingCommentMarkers api={excalidrawAPI} containerRef={commentMarkerContainerRef} />
+        )}
+        {commentsEnabled && !isReadOnly && !compact && selectedCommentElementId && (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="absolute bottom-4 right-4 z-50 shadow-md"
+            onClick={() => window.dispatchEvent(new CustomEvent('project-comment-open-request', {
+              detail: { featureType: 'drawing', type: 'point', id: selectedCommentElementId },
+            }))}
+          >
+            <MessageSquare aria-hidden="true" />
+            Comment
+          </Button>
+        )}
       </div>
     </div>
   );

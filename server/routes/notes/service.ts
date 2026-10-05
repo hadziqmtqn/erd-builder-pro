@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { prisma } from "../../lib/prisma.js";
 import { captureEntityRevisionSafely } from "../../lib/entity-history.js";
 import { isDesktopMode, isLocalPostgres } from "../../lib/config.js";
@@ -109,7 +110,7 @@ export async function getNote(uid: string, userId: string) {
 
 export async function updateNote(
   uid: string, userId: string,
-  data: { title?: string; content?: string; projectId?: number | null; historySource?: "autosave" | "manual" | "mcp" }
+  data: { title?: string; content?: string; projectId?: number | null; historySource?: "autosave" | "manual" | "mcp"; expectedContentHash?: string; expectedContent?: string }
 ) {
   if (!prisma) throw new Error("Database connection not available");
   const existing = await prisma.note.findFirst({
@@ -117,7 +118,13 @@ export async function updateNote(
   });
   if (!existing) return null;
 
-  await captureEntityRevisionSafely({
+  const updatePayload: any = { updatedAt: new Date() };
+  if (isDesktopMode() || isLocalPostgres()) updatePayload.version = (existing.version ?? 0) + 1;
+  if (data.title !== undefined) updatePayload.title = data.title;
+  if (data.content !== undefined) updatePayload.content = data.content;
+  if (data.projectId !== undefined) updatePayload.projectId = data.projectId;
+
+  const revision = () => captureEntityRevisionSafely({
     entityType: "notes",
     entityId: existing.id,
     userId,
@@ -126,11 +133,33 @@ export async function updateNote(
     force: data.historySource === "mcp",
   });
 
-  const updatePayload: any = { updatedAt: new Date() };
-  if (isDesktopMode() || isLocalPostgres()) updatePayload.version = (existing.version ?? 0) + 1;
-  if (data.title !== undefined) updatePayload.title = data.title;
-  if (data.content !== undefined) updatePayload.content = data.content;
-  if (data.projectId !== undefined) updatePayload.projectId = data.projectId;
+  if (data.expectedContentHash !== undefined || data.expectedContent !== undefined) {
+    const matchesExpectedContent = data.expectedContentHash !== undefined
+      ? createHash("sha256").update(existing.content ?? "").digest("hex") === data.expectedContentHash
+      : existing.content === data.expectedContent;
+    if (!matchesExpectedContent) return { success: false, conflict: true };
+    if (existing.content === data.content) {
+      return { success: true, version: existing.version, updatedAt: existing.updatedAt };
+    }
+
+    const result = await prisma.note.updateMany({
+      where: {
+        id: existing.id,
+        content: existing.content,
+        projectId: existing.projectId,
+        userId: existing.userId,
+        isDeleted: existing.isDeleted,
+      },
+      data: updatePayload,
+    });
+    if (result.count !== 1) return { success: false, conflict: true };
+    await revision();
+
+    const updated = await prisma.note.findUnique({ where: { id: existing.id }, select: { version: true, updatedAt: true } });
+    return { success: true, version: updated?.version, updatedAt: updated?.updatedAt };
+  }
+
+  await revision();
 
   const updated = await prisma.note.update({ where: { id: existing.id }, data: updatePayload, select: { version: true, updatedAt: true } });
   return { success: true, version: updated.version, updatedAt: updated.updatedAt };

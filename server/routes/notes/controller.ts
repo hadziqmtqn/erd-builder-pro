@@ -58,7 +58,16 @@ export async function get(req: ExpressRequest, res: ExpressResponse): Promise<vo
 export async function update(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   try {
     const userId = (req as any).user.id;
-    const { title, content, project_id } = req.body;
+    const { title, content, project_id, expectedContentHash, expectedContent } = req.body;
+
+    if ((expectedContentHash !== undefined || expectedContent !== undefined)
+      && (typeof content !== "string"
+        || (expectedContentHash !== undefined && (typeof expectedContentHash !== "string" || !/^[a-f0-9]{64}$/.test(expectedContentHash)))
+        || (expectedContent !== undefined && typeof expectedContent !== "string")
+        || (expectedContentHash !== undefined && expectedContent !== undefined))) {
+      res.status(400).json({ error: "Invalid note content version" });
+      return;
+    }
 
     if (!prisma) { res.status(500).json({ error: "Database connection not available" }); return; }
 
@@ -69,8 +78,11 @@ export async function update(req: ExpressRequest, res: ExpressResponse): Promise
 
     const result = await notesService.updateNote(req.params.uid, userId, {
       title, content, projectId: resolvedProjectId,
+      ...(typeof expectedContentHash === "string" ? { expectedContentHash } : {}),
+      ...(typeof expectedContent === "string" ? { expectedContent } : {}),
     });
     if (!result) { res.status(404).json({ error: "Note not found" }); return; }
+    if ("conflict" in result && result.conflict) { res.status(409).json({ error: "The Note changed. Reload it before adding a Comment." }); return; }
     res.json(result);
   } catch (err: any) {
     handleError(res, err, "Failed to update note");

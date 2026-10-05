@@ -106,6 +106,7 @@ export interface WorkspaceContextValue {
 
   // Content
   handleNoteChange: (content: string) => void;
+  cancelPendingNoteSaves: () => void;
   handleDrawingChange: (data: string) => void;
   handleFlowchartChange: (nodes: any[], edges: any[]) => void;
   handleEntityUpdate: (entity: Entity, options?: { immediate?: boolean }) => Promise<void>;

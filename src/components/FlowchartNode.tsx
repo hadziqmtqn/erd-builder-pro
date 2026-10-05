@@ -1,5 +1,8 @@
 import React, { useState, memo, useMemo } from 'react';
 import { Handle, Position, NodeResizer } from '@xyflow/react';
+import { MessageSquare } from 'lucide-react';
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
+import { FileCommentMarker } from '@/components/diagram/FileCommentMarkers';
 
 export type FlowchartShape = 'rectangle' | 'oval' | 'diamond' | 'parallelogram' | 'database' | 'document' | 'cloud' | 'circle';
 
@@ -10,9 +13,10 @@ export interface FlowchartNodeData extends Record<string, unknown> {
   section?: string;
   groupId?: string;
   code?: string;
+  _commentsEnabled?: boolean;
 }
 
-const FlowchartNode = ({ data, selected }: { data: FlowchartNodeData, selected?: boolean }) => {
+const FlowchartNode = ({ data, id, selected }: { data: FlowchartNodeData, id: string, selected?: boolean }) => {
   const [isHovered, setIsHovered] = useState(false);
   
   const handleClasses = "!w-1.5 !h-1.5 !bg-white !border-none opacity-0 group-hover:opacity-100 transition-opacity z-20 cursor-crosshair";
@@ -166,7 +170,7 @@ const FlowchartNode = ({ data, selected }: { data: FlowchartNodeData, selected?:
     }
   }, [data.color, data.shape, selected]);
 
-  return (
+  const content = (
     <div 
       className={`relative group flex items-center justify-center cursor-pointer transition-all duration-300 hover:scale-[1.02] ${containerClasses}`}
       onMouseEnter={() => setIsHovered(true)}
@@ -191,6 +195,10 @@ const FlowchartNode = ({ data, selected }: { data: FlowchartNodeData, selected?:
       
       {/* Background Shape */}
       {shapeBackground}
+
+      {data._commentsEnabled && <div className="absolute -right-2 -top-2 z-30">
+        <FileCommentMarker anchor={{ type: 'shape', id }} />
+      </div>}
 
       {/* Universal Handles: All 4 directions support both incoming and outgoing connections */}
       <Handle id="top" type="target" position={Position.Top} className={handleClasses} />
@@ -217,6 +225,22 @@ const FlowchartNode = ({ data, selected }: { data: FlowchartNodeData, selected?:
         </div>
       )}
     </div>
+  );
+
+  if (!data._commentsEnabled) return content;
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger className="contents">{content}</ContextMenuTrigger>
+      <ContextMenuContent className="min-w-36" positionerClassName="z-[210]">
+        <ContextMenuItem onClick={() => window.dispatchEvent(new CustomEvent("project-comment-open-request", {
+          detail: { featureType: "flowchart", type: "shape", id },
+        }))}>
+          <MessageSquare aria-hidden="true" />
+          Comment
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 };
 
