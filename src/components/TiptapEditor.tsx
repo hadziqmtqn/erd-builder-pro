@@ -39,6 +39,7 @@ import {
   TrailingNode,
   ExecutableCodeBlock,
   CompanionReference,
+  NoteCommentAnchor,
 } from './editor/extensions';
 
 import { TextBubbleMenu } from './editor/menus/TextBubbleMenu';
@@ -58,6 +59,7 @@ import { ErdFromSqlDialog } from '@/components/ai/ErdFromSqlDialog';
 import { FlowchartFromJsonDialog } from '@/components/ai/FlowchartFromJsonDialog';
 import { CODE_BLOCK_CONVERT_EVENT, type CodeBlockConversionDetail } from './editor/extensions/ExecutableCodeBlock';
 import { openNotesCompanion } from './editor/extensions/CompanionReference';
+import { useNoteCommentAnchor } from '@/hooks/useNoteCommentAnchor';
 
 const MARKDOWN_PATTERNS = [
   /^\s{0,3}#{1,6}\s+\S/m,
@@ -122,9 +124,10 @@ interface TiptapEditorProps {
   noteTitle: string;
   compactLayout?: boolean;
   onRequestCompanion?: (type: 'erd' | 'flowchart' | 'drawing', editor: any, range: { from: number; to: number }) => void;
+  onRequestComment?: (request: { id: string; beforeContent: string; content: string }) => Promise<boolean>;
 }
 
-export function TiptapEditor({ content, onChange, isReadOnly = false, disableAISelection = false, targetProjectId, noteTitle, compactLayout = false, onRequestCompanion }: TiptapEditorProps) {
+export function TiptapEditor({ content, onChange, isReadOnly = false, disableAISelection = false, targetProjectId, noteTitle, compactLayout = false, onRequestCompanion, onRequestComment }: TiptapEditorProps) {
   const { setSelectionText } = useAIAction();
   const {
     diagrams, flowcharts,
@@ -279,6 +282,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
       underline: false,
       codeBlock: false,
     }),
+    NoteCommentAnchor,
     ExecutableCodeBlock,
     CompanionReference,
     TrailingNode,
@@ -649,6 +653,12 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
   // Debounce ref for onChange — prevents cascading re-renders on every keystroke
   const onChangeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const headingUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const { requestCommentAtBlock, requestCommentAtSelection } = useNoteCommentAnchor({
+    editor,
+    onRequestComment,
+    onChangeTimeoutRef,
+    isReadOnly,
+  });
 
   useEffect(() => {
     if (!editor) return;
@@ -672,7 +682,11 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
         : extracted);
     };
 
-    const handleUpdate = () => {
+    const handleUpdate = ({ transaction }: { transaction: any }) => {
+      if (transaction.getMeta('noteCommentAnchor')) {
+        extractHeadings();
+        return;
+      }
       // Debounce onChange to avoid firing on every keystroke.
       // The parent (handleNoteChange) also has its own 400ms debounce for the actual save.
       if (onChangeTimeoutRef.current) {
@@ -787,13 +801,22 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
 
           {editor && !isReadOnly && (
             <>
-              <TextBubbleMenu editor={editor} openLinkDialog={openLinkDialog} showSendToAIButton={disableAISelection} />
+              <TextBubbleMenu
+                editor={editor}
+                openLinkDialog={openLinkDialog}
+                showSendToAIButton={disableAISelection}
+                onRequestComment={onRequestComment ? requestCommentAtSelection : undefined}
+              />
               {isCoarsePointer && <TableBubbleMenu editor={editor} />}
             </>
           )}
 
           <div className="prose prose-sm sm:prose-base dark:prose-invert max-w-none tiptap-editor prose-code:before:content-none prose-code:after:content-none prose-blockquote:before:content-none prose-blockquote:after:content-none">
-            <TableContextMenu editor={editor} disabled={isCoarsePointer !== false}>
+            <TableContextMenu
+              editor={editor}
+              disabled={isCoarsePointer !== false}
+              onRequestComment={onRequestComment ? requestCommentAtBlock : undefined}
+            >
               <EditorContent editor={editor} />
             </TableContextMenu>
           </div>

@@ -146,6 +146,63 @@ describe("Cloud ERD discussions scope", () => {
     expect(String(contextInsert)).not.toContain('"anchor_label"');
   });
 
+  it.each([
+    ["note", "notes"],
+    ["drawing", "drawings"],
+    ["flowchart", "flowcharts"],
+  ] as const)("creates a project Discussion context for %s files", async (featureType, table) => {
+    const fileId = `${featureType}-uid`;
+    mocks.queryRaw.mockImplementation(async (query: string) => {
+      if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
+      if (query.includes(`FROM "${table}" f`)) return [{ id: 42, uid: fileId, projectId: 7, label: "Project file" }];
+      if (query.includes('FROM "users"')) return [{ name: "Member A", email: "member@example.test" }];
+      return [];
+    });
+
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/projects/7/discussions?feature_type=${featureType}&file_id=${fileId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: "Keep this discussion in the same project." }),
+      });
+      expect(response.status).toBe(201);
+      expect(await response.json()).toMatchObject({ kind: "discussion", fileId: "42" });
+    });
+
+    const contextInsert = mocks.executeRaw.mock.calls.find(([query]) => String(query).includes('INSERT INTO "discussion_contexts"'));
+    expect(contextInsert?.[3]).toBe(featureType);
+    expect(contextInsert?.[4]).toBe("42");
+  });
+
+  it.each([
+    ["note", "notes", "block"],
+    ["drawing", "drawings", "point"],
+    ["flowchart", "flowcharts", "shape"],
+  ] as const)("rejects %s Comments until its anchor can be read", async (featureType, table, anchorType) => {
+    const fileId = `${featureType}-uid`;
+    mocks.queryRaw.mockImplementation(async (query: string) => {
+      if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
+      if (query.includes(`FROM "${table}" f`)) return [{ id: 42, uid: fileId, projectId: 7, label: "Project file" }];
+      return [];
+    });
+
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/projects/7/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          body: "This anchor is not readable in the current UI.",
+          context: { featureType, fileId, type: anchorType, id: `${featureType}-anchor` },
+        }),
+      });
+      expect(response.status).toBe(404);
+      expect(await response.json()).toEqual({ error: "Resource not found" });
+    });
+
+    expect(mocks.executeRaw).not.toHaveBeenCalled();
+    expect(mocks.publish).not.toHaveBeenCalled();
+  });
+
   it("accepts the legacy anchor payload while clients roll forward", async () => {
     await withServer(async (url) => {
       const response = await fetch(`${url}/api/diagrams/diagram-uid/discussions`, {
@@ -272,6 +329,55 @@ describe("Cloud ERD discussions scope", () => {
     expect(mocks.publish).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["note", "notes", "block", "80a6d4e7-9730-47ec-bc89-1a477002465f", '<p data-comment-anchor-id="80a6d4e7-9730-47ec-bc89-1a477002465f">Scope</p>', "Scope · Block"],
+    ["drawing", "drawings", "point", "element-1", JSON.stringify({ elements: [{ id: "element-1", type: "text", text: "Architecture" }] }), "Architecture · Architecture"],
+    ["flowchart", "flowcharts", "shape", "node-1", JSON.stringify({ nodes: [{ id: "node-1", data: { label: "Validate request" } }], edges: [] }), "Flow · Validate request"],
+  ] as const)("creates and reads %s Comments for a stored anchor", async (featureType, table, anchorType, anchorId, anchorData, expectedLabel) => {
+    const fileId = `${featureType}-uid`;
+    let threadId = "";
+    mocks.queryRaw.mockImplementation(async (query: string) => {
+      if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
+      if (query.includes(`FROM "${table}" f`)) return [{ id: 42, uid: fileId, projectId: 7, label: featureType === "flowchart" ? "Flow" : featureType === "drawing" ? "Architecture" : "Scope" }];
+      if (query.includes('SELECT "content" FROM "notes"')) return [{ content: anchorData }];
+      if (query.includes('SELECT "data" FROM "drawings"') || query.includes('SELECT "data" FROM "flowcharts"')) return [{ data: anchorData }];
+      if (query.includes('SELECT "id", "status" FROM "comment_threads"')) return [];
+      if (query.includes('SELECT t."id"') && query.includes('FROM "comment_threads" t')) return [{
+        id: threadId, featureType, fileId: "42", anchorType, anchorId, anchorLabel: expectedLabel,
+        status: "open", createdBy: "member-a", lastMessageAt: new Date("2026-10-05T00:00:00.000Z"),
+      }];
+      if (query.includes('FROM "comment_messages" m')) return [];
+      if (query.includes('FROM "users"')) return [{ name: "Member A", email: "member@example.test" }];
+      return [];
+    });
+
+    await withServer(async (url) => {
+      const scope = `?feature_type=${featureType}&file_id=${fileId}`;
+      const createdResponse = await fetch(`${url}/api/projects/7/comments${scope}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: "Review this item.", context: { featureType, fileId, type: anchorType, id: anchorId } }),
+      });
+      expect(createdResponse.status).toBe(201);
+      const created = await createdResponse.json();
+      expect(created.kind).toBe("comment");
+      threadId = created.id;
+
+      const readResponse = await fetch(`${url}/api/projects/7/comments/anchor${scope}&anchor_type=${anchorType}&anchor_id=${anchorId}`);
+      expect(readResponse.status).toBe(200);
+      expect(await readResponse.json()).toMatchObject({
+        contexts: [expect.objectContaining({ featureType, anchorType, anchorId, anchorLabel: expectedLabel })],
+        threads: [expect.objectContaining({ id: threadId })],
+      });
+
+      const markerResponse = await fetch(`${url}/api/projects/7/comments/markers${scope}`);
+      expect(markerResponse.status).toBe(200);
+    });
+
+    expect(mocks.executeRaw).toHaveBeenCalledWith(expect.stringContaining(`UPDATE "${table}" SET "updated_at" = "updated_at"`), 42, 7);
+    expect(mocks.publish).toHaveBeenCalledWith(expect.objectContaining({ teamId: "team-a" }));
+  });
+
   it("locks the file row before checking whether the anchor already has a comment thread", async () => {
     const operations: string[] = [];
     mocks.queryRaw.mockImplementation(async (query: string) => {
@@ -381,6 +487,7 @@ describe("Cloud ERD discussions scope", () => {
     mocks.queryRaw.mockImplementation(async (query: string) => {
       if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
       if (query.includes('FROM "diagrams" f')) return [{ id: 42, uid: "diagram-uid", projectId: 7, label: "ERD" }];
+      if (query.includes('FROM "entities"')) return [{ label: "users" }];
       if (query.includes('FROM "comment_threads" t')) return [{
         id: "thread-1", featureType: "diagram", fileId: "42", anchorType: "table", anchorId: "entity-1", anchorLabel: "users", status: "open",
       }];
@@ -412,6 +519,7 @@ describe("Cloud ERD discussions scope", () => {
     mocks.queryRaw.mockImplementation(async (query: string) => {
       if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
       if (query.includes('FROM "diagrams" f')) return [{ id: 42, uid: "diagram-uid", projectId: 7, label: "ERD" }];
+      if (query.includes('FROM "entities"')) return [{ label: "users" }];
       if (query.includes('FROM "comment_threads" t')) return [{ id: "thread-1", anchorLabel: "users", status: "open" }];
       if (query.includes('FROM "comment_messages" m')) return rows;
       return [];
@@ -495,29 +603,60 @@ describe("Cloud ERD discussions scope", () => {
     expect(values.slice(-3)).toEqual(["open", "resolved", "member-a"]);
   });
 
-  it("loads only the latest page of a Discussion thread", async () => {
-    const rows = Array.from({ length: 51 }, (_, index) => ({
+  it("pages a 100+ message Discussion without gaps or duplicates", async () => {
+    const rows = Array.from({ length: 101 }, (_, index) => ({
       id: `message-${index}`,
       authorId: "member-a",
       authorName: "Member A",
       body: `Message ${index}`,
-      createdAt: new Date((51 - index) * 1000).toISOString(),
+      createdAt: new Date((101 - index) * 1000).toISOString(),
     }));
-    mocks.queryRaw.mockImplementation(async (query: string) => {
+    mocks.queryRaw.mockImplementation(async (query: string, ...values: unknown[]) => {
       if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
       if (query.includes('SELECT t."id"') && query.includes('FROM "discussion_threads" t')) return [{ id: "thread-1" }];
-      if (query.includes('FROM "discussion_messages" m')) return rows;
+      if (query.includes('FROM "discussion_messages" m')) {
+        const before = values[1] instanceof Date ? values[1].getTime() : null;
+        const beforeId = typeof values[2] === "string" ? values[2] : null;
+        return rows.filter((row) => before === null
+          || Date.parse(row.createdAt) < before
+          || (Date.parse(row.createdAt) === before && beforeId !== null && row.id < beforeId)).slice(0, 51);
+      }
+      if (query.includes('FROM "discussion_contexts"')) return [];
       return [];
     });
 
     await withServer(async (url) => {
-      const response = await fetch(`${url}/api/projects/7/discussions/thread-1`);
-      const data = await response.json();
-      expect(response.status).toBe(200);
-      expect(data.messages).toHaveLength(50);
-      expect(data.hasMore).toBe(true);
-      expect(data.nextCursor.id).toBe("message-49");
-      expect(mocks.queryRaw.mock.calls.find(([query]) => String(query).includes('FROM "discussion_messages" m'))?.[0]).toContain("LIMIT 51");
+      const loadPage = async (cursor?: { createdAt: string; id: string }) => {
+        const query = cursor
+          ? `?before_created_at=${encodeURIComponent(cursor.createdAt)}&before_id=${encodeURIComponent(cursor.id)}`
+          : "";
+        const response = await fetch(`${url}/api/projects/7/discussions/thread-1${query}`);
+        expect(response.status).toBe(200);
+        return response.json();
+      };
+
+      const newest = await loadPage();
+      expect(newest.messages).toHaveLength(50);
+      expect(newest.hasMore).toBe(true);
+      expect(newest.nextCursor.id).toBe("message-49");
+
+      const middle = await loadPage(newest.nextCursor);
+      expect(middle.messages).toHaveLength(50);
+      expect(middle.hasMore).toBe(true);
+      expect(middle.nextCursor.id).toBe("message-99");
+
+      const oldest = await loadPage(middle.nextCursor);
+      expect(oldest.messages).toHaveLength(1);
+      expect(oldest.hasMore).toBe(false);
+      expect(oldest.nextCursor).toBeNull();
+
+      const ids = [...newest.messages, ...middle.messages, ...oldest.messages].map((message: any) => message.id);
+      expect(new Set(ids).size).toBe(101);
+      expect(ids.sort((a: string, b: string) => Number(a.slice(8)) - Number(b.slice(8)))).toEqual(
+        Array.from({ length: 101 }, (_, index) => `message-${index}`),
+      );
+      expect(mocks.queryRaw.mock.calls.filter(([query]) => String(query).includes('FROM "discussion_messages" m'))
+        .every(([query]) => String(query).includes("LIMIT 51"))).toBe(true);
     });
   });
 

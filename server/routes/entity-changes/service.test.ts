@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -38,7 +39,7 @@ describe("entity history restore", () => {
   });
 
   it("rejects stale restores and saves safety revisions before a valid restore", async () => {
-    const note = await notes.createNote({
+    await notes.createNote({
       uid: "history-note",
       userId: "history-user",
       title: "Initial",
@@ -71,10 +72,48 @@ describe("entity history restore", () => {
       expectedUpdatedAt: refreshed!.current_updated_at,
     })).resolves.toMatchObject({ status: "ok" });
 
-    const restored = await prisma!.note.findUnique({ where: { id: (note as { id: number }).id } });
+    const restored = await prisma!.note.findUnique({ where: { uid: "history-note" } });
     expect(restored).toMatchObject({ title: "Initial", content: "<p>Initial content</p>", version: 3 });
     const revisions = await history.listHistory("notes", "history-note", "history-user", 100);
     expect(revisions?.revisions.map(item => item.change_type)).toEqual(["restore", "pre_restore", "update"]);
+  });
+
+  it("saves Note anchor markup only when the stored content hash still matches", async () => {
+    await notes.createNote({
+      uid: "comment-anchor-note",
+      userId: "history-user",
+      title: "Anchor test",
+      content: "<p>Base content</p>",
+    });
+    const expectedContentHash = createHash("sha256").update("<p>Base content</p>").digest("hex");
+    const anchorContent = '<p data-comment-anchor-id="80a6d4e7-9730-47ec-bc89-1a477002465f">Base content</p>';
+
+    await expect(notes.updateNote("comment-anchor-note", "history-user", {
+      content: anchorContent,
+      expectedContentHash,
+    })).resolves.toMatchObject({ success: true });
+
+    await expect(notes.updateNote("comment-anchor-note", "history-user", {
+      content: "<p>Stale content</p>",
+      expectedContentHash,
+    })).resolves.toMatchObject({ success: false, conflict: true });
+
+    await expect(prisma!.note.findUnique({ where: { uid: "comment-anchor-note" } })).resolves.toMatchObject({ content: anchorContent });
+
+    await notes.createNote({
+      uid: "comment-anchor-note-fallback",
+      userId: "history-user",
+      title: "Fallback anchor test",
+      content: "Fallback content",
+    });
+    await expect(notes.updateNote("comment-anchor-note-fallback", "history-user", {
+      content: anchorContent,
+      expectedContent: "Fallback content",
+    })).resolves.toMatchObject({ success: true });
+    await expect(notes.updateNote("comment-anchor-note-fallback", "history-user", {
+      content: "Stale content",
+      expectedContent: "Fallback content",
+    })).resolves.toMatchObject({ success: false, conflict: true });
   });
 
   it("restores a proposed history revision only with exact confirmation", async () => {

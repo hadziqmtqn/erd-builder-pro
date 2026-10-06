@@ -3,7 +3,7 @@ import { BubbleMenu } from '@tiptap/react/menus';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useAIAction } from '@/contexts/AIActionContext';
-import { Bold, Italic, Underline as UnderlineIcon, Strikethrough, Code, Link, Palette, Check } from 'lucide-react';
+import { Bold, Italic, Underline as UnderlineIcon, Strikethrough, Code, Link, MessageSquareText, Palette, Check } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { Editor } from '@tiptap/react';
 import { CellSelection } from '@tiptap/pm/tables';
@@ -12,9 +12,10 @@ interface TextBubbleMenuProps {
   editor: Editor;
   openLinkDialog: () => void;
   showSendToAIButton?: boolean;
+  onRequestComment?: () => void;
 }
 
-export function TextBubbleMenu({ editor, openLinkDialog, showSendToAIButton = false }: TextBubbleMenuProps) {
+export function TextBubbleMenu({ editor, openLinkDialog, showSendToAIButton = false, onRequestComment }: TextBubbleMenuProps) {
   const { setSelectionText, setRightPanelMode } = useAIAction();
 
   const handleSendSelectionToAI = () => {
@@ -277,6 +278,30 @@ export function TextBubbleMenu({ editor, openLinkDialog, showSendToAIButton = fa
               />
               <TooltipContent side="top" className="text-[10px] py-1 px-2 font-medium">
                 Send to AI
+              </TooltipContent>
+            </Tooltip>
+          </>
+        )}
+
+        {onRequestComment && (
+          <>
+            <div className="w-[1px] h-4 bg-border mx-0.5 self-center" />
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    aria-label="Comment on block"
+                    onPointerDown={event => event.preventDefault()}
+                    onClick={onRequestComment}
+                    className="h-8 w-8 flex items-center justify-center rounded-sm transition-colors hover:bg-accent text-popover-foreground"
+                  >
+                    <MessageSquareText className="w-4 h-4" />
+                  </button>
+                }
+              />
+              <TooltipContent side="top" className="text-[10px] py-1 px-2 font-medium">
+                Comment on block
               </TooltipContent>
             </Tooltip>
           </>

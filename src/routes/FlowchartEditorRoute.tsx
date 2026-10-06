@@ -1,13 +1,16 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
-import { useParams } from 'react-router-dom';
+import { useOutletContext, useParams } from 'react-router-dom';
 import { GitBranch } from 'lucide-react';
 import { ProjectFileTabs } from '@/components/ProjectFileTabs';
+import { FileCommentMarkersProvider, type FileCommentMarkerConfig } from '@/components/diagram/FileCommentMarkers';
+import type { TeamsState } from '@/hooks/useTeams';
 
 import { FlowchartView } from '@/components/views/FlowchartView';
 
 export function FlowchartEditorRoute() {
   const ctx = useWorkspace();
+  const teamState = useOutletContext<TeamsState>();
   const { id } = useParams<{ id: string }>();
 
   const {
@@ -15,6 +18,22 @@ export function FlowchartEditorRoute() {
     isPublicView, isLoading, isFlowchartItemLoading, handleFlowchartSelect,
     saveFlowchart, triggerDebouncedSync,
   } = ctx;
+  const flowchartProjectId = activeFlowchart?.project_id ?? activeFlowchart?.projectId;
+  const flowchartFileId = activeFlowchart?.uid ?? activeFlowchartId;
+  const flowchartProject = ctx.projects.find((project: any) => String(project.id) === String(flowchartProjectId));
+  const flowchartProjectTeamId = flowchartProject?.team_id ?? flowchartProject?.teamId;
+  const commentsEnabled = Boolean(!isPublicView && !ctx.isGuest && flowchartProjectTeamId && teamState.activeTeamId
+    && String(flowchartProjectTeamId) === String(teamState.activeTeamId));
+  const commentMarkers = useMemo<FileCommentMarkerConfig | null>(() => (
+    commentsEnabled && flowchartProjectId != null && flowchartProjectTeamId && ctx.user?.id && flowchartFileId != null
+      ? {
+          projectId: String(flowchartProjectId),
+          teamId: String(flowchartProjectTeamId),
+          fileId: String(flowchartFileId),
+          featureType: 'flowchart',
+        }
+      : null
+  ), [commentsEnabled, ctx.user?.id, flowchartFileId, flowchartProjectId, flowchartProjectTeamId]);
 
   // Safety net: URL has id but context hasn't synced yet
   const processedUrlRef = useRef(false);
@@ -66,18 +85,25 @@ export function FlowchartEditorRoute() {
     );
   }
 
+  const flowchartView = (
+    <FlowchartView
+      isLoading={isFlowchartItemLoading}
+      activeFlowchartId={activeFlowchartId}
+      activeFlowchart={activeFlowchart}
+      handleFlowchartChange={handleFlowchartChange}
+      isReadOnly={isPublicView}
+      commentsEnabled={commentsEnabled}
+      saveFlowchart={saveFlowchart}
+      triggerDebouncedSync={triggerDebouncedSync}
+    />
+  );
+
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
       <ProjectFileTabs currentView="flowchart" />
-      <FlowchartView
-        isLoading={isFlowchartItemLoading}
-        activeFlowchartId={activeFlowchartId}
-        activeFlowchart={activeFlowchart}
-        handleFlowchartChange={handleFlowchartChange}
-        isReadOnly={isPublicView}
-        saveFlowchart={saveFlowchart}
-        triggerDebouncedSync={triggerDebouncedSync}
-      />
+      {commentMarkers
+        ? <FileCommentMarkersProvider key={[commentMarkers.projectId, commentMarkers.teamId, commentMarkers.featureType, commentMarkers.fileId].join(':')} config={commentMarkers}>{flowchartView}</FileCommentMarkersProvider>
+        : flowchartView}
     </div>
   );
 }

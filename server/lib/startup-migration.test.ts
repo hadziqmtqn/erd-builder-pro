@@ -34,10 +34,17 @@ describe("startup migration helpers", () => {
         );
         CREATE TABLE discussion_messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, body TEXT NOT NULL);
         CREATE TABLE discussion_reads (thread_id TEXT NOT NULL, user_id TEXT NOT NULL, last_read_at TEXT NOT NULL);
+        CREATE TABLE comment_threads (
+          id TEXT PRIMARY KEY,
+          anchor_type TEXT NOT NULL,
+          anchor_id TEXT NOT NULL,
+          anchor_label TEXT NOT NULL
+        );
         INSERT INTO discussion_threads VALUES ('thread-1');
         INSERT INTO discussion_contexts VALUES ('context-1', 'thread-1', 'diagram', '42', 'table', 'entity-1', 'users', CURRENT_TIMESTAMP);
         INSERT INTO discussion_messages VALUES ('message-1', 'thread-1', 'Keep this message');
         INSERT INTO discussion_reads VALUES ('thread-1', 'member-1', '2026-09-30T00:00:00Z');
+        INSERT INTO comment_threads VALUES ('comment-1', 'table', 'entity-1', 'users');
       `);
       const migration = readFileSync(new URL("../../prisma/migrations-sqlite/20260930140000_remove_discussion_context_anchors/migration.sql", import.meta.url), "utf8");
       db.exec(migration);
@@ -51,6 +58,9 @@ describe("startup migration helpers", () => {
       });
       expect(db.prepare("SELECT body FROM discussion_messages WHERE id = ?").get("message-1")).toEqual({ body: "Keep this message" });
       expect(db.prepare("SELECT last_read_at FROM discussion_reads").get()).toEqual({ last_read_at: "2026-09-30T00:00:00Z" });
+      expect(db.prepare("SELECT anchor_type, anchor_id, anchor_label FROM comment_threads WHERE id = ?").get("comment-1")).toEqual({
+        anchor_type: "table", anchor_id: "entity-1", anchor_label: "users",
+      });
     } finally {
       db.close();
     }

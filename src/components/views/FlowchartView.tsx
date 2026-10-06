@@ -57,6 +57,7 @@ interface FlowchartViewProps {
   triggerDebouncedSync?: () => void;
   /** Embedded Notes workspace: keep editing tools, omit file-level integrations. */
   companionMode?: boolean;
+  commentsEnabled?: boolean;
 }
 
 export const FlowchartView = React.memo(({ 
@@ -68,6 +69,7 @@ export const FlowchartView = React.memo(({
   saveFlowchart,
   triggerDebouncedSync,
   companionMode = false,
+  commentsEnabled = false,
 }: FlowchartViewProps) => {
   // ── Hooks FIRST (before any conditional return — Rule of Hooks) ──
   const { registerContentHandler, setActionContextData } = useAIAction();
@@ -512,10 +514,13 @@ export const FlowchartView = React.memo(({
       const isSelected = n.id === selectedNodeId;
       const isGroupMember = selectedGroupNodeIds.has(n.id);
       const selected = isSelected || isGroupMember;
-      
-      return !!n.selected === selected ? n : { ...n, selected };
+      const canComment = commentsEnabled && !isReadOnly && !companionMode;
+
+      return !!n.selected === selected && n.data._commentsEnabled === canComment
+        ? n
+        : { ...n, selected, data: { ...n.data, _commentsEnabled: canComment } };
     });
-  }, [nodes, selectedNodeId, selectedGroupNodeIds]);
+  }, [companionMode, commentsEnabled, isReadOnly, nodes, selectedNodeId, selectedGroupNodeIds]);
 
   const handleNodesChange = useCallback(
     (changes: any[]) => {

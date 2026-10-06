@@ -20,13 +20,14 @@ import { NOTES_COMPANION_EVENT, type NotesCompanionEventDetail } from '@/compone
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useNavigate } from 'react-router-dom';
+import { useNoteCommentPersistence } from '@/hooks/useNoteCommentPersistence';
 
 const NotesCompanionPane = React.lazy(() => import('@/components/notes/NotesCompanionPane').then(module => ({ default: module.NotesCompanionPane })));
 
 interface NotesViewProps {
   activeNoteUid: string | null;
   activeNote: any;
-  saveNote: (note: any) => Promise<boolean | void>;
+  saveNote: (note: any, options?: { syncPending?: boolean }) => Promise<boolean | void>;
   handleNoteChange: (content: string) => void;
   deleteNote: (uid: string) => Promise<void>;
   isReadOnly?: boolean;
@@ -53,6 +54,14 @@ export const NotesView = React.memo(({
   const [companionPanes, setCompanionPanes] = useState<CompanionPane[]>([]);
   const [companionRequest, setCompanionRequest] = useState<{ type: CompanionPane['type']; editor: any; range: { from: number; to: number } } | null>(null);
   const [selectedCompanionUid, setSelectedCompanionUid] = useState('');
+
+  const handleCommentRequest = useNoteCommentPersistence({
+    noteUid: activeNoteUid,
+    note: activeNote,
+    isReadOnly,
+    handleNoteChange,
+    saveNote,
+  });
 
   const companionFiles = React.useMemo(() => {
     const projectId = activeNote?.project_id ?? activeNote?.projectId ?? activeProjectId;
@@ -295,6 +304,7 @@ export const NotesView = React.memo(({
             onDelete={deleteNote}
             isReadOnly={isReadOnly}
             compactLayout={companionPanes.length > 0}
+            onRequestComment={handleCommentRequest}
             onRequestCompanion={(type, editor, range) => {
               setSelectedCompanionUid('');
               setCompanionRequest({ type, editor, range });

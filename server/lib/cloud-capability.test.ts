@@ -14,7 +14,7 @@ const { hasCloudCapability, requireCloudCapability } = await import("./cloud-cap
 
 const entitlement = JSON.stringify({
   revision: "a".repeat(64),
-  capabilities: { erd_builder: true, notes: false },
+  capabilities: { erd_builder: true, notes: false, ai_assistant: false },
   limits: { max_members: 5 },
 });
 
@@ -28,14 +28,15 @@ describe("Cloud feature capability", () => {
   it("reads existing stored grants without a migration", () => {
     expect(hasCloudCapability(entitlement, "active", "erd_builder")).toBe(true);
     expect(hasCloudCapability(entitlement, "active", "notes")).toBe(false);
+    expect(hasCloudCapability(entitlement, "active", "ai_assistant")).toBe(false);
   });
 
-  it("fails closed when an active Team plan does not include the feature", async () => {
+  it.each(["notes", "ai_assistant"])("fails closed when an active Team plan does not include %s", async (capability) => {
     mocks.findUnique.mockResolvedValue({ status: "active", cloudEntitlement: entitlement });
     const res = { status: vi.fn().mockReturnThis(), json: vi.fn() } as any;
     const next = vi.fn();
 
-    await requireCloudCapability("notes")({} as any, res, next);
+    await requireCloudCapability(capability)({} as any, res, next);
 
     expect(res.status).toHaveBeenCalledWith(403);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: "CLOUD_CAPABILITY_REQUIRED" }));

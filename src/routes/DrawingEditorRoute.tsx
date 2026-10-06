@@ -1,19 +1,38 @@
-import React, { Suspense, useEffect, useRef } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef } from 'react';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
-import { useParams } from 'react-router-dom';
+import { useOutletContext, useParams } from 'react-router-dom';
 import { Image } from 'lucide-react';
 import { ProjectFileTabs } from '@/components/ProjectFileTabs';
+import { FileCommentMarkersProvider, type FileCommentMarkerConfig } from '@/components/diagram/FileCommentMarkers';
+import type { TeamsState } from '@/hooks/useTeams';
 
 const DrawingsView = React.lazy(() => import('@/components/views/DrawingsView').then(m => ({ default: m.DrawingsView })));
 
 export function DrawingEditorRoute() {
   const ctx = useWorkspace();
+  const teamState = useOutletContext<TeamsState>();
   const { id } = useParams<{ id: string }>();
 
   const {
     activeDrawing, activeDrawingId, saveDrawing, handleDrawingChange, deleteDrawing,
     isPublicView, isLoading, isDrawingItemLoading, handleDrawingSelect,
   } = ctx;
+  const drawingProjectId = activeDrawing?.project_id ?? activeDrawing?.projectId;
+  const drawingFileId = activeDrawing?.uid ?? activeDrawingId;
+  const drawingProject = ctx.projects.find((project: any) => String(project.id) === String(drawingProjectId));
+  const drawingProjectTeamId = drawingProject?.team_id ?? drawingProject?.teamId;
+  const commentsEnabled = Boolean(!isPublicView && !ctx.isGuest && drawingProjectTeamId && teamState.activeTeamId
+    && String(drawingProjectTeamId) === String(teamState.activeTeamId));
+  const commentMarkers = useMemo<FileCommentMarkerConfig | null>(() => (
+    commentsEnabled && drawingProjectId != null && drawingProjectTeamId && ctx.user?.id && drawingFileId != null
+      ? {
+          projectId: String(drawingProjectId),
+          teamId: String(drawingProjectTeamId),
+          fileId: String(drawingFileId),
+          featureType: 'drawing',
+        }
+      : null
+  ), [commentsEnabled, ctx.user?.id, drawingFileId, drawingProjectId, drawingProjectTeamId]);
 
   // Safety net: URL has id but context hasn't synced yet
   const processedUrlRef = useRef(false);
@@ -65,6 +84,19 @@ export function DrawingEditorRoute() {
     );
   }
 
+  const drawingView = (
+    <DrawingsView
+      isLoading={isDrawingItemLoading}
+      activeDrawingId={isPublicView ? null : activeDrawingId}
+      activeDrawing={activeDrawing}
+      saveDrawing={saveDrawing}
+      handleDrawingChange={handleDrawingChange}
+      deleteDrawing={deleteDrawing}
+      isReadOnly={isPublicView}
+      commentsEnabled={commentsEnabled}
+    />
+  );
+
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
       <ProjectFileTabs currentView="drawings" />
@@ -76,15 +108,9 @@ export function DrawingEditorRoute() {
         </div>
       </div>
     }>
-      <DrawingsView
-        isLoading={isDrawingItemLoading}
-        activeDrawingId={isPublicView ? null : activeDrawingId}
-        activeDrawing={activeDrawing}
-        saveDrawing={saveDrawing}
-        handleDrawingChange={handleDrawingChange}
-        deleteDrawing={deleteDrawing}
-        isReadOnly={isPublicView}
-      />
+      {commentMarkers
+        ? <FileCommentMarkersProvider key={[commentMarkers.projectId, commentMarkers.teamId, commentMarkers.featureType, commentMarkers.fileId].join(':')} config={commentMarkers}>{drawingView}</FileCommentMarkersProvider>
+        : drawingView}
     </Suspense>
     </div>
   );

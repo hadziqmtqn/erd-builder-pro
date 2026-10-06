@@ -6,6 +6,7 @@ import dotenv from "dotenv";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { runWithTeamScope } from "../../lib/team-scope.js";
 
 const fixture = vi.hoisted(() => ({ db: null as any }));
 vi.mock("../../lib/prisma.js", () => ({ get prisma() { return fixture.db; } }));
@@ -22,6 +23,10 @@ const actorId = randomUUID(), sourceId = randomUUID(), targetId = randomUUID();
 let pool: pg.Pool;
 let created = false;
 let recovery: typeof import("./recovery.js");
+let notes: typeof import("../notes/service.js");
+let diagrams: typeof import("../diagrams/service.js");
+let drawings: typeof import("../drawings/service.js");
+let flowcharts: typeof import("../flowcharts/service.js");
 let project: any, diagram: any, note: any, drawing: any, flowchart: any;
 
 describe.skipIf(!enabled)("SH-001 recovery copy in an isolated PostgreSQL schema", () => {
@@ -42,6 +47,12 @@ describe.skipIf(!enabled)("SH-001 recovery copy in an isolated PostgreSQL schema
     const { PrismaClient } = require("@erdbpro/prisma-pg-local");
     fixture.db = new PrismaClient({ adapter: new PrismaPg({ connectionString: url.toString(), max: 4 }, { schema }) });
     recovery = await import("./recovery.js");
+    [notes, diagrams, drawings, flowcharts] = await Promise.all([
+      import("../notes/service.js"),
+      import("../diagrams/service.js"),
+      import("../drawings/service.js"),
+      import("../flowcharts/service.js"),
+    ]);
   }, 30000);
 
   beforeEach(async () => {
@@ -76,6 +87,9 @@ describe.skipIf(!enabled)("SH-001 recovery copy in an isolated PostgreSQL schema
 
   it("copies all four file types, remaps ERD relations, retains the source and replays safely", async () => {
     const db = fixture.db;
+    const recipientId = randomUUID();
+    await db.user.create({ data: { id: recipientId, email: "recipient@example.test", password: "fixture-only" } });
+    await db.teamMember.create({ data: { id: randomUUID(), teamId: targetId, userId: recipientId, role: "staff", status: "active", provisioningSignature: "verified" } });
     const before = await db.diagram.findUnique({ where: { id: diagram.id }, include: { entities: { include: { columns: true } }, relationships: true } });
     const input = request();
     const result = await recovery.recoverFiles(sourceId, actorId, true, input);
@@ -100,10 +114,20 @@ describe.skipIf(!enabled)("SH-001 recovery copy in an isolated PostgreSQL schema
     expect(await db.drawing.count()).toBe(2);
     expect((await db.drawing.findUnique({ where: { id: result.items.find((item: any) => item.type === "drawings").copiedId } })).data).not.toContain("source-secret");
     expect(await db.flowchart.count()).toBe(2);
+    const copiedUids = Object.fromEntries(result.items.map((item: any) => [item.type, item.copiedUid]));
+    const recipientReads = await runWithTeamScope({ mode: "team", teamId: targetId }, () => Promise.all([
+      notes.getNote(copiedUids.notes, recipientId),
+      diagrams.getDiagram(copiedUids.erd, recipientId),
+      drawings.getDrawing(copiedUids.drawings, recipientId),
+      flowcharts.getFlowchart(copiedUids.flowchart, recipientId),
+    ]));
+    expect(recipientReads.every(Boolean)).toBe(true);
+    await expect(runWithTeamScope({ mode: "team", teamId: sourceId }, () => notes.getNote(copiedUids.notes, recipientId))).resolves.toBeNull();
+    await expect(runWithTeamScope({ mode: "personal", teamId: null }, () => notes.getNote(copiedUids.notes, recipientId))).resolves.toBeNull();
     expect(await recovery.recoverFiles(sourceId, actorId, true, input)).toEqual(result);
     expect(await db.project.count()).toBe(2);
     expect(await db.team.count()).toBe(2);
-    expect(await db.teamMember.count()).toBe(0);
+    expect(await db.teamMember.count()).toBe(1);
     expect(await db.team.findUnique({ where: { id: sourceId } })).toMatchObject({ status: "quarantined", provisioningSignature: "invalid" });
     const inventory = await recovery.recoveryInventory(sourceId, true);
     expect(inventory.files.every((file: any) => file.recovery?.teamName === "Active")).toBe(true);
