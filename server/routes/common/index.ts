@@ -26,7 +26,7 @@ const router = Router();
 
 router.get("/trash", authenticate, ctrl.getTrash);
 router.get("/test-r2", authenticate, ctrl.testR2);
-router.post("/upload", authenticate, validate(uploadSchema), upload.single("image"), ctrl.uploadFile);
+router.post("/upload", authenticate, upload.single("image"), validate(uploadSchema), ctrl.uploadFile);
 router.delete("/upload", authenticate, validate(deleteUploadSchema), ctrl.deleteFile);
 
 // ── Private storage access endpoints ──
