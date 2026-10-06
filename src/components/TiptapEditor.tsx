@@ -251,7 +251,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
         }
       } catch (error) {
         console.error('Error uploading image:', error);
-        alert('Failed to upload image: ' + (error as Error).message);
+        toast.error(`Failed to upload image: ${error instanceof Error ? error.message : 'Upload failed'}`);
       }
     }
     if (fileInputRef.current) {
