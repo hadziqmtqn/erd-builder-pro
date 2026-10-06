@@ -7,6 +7,7 @@ import { useWorkspace } from '../providers/WorkspaceContext';
 import DrawingCommentMarkers from '@/components/diagram/DrawingCommentMarkers';
 import { Button } from '@/components/ui/button';
 import { MessageSquare } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface ExcalidrawEditorProps {
   drawing: Drawing;
@@ -175,20 +176,21 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
           credentials: 'include',
         });
 
-        if (uploadRes.ok) {
-          const result = await uploadRes.json();
-          if (result.url) {
-            // Sanitize URL - remove escaped newlines and trim whitespace
-            const cleanUrl = result.url.replace(/\\n/g, '').replace(/\\r/g, '').trim();
-            fileUrlMap.current.set(id, cleanUrl); // Cache the R2 URL
-            updatedFiles.push({
-              id,
-              dataURL: cleanUrl,
-              mimeType: fileData.mimeType,
-              created: fileData.created,
-              lastRetrieved: Date.now(),
-            });
-          }
+        const result = await uploadRes.json().catch(() => ({}));
+        if (!uploadRes.ok) {
+          throw new Error(result.error || 'Upload failed');
+        }
+        if (result.url) {
+          // Sanitize URL - remove escaped newlines and trim whitespace
+          const cleanUrl = result.url.replace(/\\n/g, '').replace(/\\r/g, '').trim();
+          fileUrlMap.current.set(id, cleanUrl); // Cache the R2 URL
+          updatedFiles.push({
+            id,
+            dataURL: cleanUrl,
+            mimeType: fileData.mimeType,
+            created: fileData.created,
+            lastRetrieved: Date.now(),
+          });
         }
       }
 
@@ -197,6 +199,7 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
       // and let the next handleChange call sanitize the data.
     } catch (err) {
       console.error("Failed to process Excalidraw files for R2:", err);
+      toast.error(`Failed to upload image: ${err instanceof Error ? err.message : 'Upload failed'}`);
     } finally {
       // Always reset the processing flag
       isProcessingFiles.current = false;

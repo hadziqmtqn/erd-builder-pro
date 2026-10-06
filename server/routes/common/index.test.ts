@@ -34,8 +34,8 @@ it("parses multipart upload fields before validation", async () => {
   try {
     for (const feature of ["notes", "drawings"]) {
       const form = new FormData();
-      form.append("feature", feature);
       form.append("image", new Blob(["synthetic fixture"], { type: "image/png" }), `${feature}.png`);
+      form.append("feature", feature);
 
       const response = await fetch(`http://127.0.0.1:${address.port}/api/upload`, {
         method: "POST",
