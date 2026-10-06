@@ -861,6 +861,7 @@ function AppLayoutInner() {
           onOpenFeedback={() => setIsFeedbackOpen(true)}
           teams={teamState.teams}
           teamsAvailable={teamState.isAvailable}
+          licenseRequired={teamState.licenseRequired}
           activeTeamId={teamState.activeTeamId}
           onTeamsRefresh={() => { void teamState.fetchTeams(); }}
           onTeamSelect={handleTeamSelect}

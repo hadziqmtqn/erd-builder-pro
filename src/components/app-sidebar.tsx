@@ -102,6 +102,7 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onOpenFeedback: () => void;
   teams: SwitcherTeam[];
   teamsAvailable: boolean;
+  licenseRequired: boolean;
   activeTeamId: string | null;
   onTeamsRefresh: () => void;
   onTeamSelect: (teamId: string | null) => void;
@@ -135,6 +136,7 @@ export const AppSidebar = React.memo(({
   onOpenFeedback,
   teams,
   teamsAvailable,
+  licenseRequired,
   activeTeamId,
   onTeamsRefresh,
   onTeamSelect,
@@ -155,7 +157,8 @@ export const AppSidebar = React.memo(({
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchFilter, setSearchFilter] = useState('all');
   const showDbClient = isInstalledApp();
-  const isSelfHosted = !showDbClient && (user?.isSuperAdmin !== undefined || user?.is_super_admin !== undefined);
+  const isSelfHosted = !showDbClient && !user?.isSso && (user?.isSuperAdmin !== undefined || user?.is_super_admin !== undefined);
+  const showSponsor = user?.isSso === true || (isSelfHosted && licenseRequired);
   const activeTeam = teams.find((team) => team.id === activeTeamId) || null;
   const cloudTeamCapabilities = user?.isSso && activeTeamId && teamsAvailable
     ? activeTeam?.capabilities || {}
@@ -453,7 +456,7 @@ export const AppSidebar = React.memo(({
       </SidebarContent>
       <SidebarFooter>
         {/* Sponsor carousel — auto-rotate */}
-        <SponsorCarousel isCollapsed={isCollapsed} />
+        {showSponsor && <SponsorCarousel isCollapsed={isCollapsed} />}
         <NavUser 
           user={user} 
           onLogout={onLogout}

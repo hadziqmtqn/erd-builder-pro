@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { authenticate } from "../lib/middleware.js";
-import { SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL, useLocalAuth } from "../lib/config.js";
+import { isSsoAuthMode, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL, useLocalAuth } from "../lib/config.js";
 import { logger } from "../lib/logger.js";
 import { getLocalMcpOAuthProvider } from "../mcp/local-oauth.js";
 
@@ -21,7 +21,7 @@ async function proxyConsent(req: Request, res: Response, action?: "approve" | "d
   const localProvider = getLocalMcpOAuthProvider();
   if (localProvider) {
     try {
-      if (!req.headers.authorization?.startsWith("Bearer ")) {
+      if (!req.headers.authorization?.startsWith("Bearer ") && !isSsoAuthMode()) {
         res.status(401).json({ error: "Bearer authentication required" });
         return;
       }

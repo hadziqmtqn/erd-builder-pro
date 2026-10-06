@@ -7,6 +7,10 @@ import { runWithTeamScope } from "./team-scope.js";
 
 /** Extract token: Bearer header first (explicit auth), cookie (implicit), query param (fallback). */
 function extractToken(req: ExpressRequest): string | undefined {
+  // SSO sessions are issued as HttpOnly cookies. Ignore stale local-auth
+  // bearer/query tokens when a deployment switches from password auth to SSO.
+  if (isSsoAuthMode()) return req.cookies.token as string | undefined;
+
   // Bearer token from Authorization header — explicit, always fresh
   const authHeader = req.headers.authorization as string | undefined;
   if (authHeader?.startsWith("Bearer ")) {
