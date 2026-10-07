@@ -28,7 +28,7 @@ const { authenticate, authenticateIfPresent, rejectInSsoMode } = await import(".
 const { requireAdmin } = await import("./security.js");
 
 describe("SSO authorization", () => {
-  it("keeps guest AI requests optional but authenticates a supplied token", async () => {
+  it("keeps guest AI requests optional but authenticates a supplied SSO cookie", async () => {
     const guestNext = vi.fn();
     const guestRes = { status: vi.fn().mockReturnThis(), json: vi.fn() } as any;
     await authenticateIfPresent({ headers: {}, cookies: {}, query: {} } as any, guestRes, guestNext);
@@ -39,7 +39,7 @@ describe("SSO authorization", () => {
     mocks.canUserLogin.mockResolvedValue({ allowed: true });
     const next = vi.fn();
     const res = { status: vi.fn().mockReturnThis(), json: vi.fn() } as any;
-    const req = { headers: { authorization: "Bearer token" }, cookies: {}, query: {}, method: "POST", originalUrl: "/api/ai/proxy" } as any;
+    const req = { headers: {}, cookies: { token: "token" }, query: {}, method: "POST", originalUrl: "/api/ai/proxy" } as any;
 
     await authenticateIfPresent(req, res, next);
 
@@ -71,8 +71,8 @@ describe("SSO authorization", () => {
     mocks.canUserLogin.mockResolvedValue({ allowed: true });
     mocks.canAccessTeam.mockResolvedValue(true);
     const req = {
-      headers: { authorization: "Bearer token" },
-      cookies: {},
+      headers: {},
+      cookies: { token: "token" },
       query: {},
       method: "GET",
       originalUrl: "/api/notes",
@@ -93,8 +93,8 @@ describe("SSO authorization", () => {
     mocks.canUserLogin.mockResolvedValue({ allowed: true });
     mocks.canAccessTeam.mockResolvedValue(false);
     const req = {
-      headers: { authorization: "Bearer token", "x-team-id": "revoked-team" },
-      cookies: {},
+      headers: { "x-team-id": "revoked-team" },
+      cookies: { token: "token" },
       query: {},
       method: "GET",
       originalUrl: "/api/notes",
