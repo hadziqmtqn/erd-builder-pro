@@ -104,7 +104,7 @@ export function WorkspaceSidebarPanel({
   return (
     <>
       <Sidebar collapsible="none" className="min-w-0 flex-1">
-        <SidebarHeader className="gap-3.5 border-b border-sidebar-border p-4">
+        <SidebarHeader className="gap-3.5 border-b border-sidebar-border px-2 py-4">
           <div className="flex w-full items-center gap-2">
             <div className="min-w-0 flex-1">
               <TeamSwitcher
@@ -143,7 +143,7 @@ export function WorkspaceSidebarPanel({
         </SidebarHeader>
 
         <SidebarContent>
-          <SidebarGroup className="px-0">
+          <SidebarGroup className="px-2">
             <SidebarGroupLabel>Projects</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
