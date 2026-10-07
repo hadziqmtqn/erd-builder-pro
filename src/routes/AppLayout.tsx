@@ -52,14 +52,6 @@ function remapHandle(handle: string | null | undefined, colIdMap: Map<string, st
 }
 
 /** Remap column ID in handle string: "col-xxx-source" → "col-yyy-source" */
-function remapCol(handle: string | null | undefined, colMap: Map<string, string>): string | null | undefined {
-  if (!handle) return handle;
-  return handle.replace(/^(col-)([\w-]+)(-source|-target)(-[lr])?$/, (_, pre, id, suffix, lr) => {
-    const mapped = colMap.get(id);
-    return mapped ? `${pre}${mapped}${suffix}${lr || ''}` : _;
-  });
-}
-
 import { AIActionProvider, useAIAction } from '@/contexts/AIActionContext';
 import { RightChatSidebar } from '@/components/ai/RightChatSidebar';
 import { AIChatPanel } from '@/components/ai/AIChatPanel';
@@ -69,8 +61,10 @@ import PropertiesPanel from '@/components/PropertiesPanel';
 import { VersionHistoryPanel, type HistoryEntityType } from '@/components/history/VersionHistoryPanel';
 import { RepositoryPanel } from '@/components/repository/RepositoryPanel';
 import { DiscussionsPanel, type CollaborationContext, type CollaborationFeatureType } from '@/components/diagram/DiscussionsPanel';
-import { applyDBMLMetadata, dbmlToERD, erdToDBML, findMatchingCanvasEdge } from '@/lib/dbml-converter';
+import { dbmlToERD, erdToDBML } from '@/lib/dbml-converter';
 import { closeRepositoryPreview, ERD_REPOSITORY_APPLIED_EVENT } from '@/lib/repository-preview';
+import { mergeDBMLCanvas } from '@/lib/dbml-canvas-merge';
+import { isRightPanelAvailable } from '@/lib/right-panel-availability';
 import { AIChatToggle } from '@/components/ai/AIChatToggle';
 import { getDbClientCache, setDbClientCache } from '@/hooks/useDataViewerHelpers';
 import { isFileCreator } from '@/lib/fileOwnership';
@@ -131,7 +125,6 @@ function AppLayoutInner() {
   const dbmlContentRef = useRef('');
   const dbmlDraftDirtyRef = useRef(false);
   const dbmlSourceKeyRef = useRef<string | null>(null);
-  const dbmlPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { rightPanelMode, setRightPanelMode, pendingPrompt, clearPrompt, pendingAction, clearPendingAction } = useAIAction();
 
   const setLocalDbmlContent = useCallback((content: string) => {
@@ -407,61 +400,34 @@ function AppLayoutInner() {
     try {
       const legacyDbml = localStorage.getItem(dbmlStorageKey) || '';
       setLocalDbmlContent(legacyDbml);
-      if (legacyDbml.trim()) {
-        dbmlPersistTimerRef.current && clearTimeout(dbmlPersistTimerRef.current);
-        dbmlPersistTimerRef.current = setTimeout(async () => {
-          if (!isValidDBMLSource(legacyDbml)) return;
-          await saveDiagram(nodes, edges, viewportRef?.current || { x: 0, y: 0, zoom: 1 }, { dbmlSource: legacyDbml });
-          if (!isGuest) triggerDebouncedSync();
-        }, 300);
-      }
     } catch {
       setLocalDbmlContent('');
     }
-  }, [dbmlStorageKey, activeDiagramDbmlSource, saveDiagram, viewportRef, isGuest, triggerDebouncedSync, setLocalDbmlContent]);
+  }, [dbmlStorageKey, activeDiagramDbmlSource, setLocalDbmlContent]);
 
   const handleDBMLContentChange = useCallback((content: string, persistNow = false) => {
     setLocalDbmlContent(content);
     dbmlDraftDirtyRef.current = !persistNow;
-    dbmlPersistTimerRef.current && clearTimeout(dbmlPersistTimerRef.current);
-
-    const persist = async () => {
-      if (!isValidDBMLSource(content)) return;
-      const metadataNodes = applyDBMLMetadata(nodes, content);
-      setNodes(metadataNodes);
-      await saveDiagram(metadataNodes, edges, viewportRef?.current || { x: 0, y: 0, zoom: 1 }, { dbmlSource: content });
-      if (dbmlContentRef.current === content) dbmlDraftDirtyRef.current = false;
+    if (!persistNow || !isValidDBMLSource(content)) return;
+    void saveDiagram(nodes, edges, viewportRef.current, { dbmlSource: content }).then(() => {
       if (!isGuest) triggerDebouncedSync();
-    };
-
-    if (persistNow) {
-      void persist();
-      return;
-    }
-
-    dbmlPersistTimerRef.current = setTimeout(() => { void persist(); }, 800);
+    });
   }, [saveDiagram, nodes, edges, viewportRef, isGuest, triggerDebouncedSync, setLocalDbmlContent]);
 
-  useEffect(() => () => {
-    if (dbmlPersistTimerRef.current) clearTimeout(dbmlPersistTimerRef.current);
-  }, []);
 
   const openDBMLPanel = useCallback(() => {
     if ((activeDiagram?.source_type ?? activeDiagram?.sourceType) === 'production_db') return;
     if (!isActiveDiagramContext) return;
     setRightPanelMode('dbml');
-    if (dbmlContent.trim()) {
-      void handleDBMLContentChange(dbmlContent, true);
-      return;
-    }
+    if (dbmlContent.trim()) return;
     if (nodes.length === 0) return;
     try {
       const dbml = erdToDBML(nodes, edges);
-      if (dbml.trim()) handleDBMLContentChange(dbml, true);
+      if (dbml.trim()) setLocalDbmlContent(dbml);
     } catch {
-      // The panel still opens; the regular sync effect will retry after canvas settles.
+      // Conversion is retried once the canvas is ready.
     }
-  }, [activeDiagram, isActiveDiagramContext, setRightPanelMode, dbmlContent, nodes, edges, handleDBMLContentChange]);
+  }, [activeDiagram, isActiveDiagramContext, setRightPanelMode, dbmlContent, nodes, edges, setLocalDbmlContent]);
 
   // ── Generate DBML from canvas on the first panel open. Keep the source text
   // while switching panels: it contains DBML-only constructs (Enum, Note and
@@ -470,10 +436,10 @@ function AppLayoutInner() {
     if (rightPanelMode === 'dbml' && isActiveDiagramContext && nodes.length > 0 && !dbmlContent.trim()) {
       try {
         const dbml = erdToDBML(nodes, edges);
-        if (dbml.trim()) handleDBMLContentChange(dbml, true);
+        if (dbml.trim()) setLocalDbmlContent(dbml);
       } catch { /* ignore conversion errors */ }
     }
-  }, [rightPanelMode, isActiveDiagramContext, nodes, edges, dbmlContent, handleDBMLContentChange]);
+  }, [rightPanelMode, isActiveDiagramContext, nodes, edges, dbmlContent, setLocalDbmlContent]);
 
   // ─── Build entity context text from workspace data ───
   const entityContextText = useMemo(() => {
@@ -649,8 +615,13 @@ function AppLayoutInner() {
     return () => window.removeEventListener('keydown', handleKeydown);
   }, [setIsSettingsOpen]);
 
-  const rightPanelOpen = rightPanelMode !== 'closed'
-    && (rightPanelMode !== 'repository' || (isActiveDiagramContext && !activeDiagramIsProductionDb));
+  const rightPanelOpen = isRightPanelAvailable(rightPanelMode, {
+    aiChat: showAIChat,
+    dbml: showDBMLPanel,
+    diagramProperties: isActiveDiagramContext && !activeDiagramIsProductionDb,
+    history: Boolean(historyEntityType && entityContext),
+    repository: isActiveDiagramContext && !activeDiagramIsProductionDb,
+  });
 
   const handleSidebarViewChange = useCallback((...args: Parameters<typeof handleViewChange>) => {
     if (rightPanelMode === 'repository') {
@@ -671,112 +642,35 @@ function AppLayoutInner() {
 
   // ── DBML → ERD callback ──
   const handleDBMLApply = useCallback((newNodes: Node<Entity>[], newEdges: Edge[], source: string) => {
-    const nodeIdMap = new Map<string, string>();
-    // Deep clone edges so we can mutate handles for column remapping
-    const clonedEdges = newEdges.map(e => ({ ...e }));
-    const mergedNodes = newNodes.map(n => {
-      const existing = nodes.find(cur => cur.data.name === n.data.name);
-      if (existing) {
-        nodeIdMap.set(n.id, existing.id);
-        // Remap parser column IDs → canvas column IDs by name match
-        const colMap = new Map<string, string>();
-        n.data.columns = n.data.columns.map(nc => {
-          const ec = existing.data.columns.find(c => c.name === nc.name);
-          if (ec) {
-            colMap.set(nc.id, ec.id);
-            // Preserve enum_values and ENUM type from canvas
-            // (parser loses enum_values during DBML→SQL→ERD roundtrip)
-            return { ...nc, id: ec.id,
-              enum_name: nc.enum_name || ec.enum_name,
-              enum_values: nc.enum_values || ec.enum_values,
-              comment: nc.comment || ec.comment,
-              max_length: nc.max_length ?? ec.max_length,
-              numeric_precision: nc.numeric_precision ?? ec.numeric_precision,
-              numeric_scale: nc.numeric_scale ?? ec.numeric_scale,
-              type: (ec.type.toUpperCase() === 'ENUM' && ec.enum_values && nc.type.toUpperCase() !== 'ENUM')
-                ? ec.type : nc.type };
-          }
-          return nc;
-        });
-        n.data.constraints = (n.data.constraints || []).map(constraint => ({
-          ...constraint,
-          entity_id: existing.id,
-          column_ids: (constraint.column_ids || []).map(id => colMap.get(id) || id),
-        }));
-        n.data.indexes = (n.data.indexes || []).map(index => ({
-          ...index,
-          entity_id: existing.id,
-          column_ids: (index.column_ids || []).map(id => colMap.get(id) || id),
-        }));
-        // Remap edge handles to use canvas column IDs
-        for (const e of clonedEdges) {
-          if (e.source === n.id) e.sourceHandle = remapCol(e.sourceHandle, colMap);
-          if (e.target === n.id) e.targetHandle = remapCol(e.targetHandle, colMap);
-        }
-        return { ...n, id: existing.id, position: existing.position,
-          data: { ...n.data, id: existing.data.id, x: existing.data.x, y: existing.data.y,
-            color: existing.data.color, collapsed: existing.data.collapsed,
-            hidden_columns: existing.data.hidden_columns, note: existing.data.note } };
-      }
-      // New table: column IDs are already UUIDs from parser — pass through
-      return n;
-    });
-
-    // Remap edge node IDs. Existing canvas relations keep their user-chosen
-    // handle sides; DBML only supplies the schema, not edge placement.
-    const mergedEdges = clonedEdges.map(e => {
-      const srcId = nodeIdMap.get(e.source) || e.source;
-      const tgtId = nodeIdMap.get(e.target) || e.target;
-      const srcColId = e.sourceHandle?.replace(/^col-/, '').replace(/-(source|target)(-[lr])?$/, '') || '';
-      const tgtColId = e.targetHandle?.replace(/^col-/, '').replace(/-(source|target)(-[lr])?$/, '') || '';
-      const existingEdge = findMatchingCanvasEdge(edges, srcId, tgtId, e.sourceHandle, e.targetHandle);
-      if (existingEdge) {
-        return { ...e, id: existingEdge.id, source: srcId, target: tgtId,
-          sourceHandle: existingEdge.sourceHandle, targetHandle: existingEdge.targetHandle };
-      }
-
-      const srcNode = mergedNodes.find(n => n.id === srcId);
-      const tgtNode = mergedNodes.find(n => n.id === tgtId);
-      const sx = srcNode?.position.x ?? 0;
-      const tx = tgtNode?.position.x ?? 0;
-      const srcSuffix = sx < tx ? 'source' : 'source-l';
-      const tgtSuffix = sx < tx ? 'target' : 'target-r';
-
-      return {
-        ...e,
-        source: srcId,
-        target: tgtId,
-        sourceHandle: srcColId ? `col-${srcColId}-${srcSuffix}` : undefined,
-        targetHandle: tgtColId ? `col-${tgtColId}-${tgtSuffix}` : undefined,
-      };
-    });
+    const { nodes: mergedNodes, edges: mergedEdges } = mergeDBMLCanvas(newNodes, newEdges, nodes, edges);
 
     // Compare by table structure + column properties (parser generates new UUIDs)
     const nodesSame = mergedNodes.length === nodes.length &&
       mergedNodes.every((n, i) => {
-        const cur = nodes[i];
+        const cur = nodes.find(node => node.id === n.id);
         if (!cur || n.data.name !== cur.data.name) return false;
         return entitySchemaKey(n.data) === entitySchemaKey(cur.data);
       });
-    // Compare edges by sorted canonical keys (table names, not UUIDs)
-    const edgeKey = (e: Edge, nodeList: Node<Entity>[]) => {
-      const s = nodeList.find(n => n.id === e.source)?.data.name || '';
-      const t = nodeList.find(n => n.id === e.target)?.data.name || '';
-      return `${s}>${t}`;
-    };
-    const sortedNew = [...mergedEdges].sort((a, b) => edgeKey(a, mergedNodes).localeCompare(edgeKey(b, mergedNodes)));
-    const sortedCur = [...edges].sort((a, b) => edgeKey(a, nodes).localeCompare(edgeKey(b, nodes)));
-    const edgesSame = sortedNew.length === sortedCur.length &&
-      sortedNew.every((e, i) => edgeKey(e, mergedNodes) === edgeKey(sortedCur[i], nodes));
+    const edgeKey = (edge: Edge) => JSON.stringify({
+      source: edge.source, target: edge.target,
+      sourceHandle: edge.sourceHandle, targetHandle: edge.targetHandle,
+      label: edge.label, data: edge.data,
+    });
+    const sortedNew = mergedEdges.map(edgeKey).sort();
+    const sortedCur = edges.map(edgeKey).sort();
+    const edgesSame = JSON.stringify(sortedNew) === JSON.stringify(sortedCur);
 
+    if (nodesSame && edgesSame) {
+      void saveDiagram(nodes, edges, viewportRef.current, { dbmlSource: source }).then(() => triggerDebouncedSync());
+      dbmlDraftDirtyRef.current = false;
+      return;
+    }
     takeSnapshot?.(nodes, edges);
     setNodes(mergedNodes);
     setEdges(mergedEdges);
-    // Always update React state (fixes handles/IDs), but only save if data changed
-    if (!nodesSame || !edgesSame) {
-      saveDiagram?.(mergedNodes, mergedEdges, viewportRef?.current, { dbmlSource: source })
-        ?.then(() => triggerDebouncedSync?.());
-    }
+    dbmlDraftDirtyRef.current = false;
+    saveDiagram?.(mergedNodes, mergedEdges, viewportRef?.current, { dbmlSource: source })
+      ?.then(() => triggerDebouncedSync?.());
   }, [nodes, edges, setNodes, setEdges, takeSnapshot, saveDiagram, viewportRef, triggerDebouncedSync]);
 
   // ── Collapse left sidebar when right panel opens ──
@@ -794,7 +688,7 @@ function AppLayoutInner() {
 
   // ── Auto-close right panel when leaving file pages ──
   useEffect(() => {
-    if (!entityContext || (!showAIChat && rightPanelMode !== 'history' && rightPanelMode !== 'repository')) {
+    if (!entityContext || (rightPanelMode === 'chat' && !showAIChat)) {
       setRightPanelMode('closed');
     }
   }, [entityContext, rightPanelMode, showAIChat, setRightPanelMode]);
@@ -838,15 +732,12 @@ function AppLayoutInner() {
 
       {!isPublicView && (
         <AppSidebar
-          view={sidebarView}
           activeFeatureView={isDbClientRoute ? 'db-client' : isFeatureRoute ? sidebarView : null}
           globalSearchResults={globalSearchResults}
           isGlobalSearchLoading={isGlobalSearchLoading}
           onGlobalSearchResultSelect={openGlobalSearchResult}
           projects={projects}
           onViewChange={handleSidebarViewChange}
-          onNoteSelect={handleNoteSelect}
-          onDrawingSelect={handleDrawingSelect}
           onProjectCreate={handleSidebarProjectCreate}
           onProjectUpdate={handleSidebarProjectUpdate}
           onProjectDelete={handleSidebarProjectDelete}
@@ -1097,7 +988,7 @@ function AppLayoutInner() {
         )}
 
         {/* Right panel with tabs — sticky right sidebar */}
-        {rightPanelOpen && (showAIChat || rightPanelMode === 'history' || rightPanelMode === 'repository') && (
+        {rightPanelOpen && (
           <RightChatSidebar>
             {rightPanelMode === 'repository' && entityContext?.entityType === 'diagram' ? (
               <RepositoryPanel
@@ -1146,17 +1037,19 @@ function AppLayoutInner() {
                       DBML
                     </button>
                   )}
-                  <button
-                    onClick={() => setRightPanelMode('chat')}
-                    className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
-                      rightPanelMode === 'chat'
-                        ? 'border-primary text-primary bg-background/50'
-                        : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30'
-                    }`}
-                  >
-                    <Sparkles className="size-3.5" />
-                    AI Chat
-                  </button>
+                  {showAIChat && (
+                    <button
+                      onClick={() => setRightPanelMode('chat')}
+                      className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
+                        rightPanelMode === 'chat'
+                          ? 'border-primary text-primary bg-background/50'
+                          : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30'
+                      }`}
+                    >
+                      <Sparkles className="size-3.5" />
+                      AI Chat
+                    </button>
+                  )}
                 </div>
                 <Button variant="ghost" size="icon" className="size-8 mr-1" onClick={() => setRightPanelMode('closed')} title="Close panel">
                   <PanelRightClose className="size-3.5" />
@@ -1165,29 +1058,31 @@ function AppLayoutInner() {
 
               {/* ── Tab content ── */}
               <div className="flex-1 min-h-0">
-                <div className={cn('h-full', rightPanelMode !== 'chat' && 'hidden')}>
-                  <AIChatPanel
-                    onClose={() => setRightPanelMode('closed')}
-                    entityType={entityContext!.entityType}
-                    entityUid={entityContext!.entityUid}
-                    entityTitle={entityContext!.entityType === 'dbClient' ? activeDbClient?.name || breadcrumbLabel :
-                                 entityContext!.entityType === 'note' ? activeNote?.title : 
-                                 entityContext!.entityType === 'diagram' ? activeDiagram?.name : 
-                                 entityContext!.entityType === 'flowchart' ? activeFlowchart?.title : null}
-                    entityContextText={entityContextText}
-                    viewType={isActiveDbClient ? 'db-client' : undefined}
-                    projectId={activeProjectId}
-                    pendingPrompt={pendingPrompt}
-                    onPromptUsed={clearPrompt}
-                    pendingAction={pendingAction}
-                    onClearPendingAction={clearPendingAction}
-                    notes={notes}
-                    diagrams={diagrams}
-                    flowcharts={flowcharts}
-                    drawings={drawings}
-                    activeNoteContent={entityContext?.entityType === 'note' ? activeNote?.content : undefined}
-                  />
-                </div>
+                {showAIChat && (
+                  <div className={cn('h-full', rightPanelMode !== 'chat' && 'hidden')}>
+                    <AIChatPanel
+                      onClose={() => setRightPanelMode('closed')}
+                      entityType={entityContext!.entityType}
+                      entityUid={entityContext!.entityUid}
+                      entityTitle={entityContext!.entityType === 'dbClient' ? activeDbClient?.name || breadcrumbLabel :
+                                   entityContext!.entityType === 'note' ? activeNote?.title :
+                                   entityContext!.entityType === 'diagram' ? activeDiagram?.name :
+                                   entityContext!.entityType === 'flowchart' ? activeFlowchart?.title : null}
+                      entityContextText={entityContextText}
+                      viewType={isActiveDbClient ? 'db-client' : undefined}
+                      projectId={activeProjectId}
+                      pendingPrompt={pendingPrompt}
+                      onPromptUsed={clearPrompt}
+                      pendingAction={pendingAction}
+                      onClearPendingAction={clearPendingAction}
+                      notes={notes}
+                      diagrams={diagrams}
+                      flowcharts={flowcharts}
+                      drawings={drawings}
+                      activeNoteContent={entityContext?.entityType === 'note' ? activeNote?.content : undefined}
+                    />
+                  </div>
+                )}
                 {rightPanelMode === 'dbml' && showDBMLPanel && (
                   <DBMLEditorPanel
                     value={dbmlContent}
@@ -1249,7 +1144,10 @@ function AppLayoutInner() {
 
 export function AppLayout() {
   return (
-    <SidebarProvider className="h-svh overflow-hidden">
+    <SidebarProvider
+      className="h-svh overflow-hidden"
+      style={{ "--sidebar-width": "320px" } as React.CSSProperties}
+    >
       <AIActionProvider>
         <AppLayoutInner />
       </AIActionProvider>

@@ -1,3 +1,4 @@
+import { readPendingERDCanvas } from '@/lib/erd-draft-canvas';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { apiFetch } from '../lib/api';
 import { 
@@ -17,7 +18,7 @@ import { useUndoRedo } from './useUndoRedo';
 import { buildErdIndexes, erdColumnKey, erdSourceColumnKey } from '../lib/erd-indexes';
 import { getForeignKeyConstraintName } from '../lib/diagram-payload';
 import { databaseColumnToERD } from '../lib/column-metadata';
-import { readSavedViewport } from '../lib/erd-viewport';
+import { hasViewportChanged, readSavedViewport } from '../lib/erd-viewport';
 
 /** Fix double "col-" prefix from buggy parseSQLToERD output.
  *  Works for any column ID format: "col-xxx", UUID, etc. */
@@ -50,6 +51,7 @@ export function useERDSession(
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 });
+  const settledViewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 });
   const { setViewport, getNodes, getEdges } = useReactFlow();
 
   // Wrapped onNodesChange to broadcast movement
@@ -87,6 +89,7 @@ export function useERDSession(
     if (prev) {
       setNodes(prev.nodes);
       setEdges(prev.edges);
+      setSaveCounter(counter => counter + 1);
     }
   }, [undo, nodes, edges, setNodes, setEdges]);
 
@@ -95,6 +98,7 @@ export function useERDSession(
     if (next) {
       setNodes(next.nodes);
       setEdges(next.edges);
+      setSaveCounter(counter => counter + 1);
     }
   }, [redo, nodes, edges, setNodes, setEdges]);
 
@@ -325,24 +329,29 @@ export function useERDSession(
       // === from SQL) was applied by ERDView's effect while this fetch was    ===
       // === in-flight, don't overwrite the DDL-applied data with empty server ===
       // === data (the diagram was just created and has no entities yet).      ===
-      setNodes(prev => options?.force || prev.length === 0 ? flowNodes : prev);
-      setEdges(prev => options?.force || prev.length === 0 ? flowEdges : prev);
+      const latestDraft = await localPersistence.getDraft(DraftType.ERD, finalData.uid || id);
+      if (options?.isStale?.()) return null;
+      const pendingCanvas = readPendingERDCanvas(latestDraft ?? draft);
+      setNodes(prev => options?.force || prev.length === 0 ? pendingCanvas?.nodes ?? flowNodes : prev);
+      setEdges(prev => options?.force || prev.length === 0 ? pendingCanvas?.edges ?? flowEdges : prev);
       setSelectedNodeId(null);
 
       // === Apply saved viewport BEFORE hiding loading overlay ===
       // This prevents a visible snap/flash from (0,0) to the correct position
       let pendingViewport: Viewport | null = null;
-      if (draft?.sync_pending) {
-        try { pendingViewport = readSavedViewport(JSON.parse(draft.data)); } catch { /* ignore invalid local draft */ }
+      if ((latestDraft ?? draft)?.sync_pending) {
+        try { pendingViewport = readSavedViewport(JSON.parse((latestDraft ?? draft)!.data)); } catch { /* ignore invalid local draft */ }
       }
       const savedViewport = pendingViewport ?? readSavedViewport(finalData);
       if (savedViewport) {
         setViewport(savedViewport, { duration: 0 });
         viewportRef.current = savedViewport;
+        settledViewportRef.current = savedViewport;
       } else {
         const defaultViewport = { x: 0, y: 0, zoom: 1 };
         setViewport(defaultViewport, { duration: 0 });
         viewportRef.current = defaultViewport;
+        settledViewportRef.current = defaultViewport;
       }
 
       // Now hide loading — viewport is already in the correct position
@@ -875,8 +884,11 @@ export function useERDSession(
   }, [setEdges, takeSnapshot, getNodes, getEdges, resolveEdgeHandles, dedupeEdgesByRelation]);
 
   const handleMoveEnd = useCallback((event: MouseEvent | TouchEvent | null, v: Viewport) => {
+    const previous = settledViewportRef.current;
+    const changed = hasViewportChanged(previous, v);
     viewportRef.current = v;
-    if (!isPublicView && event) setSaveCounter(prev => prev + 1);
+    settledViewportRef.current = v;
+    if (!isPublicView && event && changed) setSaveCounter(prev => prev + 1);
   }, [isPublicView]);
 
   // ── ERD Keyboard Shortcuts (undo/redo) ──

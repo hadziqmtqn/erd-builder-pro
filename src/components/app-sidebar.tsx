@@ -1,61 +1,17 @@
 import * as React from "react"
-import { useState, useRef, useEffect } from "react"
+import { useState } from "react"
 import {
-  Database,
-  DatabaseZap,
-  Cable,
-  PenTool,
-  Search,
-  Network,
-  Folder,
-  Plus,
-  MoreHorizontal,
-  Pencil,
-  Trash2,
-  FileText,
-  LayoutDashboard,
-  Shield,
   ArrowUpRight,
-  ExternalLink,
-  Loader2,
   Sparkles,
 } from "lucide-react"
-import { useLocation, useNavigate } from "react-router-dom"
 
-import { NavMain } from "@/components/nav-main"
-import { NavUser } from "@/components/nav-user"
-import { TeamSwitcher, type SwitcherTeam } from "@/components/team-switcher"
+import type { SwitcherTeam } from "@/components/team-switcher"
+import { PrimaryNavRail } from "@/components/sidebar/PrimaryNavRail"
+import { WorkspaceSidebarPanel } from "@/components/sidebar/WorkspaceSidebarPanel"
 import { AddTeamDialog } from "@/components/team/AddTeamDialog"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Field, FieldLabel } from "@/components/ui/field"
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarRail,
-  useSidebar,
-} from "@/components/ui/sidebar"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-  TooltipProvider,
-} from "@/components/ui/tooltip"
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu"
+import { cn } from "@/lib/utils"
+import { Sidebar } from "@/components/ui/sidebar"
 import {
   Dialog,
   DialogContent,
@@ -65,29 +21,16 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog"
-import { MoveToTrashAlert } from "@/components/modals/MoveToTrashAlert"
 import { isInstalledApp } from "@/lib/api"
-import { isFileCreator } from "@/lib/fileOwnership"
-
-import { Project, AppView } from "../types"
-import { SponsorCarousel } from "@/components/SponsorCarousel"
-
-function getSearchShortcutLabel(): string {
-  if (typeof navigator === "undefined") return "Ctrl+K";
-  const platform = navigator.platform || navigator.userAgent;
-  return /Mac|iPhone|iPad/i.test(platform) ? "⌘K" : "Ctrl+K";
-}
+import type { Project, AppView } from "../types"
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   projects: Project[];
-  view: AppView;
   activeFeatureView: AppView | 'db-client' | null;
   globalSearchResults: any[];
   isGlobalSearchLoading: boolean;
   onGlobalSearchResultSelect: (result: any) => void;
   onViewChange: (view: AppView, showTable?: boolean, workspaceUid?: string | null) => void;
-  onNoteSelect: (uid: string) => void;
-  onDrawingSelect: (uid: string) => void;
   onProjectCreate: (name: string) => void;
   onProjectUpdate: (id: number | string, name: string) => void;
   onProjectDelete: (id: number | string) => void;
@@ -114,22 +57,19 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
 
 export const AppSidebar = React.memo(({
   projects,
-  view,
   activeFeatureView,
   globalSearchResults,
   isGlobalSearchLoading,
   onGlobalSearchResultSelect,
   onViewChange,
-  onNoteSelect,
-  onDrawingSelect,
   onProjectCreate,
   onProjectUpdate,
   onProjectDelete,
   onLogout,
   onWorkspaceFilter,
   selectedWorkspaceUid,
-  globalSearchQuery: searchQuery,
-  onGlobalSearchChange: onSearchChange,
+  globalSearchQuery,
+  onGlobalSearchChange,
   isProjectsLoading,
   user,
   isOnline,
@@ -146,26 +86,16 @@ export const AppSidebar = React.memo(({
   ssoPortalUrl,
   ...props
 }: AppSidebarProps) => {
-  const { state } = useSidebar();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const isCollapsed = state === "collapsed";
-  const switcherTeams = teams;
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const [searchShortcutLabel] = useState(getSearchShortcutLabel);
-  const searchShortcutKeys = searchShortcutLabel === '⌘K' ? ['⌘', 'K'] : ['Ctrl', 'K'];
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [searchFilter, setSearchFilter] = useState('all');
+  const [isTeamCreateOpen, setIsTeamCreateOpen] = useState(false);
+  const [upgradeFeature, setUpgradeFeature] = useState<string | null>(null);
   const showDbClient = isInstalledApp();
   const isSelfHosted = !showDbClient && !user?.isSso && (user?.isSuperAdmin !== undefined || user?.is_super_admin !== undefined);
-  const showSponsor = user?.isSso === true || (isSelfHosted && licenseRequired);
+  const showSponsor = user?.isSso === true || showDbClient || (isSelfHosted && licenseRequired);
   const activeTeam = teams.find((team) => team.id === activeTeamId) || null;
   const cloudTeamCapabilities = user?.isSso && activeTeamId && teamsAvailable
     ? activeTeam?.capabilities || {}
     : null;
-  const canUseCloudFeature = (capability: string) => cloudTeamCapabilities === null || cloudTeamCapabilities[capability] === true;
-  const isCloudFeatureLocked = (capability: string) => cloudTeamCapabilities !== null && !canUseCloudFeature(capability);
-  const [upgradeFeature, setUpgradeFeature] = useState<string | null>(null);
+  const isCloudFeatureLocked = (capability: string) => cloudTeamCapabilities !== null && cloudTeamCapabilities[capability] !== true;
 
   const openCloudPricing = () => {
     if (!ssoPortalUrl) return;
@@ -184,374 +114,63 @@ export const AppSidebar = React.memo(({
     onOpen();
   };
 
-  const searchFilterOptions = [
-    { value: 'all', label: 'All' },
-    { value: 'workspace', label: 'Workspaces' },
-    { value: 'erd', label: 'ERD Builder' },
-    ...(showDbClient ? [{ value: 'db-client', label: 'DB Client' }] : []),
-    { value: 'notes', label: 'Notes' },
-    { value: 'flowchart', label: 'Flowcharts' },
-    { value: 'drawings', label: 'Drawings' },
-  ];
-  const visibleSearchResults = searchFilter === 'all'
-    ? globalSearchResults
-    : globalSearchResults.filter((result: any) => result.type === searchFilter);
-
-  useEffect(() => {
-    const handleShortcut = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault();
-        setIsSearchOpen(true);
-        searchInputRef.current?.focus();
-        searchInputRef.current?.select();
-      }
-    };
-    window.addEventListener('keydown', handleShortcut);
-    return () => window.removeEventListener('keydown', handleShortcut);
-  }, []);
-
-  useEffect(() => {
-    if (isSearchOpen) {
-      window.setTimeout(() => {
-        searchInputRef.current?.focus();
-        searchInputRef.current?.select();
-      }, 0);
-    }
-  }, [isSearchOpen]);
-
-  // Rename/delete project dialog state
-  const [editingProject, setEditingProject] = useState<{ id: number | string; name: string } | null>(null);
-  const [renameValue, setRenameValue] = useState('');
-  const [deletingProject, setDeletingProject] = useState<{ id: number | string; name: string } | null>(null);
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [createName, setCreateName] = useState('');
-  const [isTeamCreateOpen, setIsTeamCreateOpen] = useState(false);
-
-  // Navigation items for the feature section
-  const navMain = [
-    {
-      title: "Notes",
-      url: "#",
-      icon: FileText,
-      isActive: activeFeatureView === 'notes',
-      badge: isCloudFeatureLocked('notes') ? 'PRO' : undefined,
-      onClick: () => handleFeatureClick('Notes', 'notes', () => onViewChange('notes', true)),
-    },
-    {
-      title: "ERD Builder",
-      url: "#",
-      icon: Database,
-      isActive: activeFeatureView === 'erd',
-      badge: isCloudFeatureLocked('erd_builder') ? 'PRO' : undefined,
-      onClick: () => handleFeatureClick('ERD Builder', 'erd_builder', () => onViewChange('erd', true)),
-    },
-    ...(showDbClient ? [{
-      title: "DB Client",
-      url: "/table/db-client",
-      icon: DatabaseZap,
-      isActive: activeFeatureView === 'db-client',
-      onClick: async () => {
-        if (!isOnline) return;
-        await onViewChange('erd', true);
-        navigate('/table/db-client');
-      },
-    }] : []),
-    {
-      title: "Flowchart",
-      url: "#",
-      icon: Network,
-      isActive: activeFeatureView === 'flowchart',
-      badge: isCloudFeatureLocked('flowcharts') ? 'PRO' : undefined,
-      onClick: () => handleFeatureClick('Flowchart', 'flowcharts', () => onViewChange('flowchart', true)),
-    },
-    {
-      title: "Drawings",
-      url: "#",
-      icon: PenTool,
-      isActive: activeFeatureView === 'drawings',
-      badge: isCloudFeatureLocked('drawings') ? 'PRO' : undefined,
-      onClick: () => handleFeatureClick('Drawings', 'drawings', () => onViewChange('drawings', true)),
-    },
-  ];
-
-  // Filtered non-deleted projects
-  const activeProjects = projects.filter(p => !p.is_deleted);
-
-  const handleWorkspaceClick = (uid: string | null | undefined, fallbackId?: number | string) => {
-    const id = uid ?? (fallbackId != null ? String(fallbackId) : null);
-    onWorkspaceFilter(id);
-  };
-
   return (
     <>
-    <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader>
-        <TeamSwitcher
-          teams={switcherTeams}
-          activeTeamId={activeTeamId}
-          onOpen={onTeamsRefresh}
-          enabled={teamsAvailable || switcherTeams.length > 0}
-          selfHosted={isSelfHosted}
-          canManageTeams={Boolean(user?.isSuperAdmin || user?.is_super_admin)}
-          onSelect={onTeamSelect}
-          onAdd={() => setIsTeamCreateOpen(true)}
-          onManage={onTeamManage}
-        />
-        <SidebarGroup className="py-0 group-data-[collapsible=icon]:hidden">
-          <SidebarGroupContent className="relative">
-            <button
-              type="button"
-              onClick={() => setIsSearchOpen(true)}
-              disabled={!isOnline}
-              className="flex h-9 w-full items-center gap-2 rounded-lg border border-border/60 bg-background px-2.5 text-left text-sm text-muted-foreground transition-colors hover:border-border hover:bg-accent/40 disabled:pointer-events-none disabled:opacity-50"
-            >
-              <Search className="size-4 shrink-0" />
-              <span className="flex-1">Search</span>
-              <span className="flex items-center gap-0.5">
-                {searchShortcutKeys.map((key) => (
-                  <kbd key={key} className="rounded border border-border/60 bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{key}</kbd>
-                ))}
-              </span>
-            </button>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        <SidebarGroup className="py-0 group-data-[collapsible=icon]:p-0">
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  tooltip="Dashboard"
-                  isActive={location.pathname === '/'}
-                  onClick={() => navigate('/')}
-                >
-                  <LayoutDashboard />
-                  <span>Dashboard</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              {user?.isSso && ssoPortalUrl && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton tooltip="Open ERDBPro SaaS" onClick={() => window.location.assign(new URL('/dashboard', ssoPortalUrl).toString())}>
-                    <ExternalLink />
-                    <span>Open ERDBPro SaaS</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        {isSelfHosted && Boolean(user?.isSuperAdmin || user?.is_super_admin) && (
-          <SidebarGroup className="py-0 group-data-[collapsible=icon]:p-0">
-            <NavMain items={[{
-              title: "Instance Administration",
-              url: "#",
-              icon: Shield,
-              isActive: location.pathname === "/team-workspaces" || location.pathname === "/users",
-              items: [
-                { title: "Team Workspaces", url: "/team-workspaces", isActive: location.pathname === "/team-workspaces" },
-                { title: "User Management", url: "/users", isActive: location.pathname === "/users" },
-              ],
-            }]} />
-          </SidebarGroup>
-        )}
-        <SidebarGroup className="py-0 group-data-[collapsible=icon]:p-0">
-          <SidebarGroupLabel className="flex items-center justify-between">
-            Features
-            {!isOnline && (
-              <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-destructive/10 text-[10px] font-bold text-destructive uppercase tracking-wider">
-                <span className="w-1 h-1 rounded-full bg-destructive animate-pulse" />
-                Offline
-              </span>
-            )}
-          </SidebarGroupLabel>
-          <NavMain items={navMain} />
-        </SidebarGroup>
-      </SidebarHeader>
-      <SidebarContent>
-        {/* Workspaces section */}
-        <SidebarGroup className="px-4 group-data-[collapsible=icon]:p-2">
-          <SidebarGroupLabel className="flex items-center justify-between">
-            <span>Workspaces</span>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger
-                  className="hover:bg-muted hover:text-foreground rounded-md p-0.5 cursor-pointer"
-                  onClick={() => {
-                    setCreateName('');
-                    setIsCreateOpen(true);
-                  }}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </TooltipTrigger>
-                <TooltipContent side="right">Create Workspace</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            {/* "All" option + project list */}
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  tooltip="All Workspaces"
-                  isActive={selectedWorkspaceUid === null || selectedWorkspaceUid === ''}
-                  onClick={() => handleWorkspaceClick(null)}
-                >
-                  <Folder className="h-4 w-4 shrink-0" />
-                  <span>All Workspaces</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+      <Sidebar
+        collapsible="icon"
+        {...props}
+        className={cn("overflow-hidden *:data-[sidebar=sidebar]:flex-row", props.className)}
+      >
+        <div data-sidebar="sidebar" className="flex h-full min-h-0 w-full">
+          <PrimaryNavRail
+            activeFeatureView={activeFeatureView}
+            canManageInstance={Boolean(user?.isSuperAdmin || user?.is_super_admin)}
+            cloudFeatureLocked={isCloudFeatureLocked}
+            isOnline={isOnline}
+            isSelfHosted={isSelfHosted}
+            onFeatureClick={handleFeatureClick}
+            onLogout={onLogout}
+            onOpenFeedback={onOpenFeedback}
+            onViewChange={onViewChange}
+            ssoPortalUrl={ssoPortalUrl}
+            user={user}
+            showDbClient={showDbClient}
+          />
+          <WorkspaceSidebarPanel
+            activeTeamId={activeTeamId}
+            globalSearchQuery={globalSearchQuery}
+            globalSearchResults={globalSearchResults}
+            isGlobalSearchLoading={isGlobalSearchLoading}
+            isOnline={isOnline}
+            isProjectsLoading={isProjectsLoading}
+            onGlobalSearchChange={onGlobalSearchChange}
+            onGlobalSearchResultSelect={onGlobalSearchResultSelect}
+            onTeamAdd={() => setIsTeamCreateOpen(true)}
+            onTeamManage={onTeamManage}
+            onTeamSelect={onTeamSelect}
+            onTeamsRefresh={onTeamsRefresh}
+            onProjectCreate={onProjectCreate}
+            onProjectDelete={onProjectDelete}
+            onProjectUpdate={onProjectUpdate}
+            onWorkspaceFilter={onWorkspaceFilter}
+            projects={projects}
+            selectedWorkspaceUid={selectedWorkspaceUid}
+            showDbClient={showDbClient}
+            showSponsor={showSponsor}
+            teams={teams}
+            teamsAvailable={teamsAvailable}
+            user={user}
+          />
+        </div>
+      </Sidebar>
 
-              {isProjectsLoading ? (
-                <div className="px-3 py-2 text-xs text-muted-foreground animate-pulse group-data-[collapsible=icon]:hidden">
-                  Loading workspaces...
-                </div>
-              ) : activeProjects.length === 0 ? (
-                <div className="px-3 py-2 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
-                  No workspaces yet
-                </div>
-              ) : (
-                activeProjects.map(project => (
-                  <SidebarMenuItem key={project.uid ?? project.id}>
-                    <SidebarMenuButton
-                      tooltip={project.name}
-                      isActive={selectedWorkspaceUid === project.uid || String(selectedWorkspaceUid ?? '') === String(project.id ?? '')}
-                      onClick={() => handleWorkspaceClick(project.uid, project.id)}
-                    >
-                      <Folder className="h-4 w-4 shrink-0" />
-                      <span className="truncate flex-1 text-left">{project.name}</span>
-                      {/* Three-dots menu */}
-                      <span onClick={(e) => e.stopPropagation()}>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger nativeButton={false} render={
-                            <span className="p-1 rounded hover:bg-accent/50 cursor-pointer inline-flex items-center justify-center">
-                              <MoreHorizontal className="h-3.5 w-3.5" />
-                            </span>
-                          } />
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => {
-                              setRenameValue(project.name);
-                              setEditingProject(project);
-                            }}>
-                              <Pencil className="h-3.5 w-3.5 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
-                            {isFileCreator(project, user?.id, user?.id === 'guest') && (
-                              <>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => setDeletingProject(project)}>
-                                  <Trash2 className="h-3.5 w-3.5 mr-2 text-destructive" />
-                                  Delete
-                                </DropdownMenuItem>
-                              </>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))
-              )}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
-      <SidebarFooter>
-        {/* Sponsor carousel — auto-rotate */}
-        {showSponsor && <SponsorCarousel isCollapsed={isCollapsed} />}
-        <NavUser 
-          user={user} 
-          onLogout={onLogout}
-          onViewChange={onViewChange}
-          isOnline={isOnline}
-          onOpenFeedback={onOpenFeedback}
-        />
-      </SidebarFooter>
-      <SidebarRail />
-    </Sidebar>
       <AddTeamDialog
         open={isTeamCreateOpen}
         onOpenChange={setIsTeamCreateOpen}
         onCreate={onTeamCreate}
         onCreated={onTeamCreated}
       />
-      <Dialog open={isSearchOpen} onOpenChange={(open) => {
-        setIsSearchOpen(open);
-        if (!open) {
-          setSearchFilter('all');
-          onSearchChange('');
-        }
-      }}>
-        <DialogContent
-          size="2xl"
-          showCloseButton={false}
-          className="translate-y-0! max-h-[76vh] sm:max-w-2xl"
-          style={{ top: '12vh' }}
-        >
-          <div className="flex items-center gap-3 border-b border-border/60 px-4 py-3">
-            <Search className="size-5 shrink-0 text-muted-foreground" />
-            <input
-              ref={searchInputRef}
-              value={searchQuery}
-              onChange={(event) => onSearchChange(event.target.value)}
-              placeholder="Search"
-              aria-label="Global search"
-              className="h-9 min-w-0 flex-1 bg-transparent text-lg outline-none placeholder:text-muted-foreground/70"
-            />
-            <kbd className="rounded-lg border border-border/60 bg-muted/50 px-2.5 py-1.5 text-xs font-medium text-muted-foreground">ESC</kbd>
-          </div>
-          <div className="flex items-center gap-2 overflow-x-auto border-b border-border/60 px-4 py-2.5 text-sm">
-            <span className="text-muted-foreground">Filter:</span>
-            <div className="flex min-w-max items-center gap-1">
-              {searchFilterOptions.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setSearchFilter(option.value)}
-                  className={`rounded-md px-2.5 py-1 font-medium transition-colors ${searchFilter === option.value ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'}`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          {(isGlobalSearchLoading || searchQuery.trim().length >= 2) && (
-            <div className="max-h-[min(26rem,60vh)] overflow-y-auto p-2">
-              {isGlobalSearchLoading ? (
-                <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin" /> Searching...
-                </div>
-              ) : visibleSearchResults.length === 0 ? (
-                <p className="py-10 text-center text-sm text-muted-foreground">No results found.</p>
-              ) : (
-                visibleSearchResults.map((result: any) => (
-                  <button
-                    key={`${result.type}-${result.uid ?? result.id}`}
-                    type="button"
-                    onClick={() => { onGlobalSearchResultSelect(result); setIsSearchOpen(false); }}
-                    className="group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-accent"
-                  >
-                    <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
-                      {result.type === 'workspace' ? <Folder className="size-4 text-muted-foreground" />
-                        : result.type === 'erd' ? <Database className="size-4 text-muted-foreground" />
-                          : result.type === 'db-client' ? <Cable className="size-4 text-muted-foreground" />
-                        : result.type === 'notes' ? <FileText className="size-4 text-muted-foreground" />
-                            : result.type === 'flowchart' ? <Network className="size-4 text-muted-foreground" />
-                              : <PenTool className="size-4 text-muted-foreground" />}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{result.name || '(Untitled)'}</p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {result.type === 'workspace' ? 'Workspace' : result.type === 'erd' ? 'ERD Builder' : result.type === 'db-client' ? 'DB Client' : result.type === 'flowchart' ? 'Flowchart' : result.type === 'notes' ? 'Note' : 'Drawing'}
-                        {result.workspace?.name && ` · ${result.workspace.name}`}
-                      </p>
-                    </div>
-                    <ArrowUpRight className="size-4 shrink-0 text-muted-foreground/40 group-hover:text-primary" />
-                  </button>
-                ))
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+
       <Dialog open={upgradeFeature !== null} onOpenChange={(open) => { if (!open) setUpgradeFeature(null); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -583,110 +202,6 @@ export const AppSidebar = React.memo(({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      {/* Rename Workspace Dialog */}
-      <Dialog open={editingProject !== null} onOpenChange={(open) => { if (!open) setEditingProject(null); }}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Rename Workspace</DialogTitle>
-          </DialogHeader>
-          <DialogBody>
-            <Field>
-              <FieldLabel htmlFor="rename-project-input" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
-                Name
-              </FieldLabel>
-              <Input
-                id="rename-project-input"
-                type="text"
-                value={renameValue}
-                onChange={(e) => setRenameValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && renameValue.trim() && editingProject) {
-                    onProjectUpdate(editingProject.id, renameValue.trim());
-                    setEditingProject(null);
-                  }
-                }}
-                autoFocus
-              />
-            </Field>
-          </DialogBody>
-          <DialogFooter>
-            <DialogClose render={<Button variant="outline" className="h-9" />}>
-              Cancel
-            </DialogClose>
-            <Button
-              className="h-9 px-6"
-              disabled={!renameValue.trim()}
-              onClick={() => {
-                if (editingProject && renameValue.trim()) {
-                  onProjectUpdate(editingProject.id, renameValue.trim());
-                  setEditingProject(null);
-                }
-              }}
-            >
-              Save Changes
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Create Workspace Dialog */}
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Create Workspace</DialogTitle>
-          </DialogHeader>
-          <DialogBody>
-            <Field>
-              <FieldLabel htmlFor="create-project-input" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
-                Name
-              </FieldLabel>
-              <Input
-                id="create-project-input"
-                type="text"
-                value={createName}
-                onChange={(e) => setCreateName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && createName.trim()) {
-                    onProjectCreate(createName.trim());
-                    setIsCreateOpen(false);
-                    setCreateName('');
-                  }
-                }}
-                autoFocus
-              />
-            </Field>
-          </DialogBody>
-          <DialogFooter>
-            <DialogClose render={<Button variant="outline" className="h-9" />}>
-              Cancel
-            </DialogClose>
-            <Button
-              className="h-9 px-6"
-              disabled={!createName.trim()}
-              onClick={() => {
-                if (createName.trim()) {
-                  onProjectCreate(createName.trim());
-                  setIsCreateOpen(false);
-                  setCreateName('');
-                }
-              }}
-            >
-              Create
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Workspace Confirmation */}
-      <MoveToTrashAlert
-        isOpen={deletingProject !== null}
-        onOpenChange={(open) => { if (!open) setDeletingProject(null); }}
-        mode="move-to-trash"
-        view="project"
-        activeDocument={deletingProject ? { id: deletingProject.id, name: deletingProject.name } : undefined}
-        deleteProject={onProjectDelete}
-        onAfterDelete={() => setDeletingProject(null)}
-      />
     </>
   );
 });
