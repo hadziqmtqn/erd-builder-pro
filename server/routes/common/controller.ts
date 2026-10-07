@@ -147,17 +147,18 @@ export async function uploadFile(req: any, res: ExpressResponse): Promise<void> 
       originHost,
     );
 
-    // Generate a pre-signed URL as an alternative access method for private storage
+    // Private document assets use a short-lived signed URL; the proxy remains a fallback.
     let signedUrl: string | null = null;
     try {
-      signedUrl = await generateSignedUrl(s3 as any, config, key, 86400); // 24h signed URL
+      signedUrl = await generateSignedUrl(s3 as any, config, key, 900);
     } catch {
-      // Pre-signed URL generation is best-effort — some providers may not support it
+      // Some S3-compatible providers may not support presigning.
       signedUrl = null;
     }
 
+    res.setHeader("Cache-Control", "private, no-store");
     res.json({
-      url,
+      url: requiresPrivateStorage(feature) ? signedUrl || url : url,
       key,
       signedUrl,
       proxyUrl: config.publicUrl ? null : `${originHost}/api/serve/${key}`,
@@ -292,6 +293,7 @@ export async function getSignedUrls(req: ExpressRequest, res: ExpressResponse): 
       urls[key] = await generateSignedUrl(storage.s3 as any, storage.config, normalizedKey, ttl);
     }
 
+    res.setHeader("Cache-Control", "private, no-store");
     res.json({ urls });
   } catch (err: any) {
     logger.error({ err }, "Error generating signed URLs:");

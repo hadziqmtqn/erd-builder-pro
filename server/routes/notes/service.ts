@@ -4,6 +4,7 @@ import { captureEntityRevisionSafely } from "../../lib/entity-history.js";
 import { isDesktopMode, isLocalPostgres } from "../../lib/config.js";
 import { createPersonalFile } from "../../lib/personal-file-quota.js";
 import { creatorFileIdentifierWhere, fileIdentifierWhere, fileScopeWhere, projectScopeWhere } from "../../lib/team-scope.js";
+import { replacePrivateStorageUrls } from "../../lib/storage-access.js";
 
 // Helper: build uid-or-id where clause that works with both UUIDs and numeric IDs
 // Prisma's @prisma/adapter-pg throws "Argument id is missing" when id is NaN
@@ -93,7 +94,7 @@ export async function createNote(data: {
   return createPersonalFile("notes", data.userId, (db) => db.note.create({
     data: {
       title: data.title,
-      content: data.content || "",
+      content: replacePrivateStorageUrls(data.content || "", {}),
       projectId: data.projectId ?? null,
       userId: data.userId,
       ...(data.uid ? { uid: data.uid } : {}),
@@ -118,10 +119,13 @@ export async function updateNote(
   });
   if (!existing) return null;
 
+  const existingContent = replacePrivateStorageUrls(existing.content ?? "", {});
+  const content = data.content === undefined ? undefined : replacePrivateStorageUrls(data.content, {});
+
   const updatePayload: any = { updatedAt: new Date() };
   if (isDesktopMode() || isLocalPostgres()) updatePayload.version = (existing.version ?? 0) + 1;
   if (data.title !== undefined) updatePayload.title = data.title;
-  if (data.content !== undefined) updatePayload.content = data.content;
+  if (content !== undefined) updatePayload.content = content;
   if (data.projectId !== undefined) updatePayload.projectId = data.projectId;
 
   const revision = () => captureEntityRevisionSafely({
@@ -135,10 +139,10 @@ export async function updateNote(
 
   if (data.expectedContentHash !== undefined || data.expectedContent !== undefined) {
     const matchesExpectedContent = data.expectedContentHash !== undefined
-      ? createHash("sha256").update(existing.content ?? "").digest("hex") === data.expectedContentHash
-      : existing.content === data.expectedContent;
+      ? createHash("sha256").update(existingContent).digest("hex") === data.expectedContentHash
+      : existingContent === replacePrivateStorageUrls(data.expectedContent ?? "", {});
     if (!matchesExpectedContent) return { success: false, conflict: true };
-    if (existing.content === data.content) {
+    if (existingContent === content) {
       return { success: true, version: existing.version, updatedAt: existing.updatedAt };
     }
 

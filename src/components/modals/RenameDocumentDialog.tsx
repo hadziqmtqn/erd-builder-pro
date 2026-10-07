@@ -44,6 +44,7 @@ interface RenameDocumentDialogProps {
   updateNote?: (uid: string, name: string, options?: { silent?: boolean }) => void;
   updateDrawing?: (uid: string, name: string, options?: { silent?: boolean }) => void;
   updateFlowchart?: (uid: string, name: string, options?: { silent?: boolean }) => void;
+  updateDbClient?: (uid: string, name: string) => void | Promise<void>;
   onMoveDiagramToProject?: (id: number | string, projectId: number | string | null, options?: { silent?: boolean }) => Promise<boolean | undefined>;
   onMoveNoteToProject?: (uid: string, projectId: number | string | null, options?: { silent?: boolean }) => Promise<boolean | undefined>;
   onMoveDrawingToProject?: (uid: string, projectId: number | string | null, options?: { silent?: boolean }) => Promise<boolean | undefined>;
@@ -52,7 +53,7 @@ interface RenameDocumentDialogProps {
 }
 
 const viewLabel = (v: string) =>
-  v === 'erd' ? 'diagram' : v === 'notes' ? 'note' : v === 'drawings' ? 'drawing' : 'flowchart';
+  v === 'erd' ? 'diagram' : v === 'notes' ? 'note' : v === 'drawings' ? 'drawing' : v === 'db-client' ? 'DB Client' : 'flowchart';
 
 export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
   isOpen,
@@ -72,6 +73,7 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
   updateNote,
   updateDrawing,
   updateFlowchart,
+  updateDbClient,
   onMoveDiagramToProject,
   onMoveNoteToProject,
   onMoveDrawingToProject,
@@ -129,12 +131,14 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
     }
 
     // Edit mode — existing behavior
-    const id = view === 'notes' || view === 'flowchart' || view === 'drawings' ? activeDocument?.uid : activeDocument?.id;
+    const id = view === 'db-client' || view === 'notes' || view === 'flowchart' || view === 'drawings'
+      ? activeDocument?.uid || activeDocument?.id
+      : activeDocument?.id;
     if (id && newName.trim()) {
       const projectId = selectedProjectId === "none" ? null : selectedProjectId;
       const currentProjectId = activeDocument?.project_id || activeDocument?.projectId;
       const hasNameChanged = newName.trim() !== (activeDocument?.title || activeDocument?.name);
-      const hasProjectChanged = String(projectId) !== String(currentProjectId);
+      const hasProjectChanged = view !== 'db-client' && String(projectId) !== String(currentProjectId);
 
       try {
         if (hasNameChanged) {
@@ -142,6 +146,7 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
           else if (view === 'notes') await updateNote?.(String(id), newName, { silent: true });
           else if (view === 'drawings') await updateDrawing?.(id, newName, { silent: true });
           else if (view === 'flowchart') await updateFlowchart?.(id, newName, { silent: true });
+          else if (view === 'db-client') await updateDbClient?.(String(id), newName.trim());
         }
 
         if (hasProjectChanged) {
@@ -155,10 +160,10 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
           await onRenameSuccess();
         }
 
-        toast.success('Document updated successfully');
+        toast.success(view === 'db-client' ? 'DB Client renamed successfully' : 'Document updated successfully');
         handleOpenChange(false);
       } catch (error) {
-        toast.error('Failed to update document');
+        toast.error(view === 'db-client' ? 'Failed to rename DB Client' : 'Failed to update document');
       }
     }
   };
@@ -167,18 +172,18 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>{isCreate ? `Create ${viewLabel(view)}` : 'Edit Document'}</DialogTitle>
+          <DialogTitle>{isCreate ? `Create ${viewLabel(view)}` : 'Edit'}</DialogTitle>
           <DialogDescription>
             {isCreate
               ? `Enter a name and select a workspace for your new ${viewLabel(view)}.`
-              : `Update the name and project for your ${viewLabel(view)}.`}
+              : view === 'db-client' ? 'Change the name of this DB Client.' : `Update the name and project for your ${viewLabel(view)}.`}
           </DialogDescription>
         </DialogHeader>
         <DialogBody>
           <div className="space-y-4">
             <Field>
               <FieldLabel htmlFor="rename-input" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
-                {isCreate ? 'Name' : 'New Name'}
+                {isCreate || view === 'db-client' ? 'Name' : 'New Name'}
               </FieldLabel>
               <Input
                 id="rename-input"
@@ -194,7 +199,7 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
               />
             </Field>
 
-            <Field>
+            {view !== 'db-client' && <Field>
               <FieldLabel htmlFor="document-project-select" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
                 Project
               </FieldLabel>
@@ -270,7 +275,7 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
                   </div>
                 </div>
               )}
-            </Field>
+            </Field>}
           </div>
         </DialogBody>
         <DialogFooter>

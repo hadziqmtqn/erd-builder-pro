@@ -283,7 +283,7 @@ export const FlowchartTableView = React.memo(function FlowchartTableView({
                               <DropdownMenuContent align="end" className="w-44">
                                 <DropdownMenuItem onClick={() => onOpenEditDocument(uid)}>
                                   <Pencil className="h-4 w-4 mr-2" />
-                                  Edit Document
+                                  Edit
                                 </DropdownMenuItem>
                                 {canDeleteFile(flowchart) && (
                                   <>

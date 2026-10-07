@@ -35,7 +35,7 @@ vi.mock("../common/controller.js", () => ({ resolveStorage: mocks.resolveStorage
 import { getPublic } from "./controller.js";
 
 function response() {
-  return { json: vi.fn(), status: vi.fn().mockReturnThis() } as any;
+  return { json: vi.fn(), setHeader: vi.fn(), status: vi.fn().mockReturnThis() } as any;
 }
 
 beforeEach(() => {
@@ -73,6 +73,7 @@ describe("public Note assets", () => {
       "erd-builder-pro/notes/a.png",
       900,
     );
+    expect(res.setHeader).toHaveBeenCalledWith("Cache-Control", "private, no-store");
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       content: '<img src="https://signed.test/a.png">',
     }));
