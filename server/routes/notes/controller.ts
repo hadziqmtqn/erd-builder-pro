@@ -11,6 +11,23 @@ import { generateSignedUrl } from "../../lib/storage.js";
 import { privateStorageKeysFromMarkup, replacePrivateStorageUrls } from "../../lib/storage-access.js";
 import { resolveStorage } from "../common/controller.js";
 
+async function signNoteAssets(note: any): Promise<any> {
+  if (!note.content || !note.userId) return note;
+  const storage = await resolveStorage(note.userId);
+  const keys = privateStorageKeysFromMarkup(note.content);
+  if (!storage || keys.length === 0) return { ...note, content: replacePrivateStorageUrls(note.content, {}) };
+
+  const replacements: Record<string, string> = {};
+  await Promise.all(keys.map(async (key) => {
+    try {
+      replacements[key] = await generateSignedUrl(storage.s3 as any, storage.config, key, 900);
+    } catch (err) {
+      logger.warn({ err, key }, "Failed to sign Note asset");
+    }
+  }));
+  return { ...note, content: replacePrivateStorageUrls(note.content, replacements) };
+}
+
 export async function list(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   try {
     const limit = parseInt(req.query.limit as string) || 10;
@@ -49,7 +66,8 @@ export async function get(req: ExpressRequest, res: ExpressResponse): Promise<vo
     const userId = (req as any).user.id;
     const note = await notesService.getNote(req.params.uid, userId);
     if (!note) { res.status(404).json({ error: "Note not found" }); return; }
-    res.json(note);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json(await signNoteAssets(note));
   } catch (err: any) {
     handleError(res, err, "Failed to fetch note");
   }
@@ -170,24 +188,8 @@ export async function getPublic(req: ExpressRequest, res: ExpressResponse): Prom
       }
     }
 
-    if (note.content && note.userId) {
-      const storage = await resolveStorage(note.userId);
-      const keys = privateStorageKeysFromMarkup(note.content);
-      if (storage && keys.length > 0) {
-        const replacements: Record<string, string> = {};
-        await Promise.all(keys.map(async (key) => {
-          try {
-            replacements[key] = await generateSignedUrl(storage.s3 as any, storage.config, key, 900);
-          } catch (err) {
-            logger.warn({ err, key }, "Failed to sign public Note asset");
-          }
-        }));
-        res.json({ ...note, content: replacePrivateStorageUrls(note.content, replacements) });
-        return;
-      }
-    }
-
-    res.json(note);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json(await signNoteAssets(note));
   } catch (err: any) {
     handleError(res, err, "Failed to fetch public note");
   }

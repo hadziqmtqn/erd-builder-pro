@@ -17,7 +17,7 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import { Plus, Columns3, MoreHorizontal, Pencil, Trash2, ChevronLeft, ChevronRight, Cable, Database, Search } from 'lucide-react';
+import { Plus, Columns3, MoreHorizontal, Pencil, Trash2, ChevronLeft, ChevronRight, Cable, Database, Search, Eye } from 'lucide-react';
 import { DBConnectPanel } from '@/components/db-connect/DBConnectPanel';
 import { Input } from '@/components/ui/input';
 
@@ -383,8 +383,14 @@ export const ErdTableView = React.memo(function ErdTableView({
                               <DropdownMenuContent align="end" className="w-44">
                                 <DropdownMenuItem onClick={() => onOpenEditDocument(uid)}>
                                   <Pencil className="h-4 w-4 mr-2" />
-                                  Edit Document
+                                  Edit
                                 </DropdownMenuItem>
+                                {isDbClient && (
+                                  <DropdownMenuItem onClick={() => onSelectDiagram(uid)}>
+                                    <Eye className="h-4 w-4 mr-2" />
+                                    Detail
+                                  </DropdownMenuItem>
+                                )}
                                 {canDeleteFile(d) && (
                                   <>
                                     <DropdownMenuSeparator />

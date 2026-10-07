@@ -4,7 +4,6 @@ import {
   Link2, 
   Trash2, 
   Edit2, 
-  Settings2,
   Copy,
   Download,
   Upload,
@@ -150,12 +149,8 @@ export const NavActionsMenu = ({
                 onClick={onRename}
                 className="gap-2 cursor-pointer"
               >
-                {documentType === 'erd' ? (
-                  <Settings2 className="h-4 w-4 text-muted-foreground" />
-                ) : (
-                  <Edit2 className="h-4 w-4 text-muted-foreground" />
-                )}
-                <span>{documentType === 'erd' ? 'Settings' : 'Edit Document'}</span>
+                <Edit2 className="h-4 w-4 text-muted-foreground" />
+                <span>Edit</span>
               </DropdownMenuItem>
 
               {onOpenHistory && (

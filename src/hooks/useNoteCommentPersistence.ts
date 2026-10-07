@@ -11,6 +11,21 @@ function normalizeNoteHtml(html: string) {
   return html.replace(/\s*class=""\s*/g, '').replace(/<p><\/p>/g, '').replace(/\s+/g, ' ').trim();
 }
 
+function normalizePrivateAssetUrls(html: string) {
+  return html.replace(/(\bsrc\s*=\s*["'])([^"']+)(["'])/gi, (whole, prefix, value, suffix) => {
+    try {
+      const url = value.replace(/&amp;/gi, '&');
+      const parsed = new URL(url, window.location.origin);
+      const keyStart = parsed.pathname.indexOf('erd-builder-pro/');
+      if (!parsed.pathname.includes('/api/serve/') && !parsed.searchParams.has('X-Amz-Signature')) return whole;
+      if (keyStart < 0) return whole;
+      return `${prefix}/api/serve/${parsed.pathname.slice(keyStart)}${suffix}`;
+    } catch {
+      return whole;
+    }
+  });
+}
+
 async function sha256Hex(value: string) {
   const digest = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
@@ -49,9 +64,10 @@ export function useNoteCommentPersistence({ noteUid, note, isReadOnly, handleNot
         return false;
       }
 
+      const versionBaseline = normalizePrivateAssetUrls(baseline);
       const contentVersion = window.crypto?.subtle
-        ? { expectedContentHash: await sha256Hex(baseline) }
-        : { expectedContent: baseline };
+        ? { expectedContentHash: await sha256Hex(versionBaseline) }
+        : { expectedContent: versionBaseline };
       const response = await apiFetch(`/api/notes/${noteUid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

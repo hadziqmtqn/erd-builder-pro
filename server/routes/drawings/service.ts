@@ -3,6 +3,7 @@ import { captureEntityRevisionSafely } from "../../lib/entity-history.js";
 import { isDesktopMode, isLocalPostgres } from "../../lib/config.js";
 import { createPersonalFile } from "../../lib/personal-file-quota.js";
 import { creatorFileIdentifierWhere, fileIdentifierWhere, fileScopeWhere, projectScopeWhere } from "../../lib/team-scope.js";
+import { replacePrivateStorageUrlsInDrawingData } from "../../lib/storage-access.js";
 
 // Helper: build uid-or-id where clause that works with both UUIDs and numeric IDs
 // Prisma's @prisma/adapter-pg throws "Argument id is missing" when id is NaN
@@ -91,7 +92,7 @@ export async function createDrawing(data: {
   return createPersonalFile("drawings", data.userId, (db) => db.drawing.create({
     data: {
       title: data.title,
-      data: data.drawingData || "[]",
+      data: replacePrivateStorageUrlsInDrawingData(data.drawingData || "[]", {}),
       projectId: data.projectId ?? null,
       userId: data.userId,
       ...(data.uid ? { uid: data.uid } : {}),
@@ -126,7 +127,7 @@ export async function updateDrawing(
   const updatePayload: any = { updatedAt: new Date() };
   if (isDesktopMode() || isLocalPostgres()) updatePayload.version = (existing.version ?? 0) + 1;
   if (data.title !== undefined) updatePayload.title = data.title;
-  if (data.drawingData !== undefined) updatePayload.data = data.drawingData;
+  if (data.drawingData !== undefined) updatePayload.data = replacePrivateStorageUrlsInDrawingData(data.drawingData, {});
   if (data.projectId !== undefined) updatePayload.projectId = data.projectId;
 
   const updated = await prisma.drawing.update({ where: { id: existing.id }, data: updatePayload, select: { version: true, updatedAt: true } });

@@ -10,6 +10,25 @@ import { generateSignedUrl, getStorageClientForUser } from "../../lib/storage.js
 import { privateStorageKeysFromDrawingData, replacePrivateStorageUrlsInDrawingData } from "../../lib/storage-access.js";
 import { resolveStorage } from "../common/controller.js";
 
+async function signDrawingAssets(drawing: any): Promise<any> {
+  if (!drawing.data || !drawing.userId) return drawing;
+  const storage = await resolveStorage(drawing.userId);
+  const keys = privateStorageKeysFromDrawingData(drawing.data);
+  if (!storage || keys.length === 0) {
+    return { ...drawing, data: replacePrivateStorageUrlsInDrawingData(drawing.data, {}) };
+  }
+
+  const replacements: Record<string, string> = {};
+  await Promise.all(keys.map(async (key) => {
+    try {
+      replacements[key] = await generateSignedUrl(storage.s3 as any, storage.config, key, 900);
+    } catch (err) {
+      logger.warn({ err, key }, "Failed to sign Drawing asset");
+    }
+  }));
+  return { ...drawing, data: replacePrivateStorageUrlsInDrawingData(drawing.data, replacements) };
+}
+
 export async function list(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   try {
     const limit = parseInt(req.query.limit as string) || 10;
@@ -48,7 +67,8 @@ export async function get(req: ExpressRequest, res: ExpressResponse): Promise<vo
     const userId = (req as any).user.id;
     const drawing = await drawingsService.getDrawing(req.params.uid, userId);
     if (!drawing) { res.status(404).json({ error: "Drawing not found" }); return; }
-    res.json(drawing);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json(await signDrawingAssets(drawing));
   } catch (err: any) {
     handleError(res, err, "Failed to fetch drawing");
   }
@@ -158,24 +178,8 @@ export async function getPublic(req: ExpressRequest, res: ExpressResponse): Prom
       }
     }
 
-    if (drawing.data && drawing.userId) {
-      const storage = await resolveStorage(drawing.userId);
-      const keys = privateStorageKeysFromDrawingData(drawing.data);
-      if (storage && keys.length > 0) {
-        const replacements: Record<string, string> = {};
-        await Promise.all(keys.map(async (key) => {
-          try {
-            replacements[key] = await generateSignedUrl(storage.s3 as any, storage.config, key, 900);
-          } catch (err) {
-            logger.warn({ err, key }, "Failed to sign public Drawing asset");
-          }
-        }));
-        res.json({ ...drawing, data: replacePrivateStorageUrlsInDrawingData(drawing.data, replacements) });
-        return;
-      }
-    }
-
-    res.json(drawing);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json(await signDrawingAssets(drawing));
   } catch (err: any) {
     handleError(res, err, "Failed to fetch public drawing");
   }

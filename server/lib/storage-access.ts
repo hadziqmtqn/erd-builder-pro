@@ -23,35 +23,34 @@ export function normalizeStorageKey(value: unknown): string | null {
   return key;
 }
 
+function isSignedStorageUrl(value: string): boolean {
+  try {
+    return new URL(value.replace(/&amp;/gi, "&"), "https://storage.invalid").searchParams.has("X-Amz-Signature");
+  } catch {
+    return false;
+  }
+}
+
+function privateStorageKeyFromUrl(value: string): string | null {
+  if (!value.includes("/api/serve/") && !isSignedStorageUrl(value)) return null;
+  return normalizeStorageKey(value);
+}
+
 export function privateStorageKeysFromMarkup(markup: string): string[] {
   const keys = new Set<string>();
   const attributePattern = /\bsrc\s*=\s*["']([^"']+)["']/gi;
   for (const match of markup.matchAll(attributePattern)) {
-    if (!match[1].includes("/api/serve/")) continue;
-    const key = normalizeStorageKey(match[1]);
+    const key = privateStorageKeyFromUrl(match[1]);
     if (key) keys.add(key);
   }
   return [...keys];
 }
 
-function stripStorageQueryToken(value: string): string {
-  try {
-    const parsed = new URL(value, "https://storage.invalid");
-    parsed.searchParams.delete("token");
-    return /^https?:\/\//i.test(value)
-      ? parsed.toString()
-      : `${parsed.pathname}${parsed.search}${parsed.hash}`;
-  } catch {
-    return value;
-  }
-}
-
 export function replacePrivateStorageUrls(markup: string, replacements: Record<string, string>): string {
   return markup.replace(/(\bsrc\s*=\s*["'])([^"']+)(["'])/gi, (whole, prefix, url, suffix) => {
-    if (!url.includes("/api/serve/")) return whole;
-    const key = normalizeStorageKey(url);
-    const replacement = key ? replacements[key] : undefined;
-    return `${prefix}${replacement || stripStorageQueryToken(url)}${suffix}`;
+    const key = privateStorageKeyFromUrl(url);
+    if (!key) return whole;
+    return `${prefix}${replacements[key] || `/api/serve/${key}`}${suffix}`;
   });
 }
 
@@ -60,8 +59,8 @@ export function privateStorageKeysFromDrawingData(rawData: string): string[] {
     const parsed = JSON.parse(rawData) as { files?: Record<string, { dataURL?: unknown }> };
     const keys = new Set<string>();
     for (const file of Object.values(parsed.files ?? {})) {
-      if (typeof file?.dataURL !== "string" || !file.dataURL.includes("/api/serve/")) continue;
-      const key = normalizeStorageKey(file.dataURL);
+      if (typeof file?.dataURL !== "string") continue;
+      const key = privateStorageKeyFromUrl(file.dataURL);
       if (key) keys.add(key);
     }
     return [...keys];
@@ -75,10 +74,10 @@ export function replacePrivateStorageUrlsInDrawingData(rawData: string, replacem
     const parsed = JSON.parse(rawData) as { files?: Record<string, { dataURL?: unknown }> };
     let changed = false;
     for (const file of Object.values(parsed.files ?? {})) {
-      if (typeof file?.dataURL !== "string" || !file.dataURL.includes("/api/serve/")) continue;
-      const key = normalizeStorageKey(file.dataURL);
-      const replacement = key ? replacements[key] : undefined;
-      const nextUrl = replacement || stripStorageQueryToken(file.dataURL);
+      if (typeof file?.dataURL !== "string") continue;
+      const key = privateStorageKeyFromUrl(file.dataURL);
+      if (!key) continue;
+      const nextUrl = replacements[key] || `/api/serve/${key}`;
       if (nextUrl !== file.dataURL) {
         file.dataURL = nextUrl;
         changed = true;
