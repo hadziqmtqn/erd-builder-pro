@@ -1,112 +1,92 @@
-import { useState, useEffect } from 'react'
-import { Heart } from 'lucide-react'
-import { openExternalUrl } from '@/lib/urlUtils'
+import { Heart } from "lucide-react";
+import { openExternalUrl } from "@/lib/urlUtils";
+import { Button } from "@/components/ui/button";
 
 // ── Types ──
 
 type SponsorSlide = {
-  icon?: typeof Heart
-  logoSrc?: string
-  logoDarkSrc?: string
-  logoAlt?: string
-  title: string
-  description: string
-  buttonText: string
-  buttonColor?: string
-  buttonHoverColor?: string
-  buttonAction: string
-}
+  icon?: typeof Heart;
+  logoOnLightSurfaceSrc?: string;
+  logoOnDarkSurfaceSrc?: string;
+  logoAlt?: string;
+  title: string;
+  description: string;
+  buttonText: string;
+  buttonAction: string;
+};
 
 // ── Data ──
 
-const SPONSOR_INTERVAL = 6000
-
 export function withSponsorUtm(website: string): string {
   try {
-    const url = new URL(website)
-    url.searchParams.set('utm_source', 'erdbuilderpro.com')
-    url.searchParams.set('utm_medium', 'referral')
-    url.searchParams.set('utm_campaign', 'sponsor')
-    return url.toString()
+    const url = new URL(website);
+    url.searchParams.set("utm_source", "erdbuilderpro.com");
+    url.searchParams.set("utm_medium", "referral");
+    url.searchParams.set("utm_campaign", "sponsor");
+    return url.toString();
   } catch {
-    return website
+    return website;
   }
 }
 
 const SPONSOR_SLIDES: SponsorSlide[] = [
   {
-    logoSrc: 'https://s3.erdbuilderpro.com/sponsors/Sumopod-Light.png',
-    logoDarkSrc: 'https://s3.erdbuilderpro.com/sponsors/Sumopod-Dark.png',
-    logoAlt: 'SumoPod',
-    title: 'Deploy your App in 15 Seconds!',
-    description: 'Seamless container deployment for businesses of all sizes.',
-    buttonText: 'Get Started →',
-    buttonColor: '#2071FB',
-    buttonHoverColor: '#1a5fd4',
-    buttonAction: 'https://sumopod.com',
+    logoOnLightSurfaceSrc:
+      "https://s3.erdbuilderpro.com/sponsors/Sumopod-Light.png",
+    logoOnDarkSurfaceSrc:
+      "https://s3.erdbuilderpro.com/sponsors/Sumopod-Dark.png",
+    logoAlt: "SumoPod",
+    title: "Deploy your App in 15 Seconds!",
+    description: "Seamless container deployment for businesses of all sizes.",
+    buttonText: "Get Started →",
+    buttonAction: "https://sumopod.com",
   },
-]
+];
 
 // ── Component ──
 
-export function SponsorCarousel({ isCollapsed }: { isCollapsed: boolean }) {
-  const [index, setIndex] = useState(0)
-
-  useEffect(() => {
-    const timer = setInterval(
-      () => setIndex(i => (i + 1) % SPONSOR_SLIDES.length),
-      SPONSOR_INTERVAL,
-    )
-    return () => clearInterval(timer)
-  }, [])
-
-  if (isCollapsed) return null
-
-  const slide = SPONSOR_SLIDES[index]
+export function SponsorCarousel() {
+  const slide = SPONSOR_SLIDES[0];
 
   return (
-    <div className="px-3 mb-2">
-      <div className="overflow-hidden rounded-xl border border-dashed border-border/80 dark:border-border/70 bg-card/85 p-3">
-        <div key={index} className="flex flex-col items-center gap-1.5 animate-in fade-in slide-in-from-right-4 duration-500">
+    <div className="px-2 pb-2">
+      <div className="overflow-hidden rounded-xl border border-dashed border-zinc-700 bg-zinc-950 p-3 text-zinc-50 dark:border-zinc-300 dark:bg-zinc-100 dark:text-zinc-950">
+        <div className="flex flex-col items-center gap-1.5">
           {slide.icon ? (
             <slide.icon className="w-5 h-5 text-rose-500 shrink-0" />
-          ) : slide.logoSrc ? (
+          ) : slide.logoOnDarkSurfaceSrc || slide.logoOnLightSurfaceSrc ? (
             <>
               <img
-                src={slide.logoSrc}
-                alt={slide.logoAlt ?? ''}
-                className="h-8 w-auto max-w-full object-contain dark:hidden shrink-0"
+                src={slide.logoOnDarkSurfaceSrc ?? slide.logoOnLightSurfaceSrc}
+                alt={slide.logoAlt ?? ""}
+                className="h-8 w-auto max-w-full shrink-0 object-contain dark:hidden"
               />
-              {slide.logoDarkSrc && (
+              {slide.logoOnLightSurfaceSrc && (
                 <img
-                  src={slide.logoDarkSrc}
-                  alt={slide.logoAlt ?? ''}
-                  className="h-8 w-auto max-w-full object-contain hidden dark:block shrink-0"
+                  src={slide.logoOnLightSurfaceSrc}
+                  alt={slide.logoAlt ?? ""}
+                  className="hidden h-8 w-auto max-w-full shrink-0 object-contain dark:block"
                 />
               )}
             </>
           ) : null}
 
-          <p className="text-xs font-semibold text-foreground text-center truncate max-w-full">{slide.title}</p>
-          <p className="text-[11px] text-muted-foreground leading-relaxed text-center wrap-break-word">
+          <p className="max-w-full truncate text-center text-xs font-semibold text-zinc-50 dark:text-zinc-950">
+            {slide.title}
+          </p>
+          <p className="wrap-break-word text-center text-[11px] leading-relaxed text-zinc-300 dark:text-zinc-600">
             {slide.description}
           </p>
 
-          <button
-            className="w-full h-7 inline-flex items-center justify-center rounded-md text-white text-[10px] font-semibold transition-colors cursor-pointer mt-1"
-            style={{ backgroundColor: slide.buttonColor || '#2071FB' }}
-            onMouseEnter={(e) => {
-              if (slide.buttonHoverColor) e.currentTarget.style.backgroundColor = slide.buttonHoverColor
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = slide.buttonColor || '#2071FB'
-            }}
+          <Button
+            type="button"
+            className="mt-1 w-full bg-[#1a5fd4] text-white hover:bg-[#174ea6]"
             onClick={() => openExternalUrl(withSponsorUtm(slide.buttonAction))}
           >
             {slide.buttonText}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
-  )
+  );
 }

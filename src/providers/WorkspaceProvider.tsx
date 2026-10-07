@@ -385,6 +385,8 @@ export function WorkspaceProvider({
 
   // ── Handlers ──
   const handleEntityUpdate = useCallback(async (updatedEntity: Entity, options?: { immediate?: boolean }) => {
+    const current = nodesRef.current.find(node => node.id === updatedEntity.id);
+    if (current && JSON.stringify(current.data) === JSON.stringify(updatedEntity)) return;
     updateEntity(updatedEntity);
     if (options?.immediate) {
       if (saveTimeoutRef.current) {

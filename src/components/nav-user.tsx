@@ -36,6 +36,7 @@ import { useWorkspace } from "../providers/WorkspaceContext"
 import { AppView } from "../types"
 import { GuestExportDialog } from "@/components/settings/GuestExportDialog"
 import { AboutDialog } from "@/components/modals/AboutDialog"
+import { cn } from "@/lib/utils"
 
 export function NavUser({
   user,
@@ -43,12 +44,14 @@ export function NavUser({
   onViewChange,
   isOnline,
   onOpenFeedback,
+  compact = false,
 }: {
   user: any
   onLogout: () => void
   onViewChange: (view: AppView) => void
   isOnline: boolean
   onOpenFeedback: () => void
+  compact?: boolean
 }) {
   const { isMobile } = useSidebar()
   const { isGuest, setIsSettingsOpen, setSettingsTab,
@@ -81,7 +84,12 @@ export function NavUser({
             <DropdownMenuTrigger render={
               <SidebarMenuButton
                 size="lg"
-                className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                aria-label={compact ? `Account menu for ${name}` : undefined}
+                title={compact ? name : undefined}
+                className={cn(
+                  "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground",
+                  compact && "!size-8 !justify-center !p-0",
+                )}
               >
                 <div className="relative">
                   <Avatar className="h-8 w-8 rounded-lg">
@@ -103,11 +111,13 @@ export function NavUser({
                     />
                   )}
                 </div>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">{name}</span>
-                  <span className="truncate text-xs">{email}</span>
-                </div>
-                <ChevronsUpDown className="ml-auto size-4" />
+                {!compact && (
+                  <div className="grid flex-1 text-left text-sm leading-tight">
+                    <span className="truncate font-semibold">{name}</span>
+                    <span className="truncate text-xs">{email}</span>
+                  </div>
+                )}
+                {!compact && <ChevronsUpDown className="ml-auto size-4" />}
               </SidebarMenuButton>
             } />
             <DropdownMenuContent

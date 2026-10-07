@@ -1,5 +1,9 @@
 import type { Viewport } from '@xyflow/react';
 
+export function hasViewportChanged(previous: Viewport, next: Viewport): boolean {
+  return previous.x !== next.x || previous.y !== next.y || previous.zoom !== next.zoom;
+}
+
 export function readSavedViewport(value: any): Viewport | null {
   const source = value?.viewport ?? value;
   const x = source?.x ?? source?.viewport_x ?? source?.viewportX;

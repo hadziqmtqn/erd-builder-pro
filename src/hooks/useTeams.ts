@@ -56,6 +56,7 @@ export function useTeams(isGuest = false, isSso = false, onActiveTeamUnavailable
   const [activeTeamId, setActiveTeamId] = useState<string | null>(readActiveTeamId);
   const [isLoading, setIsLoading] = useState(!isGuest);
   const [isAvailable, setIsAvailable] = useState(false);
+  const [licenseRequired, setLicenseRequired] = useState(false);
   const fetchVersion = useRef(0);
 
   const fetchTeams = useCallback(async (showLoading = false) => {
@@ -63,6 +64,7 @@ export function useTeams(isGuest = false, isSso = false, onActiveTeamUnavailable
     if (isGuest) {
       setIsLoading(false);
       setIsAvailable(false);
+      setLicenseRequired(false);
       return [];
     }
 
@@ -71,12 +73,16 @@ export function useTeams(isGuest = false, isSso = false, onActiveTeamUnavailable
       const response = await apiFetch("/api/teams");
       if (version !== fetchVersion.current) return [];
       if (response.status === 404 || response.status === 403) {
+        const body = response.status === 403
+          ? await response.json().catch(() => ({})) as { code?: string }
+          : {};
         const selected = readActiveTeamId();
         setTeams([]);
         setActiveTeamId(null);
         writeActiveTeamId(null);
         if (selected) onActiveTeamUnavailable?.();
         setIsAvailable(false);
+        setLicenseRequired(["INSTANCE_LICENSE_REQUIRED", "LICENSE_EXPIRED_OR_INVALID"].includes(body.code || ""));
         return [];
       }
       if (!response.ok) throw new Error("Failed to fetch teams");
@@ -86,6 +92,7 @@ export function useTeams(isGuest = false, isSso = false, onActiveTeamUnavailable
       if (version !== fetchVersion.current) return nextTeams;
       setTeams(nextTeams);
       setIsAvailable(true);
+      setLicenseRequired(false);
       const selected = readActiveTeamId();
       if (selected && nextTeams.some((team: TeamSummary) => String(team.id) === selected)) {
         setActiveTeamId(selected);
@@ -100,6 +107,7 @@ export function useTeams(isGuest = false, isSso = false, onActiveTeamUnavailable
       console.error("Failed to fetch teams:", error);
       setTeams([]);
       setIsAvailable(false);
+      setLicenseRequired(false);
       return [];
     } finally {
       if (showLoading && version === fetchVersion.current) setIsLoading(false);
@@ -253,6 +261,7 @@ export function useTeams(isGuest = false, isSso = false, onActiveTeamUnavailable
     activeTeam: teams.find((team) => team.id === activeTeamId) || null,
     isLoading,
     isAvailable,
+    licenseRequired,
     fetchTeams,
     selectTeam,
     createTeam,

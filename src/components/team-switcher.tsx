@@ -24,7 +24,6 @@ export function TeamSwitcher({
   teams,
   activeTeamId,
   enabled,
-  selfHosted,
   canManageTeams,
   onOpen,
   onSelect,
@@ -34,7 +33,6 @@ export function TeamSwitcher({
   teams: SwitcherTeam[];
   activeTeamId: string | null;
   enabled: boolean;
-  selfHosted: boolean;
   canManageTeams: boolean;
   onOpen: () => void;
   onSelect: (teamId: string | null) => void;
@@ -43,25 +41,18 @@ export function TeamSwitcher({
 }) {
   const { isMobile } = useSidebar();
   const activeTeam = teams.find((team) => team.id === activeTeamId) || null;
-  const subtitle = selfHosted ? activeTeam?.name || (activeTeamId ? "Loading workspace…" : "Personal") : "Workspace";
+  const workspaceName = activeTeam?.name || (activeTeamId ? "Loading workspace…" : "Personal");
 
   const trigger = (
     <SidebarMenuButton
       size="lg"
-      className="cursor-pointer transition-colors hover:bg-accent/50 active:bg-accent/70"
+      aria-label={`Switch workspace. Current workspace: ${workspaceName}`}
+      title={`Workspace: ${workspaceName}`}
+      className="h-9 cursor-pointer px-2 transition-colors hover:bg-accent/50 active:bg-accent/70"
       onClick={enabled ? undefined : () => onSelect(null)}
     >
-      <div className="flex aspect-square size-8 items-center justify-center rounded-lg">
-        <img src="/img/ERD-Builder-Pro-Light-1.svg" alt="" className="size-full dark:hidden" />
-        <img src="/img/ERD-Builder-Pro-Dark-1.svg" alt="" className="hidden size-full dark:block" />
-      </div>
-      <div className="grid flex-1 text-left text-sm leading-tight">
-        <span className="truncate font-semibold">
-          ERD Builder <span>Pro</span>
-        </span>
-        <span className="truncate text-xs">{subtitle}</span>
-      </div>
-      {enabled && <ChevronsUpDown className="ml-auto size-4" />}
+      <span className="min-w-0 flex-1 truncate text-left font-medium">{workspaceName}</span>
+      {enabled && <ChevronsUpDown className="ml-auto size-4 shrink-0" />}
     </SidebarMenuButton>
   );
 

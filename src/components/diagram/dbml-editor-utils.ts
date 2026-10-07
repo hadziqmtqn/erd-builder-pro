@@ -2,17 +2,12 @@ import type { Edge, Node } from '@xyflow/react';
 import type { Entity } from '@/types';
 
 export function canvasFingerprint(nodes: Node<Entity>[], edges: Edge[]): string {
-  const nodeIds = nodes.map(node => node.id).sort().join(',');
-  const edgeIds = edges.map(edge => edge.id).sort().join(',');
-  const positions = nodes
-    .map(node => `${node.id}:${Math.round(node.position.x)},${Math.round(node.position.y)}`)
-    .sort()
-    .join(';');
   const columns = nodes.map(node =>
-    `${node.id}:${node.data.columns.map(column => `${column.name}:${column.type}:${column.enum_name || ''}:${column.enum_values || ''}:${column.comment || ''}:${column.max_length || ''}:${column.numeric_precision || ''}:${column.numeric_scale || ''}:${column.is_pk}:${column.is_nullable}:${column.default_value || ''}:${column.is_unique || false}`).join(',')}`
+    `${node.data.name}:${node.data.columns.map(column => `${column.name}:${column.type}:${column.enum_name || ''}:${column.enum_values || ''}:${column.comment || ''}:${column.max_length || ''}:${column.numeric_precision || ''}:${column.numeric_scale || ''}:${column.is_pk}:${column.is_nullable}:${column.default_value || ''}:${column.is_unique || false}`).join(',')}`
   ).sort().join('|');
   const metadata = nodes.map(node => JSON.stringify({
     table: node.data.name,
+    comment: node.data.comment || '',
     constraints: (node.data.constraints || []).map(constraint => ({
       kind: constraint.kind,
       name: constraint.name || '',
@@ -27,13 +22,16 @@ export function canvasFingerprint(nodes: Node<Entity>[], edges: Edge[]): string 
     })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
   })).sort().join('|');
   const relationMetadata = edges.map(edge => JSON.stringify({
-    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    sourceHandle: edge.sourceHandle,
+    targetHandle: edge.targetHandle,
     on_delete: (edge.data as any)?.on_delete || '',
     on_update: (edge.data as any)?.on_update || '',
     constraint_name: (edge.data as any)?.constraint_name || '',
   })).sort().join('|');
 
-  return `${nodeIds}|${edgeIds}|${positions}|${columns}|${metadata}|${relationMetadata}`;
+  return `${columns}|${metadata}|${relationMetadata}`;
 }
 
 export function isStructurallyComplete(text: string): boolean {

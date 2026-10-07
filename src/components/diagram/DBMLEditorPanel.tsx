@@ -5,7 +5,7 @@ import { dbmlToERD, erdToDBML } from '@/lib/dbml-converter';
 import CodeMirror from '@uiw/react-codemirror';
 import { sql as sqlLang } from '@codemirror/lang-sql';
 import { oneDark } from '@codemirror/theme-one-dark';
-import { Prec } from '@codemirror/state';
+import { Prec, Transaction } from '@codemirror/state';
 import { EditorView, keymap, type ViewUpdate } from '@codemirror/view';
 import { useWorkspace } from '@/providers/WorkspaceContext';
 import { dedupeDBMLEnumBlocks } from '@/lib/dbml-utils';
@@ -49,10 +49,9 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({
 
   const applyingFromDBML = useRef(false);
   const generatingFromCanvas = useRef(false);
-  const isReverseApply = useRef(false);
   const applyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const reverseTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const lastCanvasHash = useRef('');
+  const lastCanvasHash = useRef(canvasFingerprint(nodes, edges));
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorViewRef = useRef<EditorView | null>(null);
   const suggestionsRef = useRef<DBMLSuggestion[]>([]);
@@ -90,7 +89,8 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const prevValue = useRef(value);
-  const lastParsedValue = useRef('');
+  const lastParsedValue = useRef(value);
+  const userEditPending = useRef(false);
   const updateSuggestionPosition = useCallback((view: EditorView, count = suggestionsRef.current.length) => {
     if (!count || !containerRef.current) return;
     const coords = view.coordsAtPos(view.state.selection.main.head);
@@ -111,6 +111,7 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({
     view.dispatch({
       changes: { from: suggestion.from, to: suggestion.to, insert: suggestion.label },
       selection: { anchor: suggestion.from + suggestion.label.length },
+      annotations: Transaction.userEvent.of('input.complete'),
     });
     suggestionsRef.current = [];
     setSuggestions([]);
@@ -118,6 +119,8 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({
   }, []);
 
   const handleChange = useCallback((nextValue: string, viewUpdate: ViewUpdate) => {
+    if (!viewUpdate.transactions.some(transaction => transaction.annotation(Transaction.userEvent))) return;
+    userEditPending.current = true;
     prevValue.current = nextValue;
     clearTimeout(reverseTimer.current);
     onChange(nextValue);
@@ -190,6 +193,10 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({
   ], [applySuggestion, cursorTracker, dbmlLinter]);
 
   useEffect(() => {
+    if (!userEditPending.current) {
+      prevValue.current = value;
+      lastParsedValue.current = value;
+    }
     const view = editorViewRef.current;
     if (!view || view.hasFocus) return;
     const currentDocument = view.state.doc.toString();
@@ -199,20 +206,20 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({
   }, [value]);
 
   useEffect(() => {
-    if (!value.trim()) return;
-    if (value.replace(/\s+/g, ' ') === lastParsedValue.current) return;
-
-    if (isReverseApply.current) {
-      isReverseApply.current = false;
+    if (!userEditPending.current || !value.trim()) return;
+    if (value === lastParsedValue.current) {
+      userEditPending.current = false;
       return;
     }
+
     if (!isStructurallyComplete(value)) return;
 
     clearTimeout(applyTimer.current);
     applyTimer.current = setTimeout(() => {
       try {
         const result = dbmlToERD(value);
-        lastParsedValue.current = value.replace(/\s+/g, ' ');
+        lastParsedValue.current = value;
+        userEditPending.current = false;
         applyingFromDBML.current = true;
         onApplyRef.current(result.nodes, result.edges, value);
         setTimeout(() => { applyingFromDBML.current = false; }, 0);
@@ -225,7 +232,7 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({
   }, [value]);
 
   useEffect(() => {
-    if (nodes.length === 0) return;
+    if (nodes.length === 0 || userEditPending.current) return;
     if (applyingFromDBML.current) {
       applyingFromDBML.current = false;
       return;
@@ -274,7 +281,6 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({
         dbml = dedupeDBMLEnumBlocks(dbml);
         lastCanvasHash.current = canvasFingerprint(nodes, edges);
         if (dbml !== prevValue.current) {
-          isReverseApply.current = true;
           onChangeRef.current(dbml, true);
         }
       } catch {

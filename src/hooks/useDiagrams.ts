@@ -99,6 +99,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
   const diagramsRef = useRef<Diagram[]>(diagrams);
   const activeDiagramIdRef = useRef(activeDiagramId);
   const dbmlSourceRef = useRef<Record<string, string | null>>({});
+  const saveGenerationRef = useRef(new Map<string, number>());
 
   const isGuestRef = useRef(isGuest);
   useEffect(() => { isGuestRef.current = isGuest; }, [isGuest]);
@@ -428,6 +429,9 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     options?: { expectedVersion?: number; retryCount?: number; dbmlSource?: string | null },
   ) => {
     if (!activeDiagramId || (view !== 'erd' && view !== 'diagram')) return;
+    const saveKey = String(activeDiagramId);
+    const generation = (saveGenerationRef.current.get(saveKey) ?? 0) + 1;
+    saveGenerationRef.current.set(saveKey, generation);
     
     const { expectedVersion: passedVersion, dbmlSource } = options || {};
     
@@ -562,6 +566,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
       // 🔒 Get version for optimistic locking
       const expectedVersion = passedVersion !== undefined ? passedVersion : await getCachedDiagramVersion(activeDiagramId);
 
+      if (saveGenerationRef.current.get(saveKey) !== generation) return;
       await localPersistence.saveDraft(DraftType.ERD, activeDiagramId, data, isSyncPending);
       
       // For authenticated users, also track version for next sync
