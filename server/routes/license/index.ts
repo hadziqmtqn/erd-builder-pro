@@ -1,12 +1,24 @@
-import { Router } from "express";
+import { Router, type NextFunction, type Request, type Response } from "express";
 
+import { getInstallMode } from "../../lib/config.js";
 import { authenticate, rejectInSsoMode } from "../../lib/middleware.js";
 import { requireAdmin } from "../../lib/security.js";
 import { activateSelfHostInstanceLicense, checkSelfHostInstanceLicense, LicenseClientError, verifyStoredInstanceLicense } from "../../lib/license-client.js";
 import { instanceLicenseUsage } from "../../lib/instance-license-usage.js";
 import { reportSelfHostCapacityChange, startSelfHostCapacityReportScheduler } from "../../lib/self-host-capacity-report.js";
 
+export function blockDesktopCliLicenseManagement(_req: Request, res: Response, next: NextFunction): void {
+  const installMode = getInstallMode();
+  if (installMode === "desktop" || installMode === "cli") {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  next();
+}
+
 const router = Router();
+router.use(blockDesktopCliLicenseManagement);
+
 router.use(authenticate);
 router.use(rejectInSsoMode);
 router.use((req, res, next) => {
