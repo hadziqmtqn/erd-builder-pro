@@ -190,6 +190,8 @@ describe.skipIf(!enabled)("SH-003 authenticated recovery API", () => {
       import("../drawings/index.js"),
       import("../flowcharts/index.js"),
     ]);
+    // config.ts reloads .env on import; drop a developer's AUTH_MODE=sso so Bearer tokens are read.
+    delete process.env.AUTH_MODE;
     const app = express();
     app.use(express.json());
     app.use(cookieParser());
@@ -370,8 +372,13 @@ describe.skipIf(!enabled)("SH-003 authenticated recovery API", () => {
     }
     const recoveredNote = readResults.find((entry) => entry.type === "notes")?.result.body;
     const recoveredDrawing = readResults.find((entry) => entry.type === "drawings")?.result.body;
-    expect(recoveredNote.content).toContain("/api/serve/erd-builder-pro/notes/image.png");
-    expect(recoveredDrawing.data).toContain("/api/serve/erd-builder-pro/drawings/image.png");
+    // Authorized reads return a signed URL (DATA-003); the stored value stays the canonical proxy path.
+    expect(recoveredNote.content).toContain("erd-builder-pro/notes/image.png");
+    expect(recoveredDrawing.data).toContain("erd-builder-pro/drawings/image.png");
+    const storedNote = await fixture.db.note.findFirst({ where: { uid: copiedUids.get("notes") } });
+    const storedDrawing = await fixture.db.drawing.findFirst({ where: { uid: copiedUids.get("drawings") } });
+    expect(storedNote.content).toContain("/api/serve/erd-builder-pro/notes/image.png");
+    expect(storedDrawing.data).toContain("/api/serve/erd-builder-pro/drawings/image.png");
 
     const personalRead = await callApi(
       "GET",
