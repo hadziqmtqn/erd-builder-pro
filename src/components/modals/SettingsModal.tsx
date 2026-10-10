@@ -113,6 +113,7 @@ export function SettingsModal() {
   const isSso = Boolean(user?.isSso);
   // SSO Cloud never grants local administration, including when viewed in Tauri.
   const isSuperAdmin = !isSso && (isDesktopApp || Boolean(user?.isSuperAdmin || user?.is_super_admin));
+  const canManageInstanceLicense = isSuperAdmin && !isDesktopApp;
 
   const {
     providers,
@@ -180,7 +181,7 @@ export function SettingsModal() {
         label: "Feature",
         items: [
           ...(isSuperAdmin ? [{ id: 'ai-config', label: 'AI Configuration', icon: <Sparkles className="size-4" /> }] : []),
-          ...(isSuperAdmin ? [{ id: 'license', label: 'Application License', icon: <KeyRound className="size-4" /> }] : []),
+          ...(canManageInstanceLicense ? [{ id: 'license', label: 'Application License', icon: <KeyRound className="size-4" /> }] : []),
           { id: 'mcp-server', label: 'MCP Integration', icon: <ServerCog className="size-4" /> },
           { id: 'ai-rules', label: 'AI Rules', icon: <ListChecks className="size-4" /> },
           { id: 'ai-prompts', label: 'System Prompts', icon: <Brain className="size-4" /> },
@@ -199,14 +200,14 @@ export function SettingsModal() {
         ]
       },
     ];
-  }, [isGuest, isDesktopApp, isSso, isSuperAdmin]);
+  }, [canManageInstanceLicense, isGuest, isDesktopApp, isSso, isSuperAdmin]);
 
   React.useEffect(() => {
     const unavailableTabs = ['ai-config', 'license', 'export-data', 'import-data', 'backups'];
-    if ((!isSuperAdmin && unavailableTabs.includes(settingsTab)) || (isSso && settingsTab === 'account')) {
+    if ((!isSuperAdmin && unavailableTabs.includes(settingsTab)) || (isSso && settingsTab === 'account') || (settingsTab === 'license' && !canManageInstanceLicense)) {
       setSettingsTab(isGuest || isSso ? 'appearance' : 'account');
     }
-  }, [isGuest, isSso, isSuperAdmin, settingsTab, setSettingsTab]);
+  }, [canManageInstanceLicense, isGuest, isSso, isSuperAdmin, settingsTab, setSettingsTab]);
 
   const allItems = navGroups.flatMap(g => g.items);
   const getTabLabel = (id: string) => {
@@ -394,7 +395,7 @@ export function SettingsModal() {
                 <McpServerTab />
               )}
 
-              {isSuperAdmin && settingsTab === 'license' && <LicenseTab />}
+              {canManageInstanceLicense && settingsTab === 'license' && <LicenseTab />}
 
               {isSuperAdmin && settingsTab === 'backups' && (
                 <div className="p-6 space-y-6">

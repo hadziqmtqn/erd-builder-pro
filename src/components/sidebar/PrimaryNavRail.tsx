@@ -6,7 +6,6 @@ import {
   FileText,
   Folder,
   LayoutDashboard,
-  LockKeyhole,
   Network,
   PenTool,
   Shield,
@@ -16,6 +15,7 @@ import {
 import { useLocation, useNavigate } from "react-router-dom"
 
 import { NavUser } from "@/components/nav-user"
+import { cn } from "@/lib/utils"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -73,16 +73,17 @@ function RailAction({
         isActive={active}
         disabled={disabled}
         aria-label={accessibleLabel}
-        className="relative mx-auto !size-8 !justify-center !p-0"
+        className={cn(
+          "relative mx-auto !size-8 !justify-center !p-0",
+          locked && "cursor-not-allowed",
+        )}
         tooltip={{ children: locked ? `${label} · PRO` : label, hidden: false }}
         onClick={onClick}
       >
-        <Icon aria-hidden="true" />
-        {locked && (
-          <span className="absolute top-0.5 right-0.5 flex size-4 items-center justify-center rounded-full bg-background text-primary ring-1 ring-sidebar-border" aria-hidden="true">
-            <LockKeyhole className="size-2.5" />
-          </span>
-        )}
+        <Icon
+          aria-hidden="true"
+          className={locked ? "text-muted-foreground" : undefined}
+        />
       </SidebarMenuButton>
     </SidebarMenuItem>
   )
