@@ -75,6 +75,7 @@ async function assetApi(key: string, token?: string, teamId?: string) {
   return {
     status: response.status,
     contentType: response.headers.get("content-type")?.split(";")[0],
+    cacheControl: response.headers.get("cache-control"),
     bytes: Buffer.from(await response.arrayBuffer()),
   };
 }
@@ -282,8 +283,12 @@ describe.skipIf(!enabled)("SH-003 recovered asset access through authenticated s
       expect(response.status).toBe(200);
       expect(response.headers.get("cache-control")).toBe("private, no-store");
       expect(Buffer.from(await response.arrayBuffer())).toEqual(expected);
-      expect((await assetApi(key)).status).toBe(401);
-      expect((await assetApi(key, adminToken)).status).toBe(404);
+      const anonymous = await assetApi(key);
+      expect(anonymous.status).toBe(401);
+      expect(anonymous.cacheControl).toBe("private, no-store");
+      const denied = await assetApi(key, adminToken);
+      expect(denied.status).toBe(404);
+      expect(denied.cacheControl).toBe("private, no-store");
     }
 
     await fixture.db.teamMember.updateMany({

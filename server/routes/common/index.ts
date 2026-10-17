@@ -29,6 +29,10 @@ router.post("/upload", authenticate, upload.single("image"), validate(uploadSche
 router.delete("/upload", authenticate, validate(deleteUploadSchema), ctrl.deleteFile);
 
 // ── Private storage access endpoints ──
+router.use("/serve", (_req, res, next) => {
+  res.setHeader("Cache-Control", "private, no-store");
+  next();
+});
 // Proxy streaming: works for same-origin & cross-origin (via ?token= query param)
 router.get("/serve/{*key}", authenticate, ctrl.serveFile);
 // On-demand pre-signed URL generation
