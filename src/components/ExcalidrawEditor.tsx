@@ -129,12 +129,10 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
     // Desktop mode: store images as base64 natively (Excalidraw format), no R2 upload needed
     if (isDesktopApp) return;
     
-    // Update ref so scheduleFileProcessing always has the latest version
-    processNewFilesRef.current = processNewFiles;
-
     const fileIds = Object.keys(files);
     const newFilesToProcess = fileIds.filter(id => 
       !processedFileIds.current.has(id) && 
+      !fileUrlMap.current.has(id) &&
       files[id].dataURL.startsWith('data:image/')
     );
 
@@ -142,23 +140,14 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
 
     // Mark as processing immediately
     isProcessingFiles.current = true;
-    newFilesToProcess.forEach(id => processedFileIds.current.add(id));
 
     try {
-      const updatedFiles: any[] = [];
-
       for (const id of newFilesToProcess) {
         const fileData = files[id];
         
-        // Convert base64 to File object
-        let blob;
-        try {
-          const res = await fetch(fileData.dataURL);
-          blob = await res.blob();
-        } catch (e) {
-          console.error(`Failed to fetch/decode dataURL for file ${id}:`, e);
-          continue; // Skip this file to prevent component crash
-        }
+        // Decode locally: production CSP does not allow fetch(data:).
+        const bytes = Uint8Array.from(atob(fileData.dataURL.split(',')[1]), char => char.charCodeAt(0));
+        const blob = new Blob([bytes], { type: fileData.mimeType });
         
         const file = new File([blob], `excalidraw_${id}`, { type: fileData.mimeType });
 
@@ -169,7 +158,7 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
         const formData = new FormData();
         formData.append('image', compressedFile);
         formData.append('feature', 'drawings');
-        if (drawing?.uid) formData.append('document', drawing.uid);
+        if (drawingRef.current.uid) formData.append('document', drawingRef.current.uid);
 
         const uploadRes = await apiFetch('/api/upload', {
           method: 'POST',
@@ -181,31 +170,37 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
         if (!uploadRes.ok) {
           throw new Error(result.error || 'Upload failed');
         }
-        if (result.url) {
-          // Sanitize URL - remove escaped newlines and trim whitespace
-          const cleanUrl = result.url.replace(/\\n/g, '').replace(/\\r/g, '').trim();
-          fileUrlMap.current.set(id, cleanUrl); // Cache the R2 URL
-          updatedFiles.push({
-            id,
-            dataURL: cleanUrl,
-            mimeType: (compressedFile.type || fileData.mimeType) as typeof fileData.mimeType,
-            created: fileData.created,
-            lastRetrieved: Date.now(),
-          });
-        }
+        if (!result.url) throw new Error('Upload did not return an image URL');
+        const cleanUrl = result.url.replace(/\\n/g, '').replace(/\\r/g, '').trim();
+        fileUrlMap.current.set(id, cleanUrl);
+        processedFileIds.current.add(id);
       }
 
-      // Note: We intentionally do NOT call addFiles() here because it triggers
-      // onChange again, causing an infinite loop. Instead, we just cache the R2 URLs
-      // and let the next handleChange call sanitize the data.
     } catch (err) {
       console.error("Failed to process Excalidraw files for R2:", err);
       toast.error(`Failed to upload image: ${err instanceof Error ? err.message : 'Upload failed'}`);
     } finally {
       // Always reset the processing flag
       isProcessingFiles.current = false;
+      if (isMountedRef.current) {
+        // Persist uploaded URLs immediately, using the latest canvas edits (DATA-003).
+        latestSceneRef.current = {
+          elements: excalidrawAPI.getSceneElements(),
+          appState: excalidrawAPI.getAppState(),
+          files: excalidrawAPI.getFiles(),
+        };
+        emitLatestScene();
+        const files = excalidrawAPI.getFiles();
+        if (Object.keys(files).some(id => !newFilesToProcess.includes(id) && !processedFileIds.current.has(id) && !fileUrlMap.current.has(id) && files[id].dataURL.startsWith('data:image/'))) {
+          scheduleFileProcessing(files);
+        }
+      }
     }
-  }, [excalidrawAPI]);
+  }, [excalidrawAPI, emitLatestScene, isDesktopApp, scheduleFileProcessing]);
+
+  useEffect(() => {
+    processNewFilesRef.current = processNewFiles;
+  }, [processNewFiles]);
 
   // Prepare initial data for the component mount
   const initialData = useMemo(() => {
