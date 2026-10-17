@@ -309,7 +309,7 @@ export async function getProjectSiblings(projectId: number, userId: string) {
   if (!prisma) throw new Error("Database connection not available");
 
   const project = await prisma.project.findFirst({ where: { id: projectId, ...projectScopeWhere(userId), isDeleted: false }, select: { id: true } });
-  if (!project) return { notes: [], diagrams: [], flowcharts: [] };
+  if (!project) return null;
   const [notes, diagrams, flowcharts] = await Promise.all([
     prisma.note.findMany({
       where: { projectId, isDeleted: false },
@@ -359,7 +359,7 @@ export async function getProjectSummary(projectId: number, userId: string, inclu
   if (!prisma) throw new Error("Database connection not available");
 
   const project = await prisma.project.findFirst({ where: { id: projectId, ...projectScopeWhere(userId), isDeleted: false }, select: { id: true } });
-  if (!project) return { notes: 0, diagrams: 0, flowcharts: 0, drawings: 0, dbClients: 0 };
+  if (!project) return null;
   const diagramWhere = { projectId, isDeleted: false, OR: [{ sourceType: { not: "production_db" } }, { sourceType: null }] };
   const [notes, diagrams, flowcharts, drawings, dbClients] = await Promise.all([
     prisma.note.count({ where: { projectId, isDeleted: false } }),
@@ -377,9 +377,10 @@ export async function getProjectSummary(projectId: number, userId: string, inclu
 export async function listProjectFiles(projectId: number, userId: string, includeDbClient = true) {
   if (!prisma) throw new Error("Database connection not available");
 
+  const project = await prisma.project.findFirst({ where: { id: projectId, ...projectScopeWhere(userId), isDeleted: false }, select: { id: true } });
+  if (!project) return null;
   const where = { projectId, isDeleted: false };
-  const [project, notes, diagrams, flowcharts, drawings, dbClients] = await Promise.all([
-    prisma.project.findFirst({ where: { id: projectId, ...projectScopeWhere(userId), isDeleted: false }, select: { id: true } }),
+  const [notes, diagrams, flowcharts, drawings, dbClients] = await Promise.all([
     prisma.note.findMany({ where, select: { id: true, uid: true, title: true, createdAt: true } }),
     prisma.diagram.findMany({ where: { ...where, OR: [{ sourceType: null }, { sourceType: { not: "production_db" } }] }, select: { id: true, uid: true, name: true, createdAt: true } }),
     prisma.flowchart.findMany({ where, select: { id: true, uid: true, title: true, createdAt: true } }),
@@ -388,7 +389,6 @@ export async function listProjectFiles(projectId: number, userId: string, includ
       ? (prisma as any).dbClient.findMany({ where, select: { id: true, uid: true, name: true, createdAt: true } })
       : Promise.resolve([]),
   ]);
-  if (!project) return { data: [] };
 
   const files = [
     ...notes.map(file => ({ type: "notes", uid: String(file.uid ?? file.id), title: file.title, createdAt: file.createdAt })),

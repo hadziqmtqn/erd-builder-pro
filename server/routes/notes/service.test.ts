@@ -1,17 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  note: { findFirst: vi.fn(), count: vi.fn(), updateMany: vi.fn(), findUnique: vi.fn() },
+  note: { create: vi.fn(async (args: any) => args.data), findFirst: vi.fn(), count: vi.fn(), updateMany: vi.fn(), findUnique: vi.fn() },
 }));
 
 vi.mock("../../lib/prisma.js", () => ({ prisma: { note: mocks.note } }));
 vi.mock("../../lib/config.js", () => ({ isDesktopMode: () => false, isLocalPostgres: () => true }));
 vi.mock("../../lib/entity-history.js", () => ({ captureEntityRevisionSafely: vi.fn() }));
-vi.mock("../../lib/personal-file-quota.js", () => ({ createPersonalFile: vi.fn() }));
+vi.mock("../../lib/personal-file-quota.js", () => ({ createPersonalFile: vi.fn((_feature, _userId, create) => create({ note: mocks.note })) }));
 vi.mock("../../lib/storage-access.js", () => ({ replacePrivateStorageUrls: (value: string) => value }));
 
 import { runWithTeamScope } from "../../lib/team-scope.js";
-import { updateNote } from "./service.js";
+import { createNote, updateNote } from "./service.js";
 
 const existing = { id: 1, uid: "note-1", userId: "creator", title: "Spec", content: "<p>Hello</p>", projectId: 7, version: 3, updatedAt: new Date(), isDeleted: false };
 const anchored = '<p data-comment-anchor-id="a1">Hello</p>';
@@ -25,6 +25,22 @@ beforeEach(() => {
   mocks.note.findFirst.mockResolvedValue(existing);
   mocks.note.updateMany.mockResolvedValue({ count: 1 });
   mocks.note.findUnique.mockResolvedValue({ version: 4, updatedAt: new Date() });
+});
+
+describe("Note creation identifiers (DATA-003)", () => {
+  it("generates distinct UUIDs when API callers omit uid", async () => {
+    await createNote({ title: "First", userId: "creator" });
+    await createNote({ title: "Second", userId: "creator" });
+    const [first, second] = mocks.note.create.mock.calls.map(([args]) => args.data);
+    expect(first.uid).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(second.uid).not.toBe(first.uid);
+  });
+
+  it("preserves the UUID supplied by the client", async () => {
+    const uid = "2e571b3a-dc8c-4f45-8dfc-25d424dcac29";
+    await createNote({ title: "Client", userId: "creator", uid });
+    expect(mocks.note.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ uid }) }));
+  });
 });
 
 describe("Note update authorization (COL-004)", () => {

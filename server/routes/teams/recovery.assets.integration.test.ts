@@ -119,9 +119,9 @@ describe.skipIf(!enabled)("SH-003 recovered asset access through authenticated s
     const require = createRequire(import.meta.url);
     const { PrismaClient } = require("@erdbpro/prisma-pg-local");
     fixture.db = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl.toString(), max: 4 }, { schema }) });
-    const [identity, license, provisioning, teamsRouter, commonRouter] = await Promise.all([
+    const [identity, license, provisioning, teamsRouter, commonRouter, notesRouter, projectsRouter] = await Promise.all([
       import("../../lib/installation-identity.js"), import("../../lib/license-client.js"),
-      import("../../lib/team-provisioning.js"), import("./index.js"), import("../common/index.js"),
+      import("../../lib/team-provisioning.js"), import("./index.js"), import("../common/index.js"), import("../notes/index.js"), import("../projects/index.js"),
     ]);
     licenseClient = license;
     const localIdentity = identity.ensureInstallationIdentity();
@@ -140,6 +140,8 @@ describe.skipIf(!enabled)("SH-003 recovered asset access through authenticated s
     app.use(express.json());
     app.use(cookieParser());
     app.use("/api/teams", teamsRouter.default);
+    app.use("/api/notes", notesRouter.default);
+    app.use("/api/projects", projectsRouter.default);
     app.use("/api", commonRouter.default);
     // Local S3-compatible fixture: only the two in-memory objects below exist.
     app.use((req, res, next) => {
@@ -245,13 +247,40 @@ describe.skipIf(!enabled)("SH-003 recovered asset access through authenticated s
     expect((await assetApi(drawingKey, personalToken)).status).toBe(404);
   });
 
+  it("DATA-003 returns identical project not-found responses for foreign and missing projects", async () => {
+    const project = await fixture.db.project.findFirst({ where: { teamId: destinationId } });
+    for (const endpoint of ["summary", "files", "siblings"]) {
+      const own = await jsonApi("GET", `/api/projects/${project.id}/${endpoint}`, staffToken, destinationId);
+      expect(own.status).toBe(200);
+      const foreign = await jsonApi("GET", `/api/projects/${project.id}/${endpoint}`, otherToken, otherId);
+      const missing = await jsonApi("GET", `/api/projects/2147483647/${endpoint}`, otherToken, otherId);
+      expect(foreign).toEqual({ status: 404, body: { error: "Project not found" } });
+      expect(missing).toEqual(foreign);
+    }
+  });
+
+  it("DATA-003 creates a Note without uid over HTTP and reads its persisted UUID", async () => {
+    const project = await fixture.db.project.findFirst({ where: { teamId: destinationId } });
+    const created = await jsonApi("POST", "/api/notes", staffToken, destinationId, {
+      title: "Generated UUID fixture", content: "<p>Local HTTP regression</p>", project_id: project.id,
+    });
+    expect(created.status).toBe(200);
+    expect(created.body.uid).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    const stored = await fixture.db.note.findUnique({ where: { id: created.body.id } });
+    expect(stored.uid).toBe(created.body.uid);
+    const read = await jsonApi("GET", `/api/notes/${created.body.uid}`, staffToken, destinationId);
+    expect(read.status).toBe(200);
+    expect(read.body.uid).toBe(created.body.uid);
+    expect(read.body.content).toBe("<p>Local HTTP regression</p>");
+  });
+
   it("DATA-003 serves legacy assets with a session cookie and no Team header, then denies revoked membership", async () => {
     for (const [key, expected] of assets) {
       const response = await fetch(`${serverUrl}/api/serve/${key}`, {
         headers: { cookie: `token=${staffToken}` },
       });
       expect(response.status).toBe(200);
-      expect(response.headers.get("cache-control")).toContain("private");
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
       expect(Buffer.from(await response.arrayBuffer())).toEqual(expected);
       expect((await assetApi(key)).status).toBe(401);
       expect((await assetApi(key, adminToken)).status).toBe(404);

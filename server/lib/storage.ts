@@ -171,8 +171,8 @@ export async function serveFromS3(
   // Allow cross-origin loading (page may be on different port)
   res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
 
-  // Authenticated proxy responses must not be shared by a CDN or reverse proxy.
-  res.setHeader("Cache-Control", "private, max-age=300");
+  // Recheck authentication and membership instead of reusing browser-cached private assets.
+  res.setHeader("Cache-Control", "private, no-store");
 
   // Forward Content-Length if available
   if (response.ContentLength) {

@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "../../lib/prisma.js";
 import { captureEntityRevisionSafely, deleteEntityRevisions } from "../../lib/entity-history.js";
 import { isDesktopMode, isLocalPostgres } from "../../lib/config.js";
@@ -99,7 +99,7 @@ export async function createNote(data: {
       content: replacePrivateStorageUrls(data.content || "", {}),
       projectId: data.projectId ?? null,
       userId: data.userId,
-      ...(data.uid ? { uid: data.uid } : {}),
+      uid: data.uid ?? randomUUID(),
     },
   }));
 }

@@ -89,7 +89,9 @@ export async function siblings(req: ExpressRequest, res: ExpressResponse): Promi
   try {
     const projectId = Number(req.params.id);
     const userId = (req as any).user.id;
-    res.json(await svc.getProjectSiblings(projectId, userId));
+    const result = await svc.getProjectSiblings(projectId, userId);
+    if (!result) { res.status(404).json({ error: "Project not found" }); return; }
+    res.json(result);
   } catch (err: any) {
     handleError(res, err, "Failed to fetch siblings");
   }
@@ -100,7 +102,9 @@ export async function summary(req: ExpressRequest, res: ExpressResponse): Promis
     const projectId = Number(req.params.id);
     const userId = (req as any).user.id;
     const includeDbClient = req.query.include_db_client !== "false";
-    res.json(await svc.getProjectSummary(projectId, userId, includeDbClient));
+    const result = await svc.getProjectSummary(projectId, userId, includeDbClient);
+    if (!result) { res.status(404).json({ error: "Project not found" }); return; }
+    res.json(result);
   } catch (err: any) {
     handleError(res, err, "Failed to fetch project summary");
   }
@@ -111,7 +115,9 @@ export async function files(req: ExpressRequest, res: ExpressResponse): Promise<
     const projectId = Number(req.params.id);
     const userId = (req as any).user.id;
     const includeDbClient = req.query.include_db_client !== "false";
-    res.json(await svc.listProjectFiles(projectId, userId, includeDbClient));
+    const result = await svc.listProjectFiles(projectId, userId, includeDbClient);
+    if (!result) { res.status(404).json({ error: "Project not found" }); return; }
+    res.json(result);
   } catch (err: any) {
     handleError(res, err, "Failed to fetch project files");
   }
