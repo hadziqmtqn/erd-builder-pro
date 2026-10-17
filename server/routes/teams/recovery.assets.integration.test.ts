@@ -67,8 +67,9 @@ async function jsonApi(method: string, pathname: string, token?: string, teamId?
   return { status: response.status, body: text ? JSON.parse(text) : null };
 }
 
-async function assetApi(key: string, token: string, teamId?: string) {
-  const headers: Record<string, string> = { authorization: `Bearer ${token}` };
+async function assetApi(key: string, token?: string, teamId?: string) {
+  const headers: Record<string, string> = {};
+  if (token) headers.authorization = `Bearer ${token}`;
   if (teamId) headers["x-team-id"] = teamId;
   const response = await fetch(`${serverUrl}/api/serve/${key}`, { headers });
   return {
@@ -242,5 +243,33 @@ describe.skipIf(!enabled)("SH-003 recovered asset access through authenticated s
     expect((await assetApi(drawingKey, otherToken)).status).toBe(404);
     expect((await assetApi(noteKey, personalToken)).status).toBe(404);
     expect((await assetApi(drawingKey, personalToken)).status).toBe(404);
+  });
+
+  it("DATA-003 serves legacy assets with a session cookie and no Team header, then denies revoked membership", async () => {
+    for (const [key, expected] of assets) {
+      const response = await fetch(`${serverUrl}/api/serve/${key}`, {
+        headers: { cookie: `token=${staffToken}` },
+      });
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toContain("private");
+      expect(Buffer.from(await response.arrayBuffer())).toEqual(expected);
+      expect((await assetApi(key)).status).toBe(401);
+      expect((await assetApi(key, adminToken)).status).toBe(404);
+    }
+
+    await fixture.db.teamMember.updateMany({
+      where: { teamId: destinationId, userId: staffId }, data: { status: "inactive" },
+    });
+    try {
+      const { getStorageAssetAccess } = await import("../../lib/storage-access.js");
+      for (const key of assets.keys()) {
+        expect(await getStorageAssetAccess(staffId, key)).toEqual({ canRead: false, canDelete: false });
+        expect((await assetApi(key, staffToken)).status).not.toBe(200);
+      }
+    } finally {
+      await fixture.db.teamMember.updateMany({
+        where: { teamId: destinationId, userId: staffId }, data: { status: "active" },
+      });
+    }
   });
 });
