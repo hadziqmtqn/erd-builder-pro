@@ -5,6 +5,7 @@ import { AIChatSession, AIChatMessage } from '@/types';
 import { fetchEntityContext, buildSiblingContext, buildEntityContextInstruction, EntityContext as EntityCtxType } from '@/hooks/aiEntityContext';
 import { toast } from 'sonner';
 import { localPersistence } from '@/lib/localPersistence';
+import { isFileCreator } from '@/lib/fileOwnership';
 import {
   fallbackSystemPrompt,
   fetchUserSystemPrompts,
@@ -40,6 +41,7 @@ interface UseAIChatReturn {
   isSessionsLoading: boolean;
   isMessagesLoading: boolean;
   isStreaming: boolean;
+  canManageSession: (session: AIChatSession | null) => boolean;
 
   listSessions: () => Promise<void>;
   createSession: () => Promise<string | null>;
@@ -104,6 +106,8 @@ export function useAIChat(
   viewType?: string | null,
 ): UseAIChatReturn {
   const auth = useAuth();
+  const canManageSession = useCallback((session: AIChatSession | null) =>
+    isFileCreator(session, auth.user?.id, auth.isGuest), [auth.user?.id, auth.isGuest]);
   const [sessions, setSessions] = useState<AIChatSession[]>([]);
   const [currentSession, setCurrentSession] = useState<AIChatSession | null>(null);
   const [messages, setMessages] = useState<AIChatMessage[]>([]);
@@ -260,7 +264,7 @@ export function useAIChat(
       setCurrentSession(session);
 
       // Check cache first — skip fetch if already loaded this session
-      let allMessages = messagesCacheMapRef.current.get(sessionUid);
+      let allMessages = canManageSession(session) ? messagesCacheMapRef.current.get(sessionUid) : undefined;
       if (!allMessages) {
         const FETCH_ALL_LIMIT = 9999;
         const msgRes = await apiFetch(`/api/ai/chat/sessions/${session.uid}/messages?offset=0&limit=${FETCH_ALL_LIMIT}`);
@@ -268,7 +272,7 @@ export function useAIChat(
         const { data: msgData } = await msgRes.json();
         allMessages = (msgData || []).reverse().map(normalizeAIChatMessage);
       }
-      allMessages = await mergePlanOutbox(sessionUid, allMessages);
+      if (canManageSession(session)) allMessages = await mergePlanOutbox(sessionUid, allMessages);
       messagesCacheMapRef.current.set(sessionUid, allMessages);
 
       displayCountRef.current = Math.min(PAGE_SIZE, allMessages!.length);
@@ -279,7 +283,7 @@ export function useAIChat(
     } finally {
       setIsMessagesLoading(false);
     }
-  }, []);
+  }, [canManageSession]);
 
   const loadMoreMessages = useCallback(async () => {
     if (!currentSession || isLoadingMore || !hasMoreMessages) return;
@@ -308,6 +312,8 @@ export function useAIChat(
   }, [currentSession, isLoadingMore, hasMoreMessages]);
 
   const deleteSession = useCallback(async (sessionUid: string) => {
+    const session = sessionsRef.current.find(item => item.uid === sessionUid) ?? null;
+    if (!isGuestCheck() && !canManageSession(session)) return;
     if (isGuestCheck()) {
       try { await localPersistence.deleteResource(sessionUid); } catch {}
       setSessions(prev => prev.filter(s => s.uid !== sessionUid));
@@ -323,7 +329,7 @@ export function useAIChat(
     } catch {
       toast.error('Failed to delete session');
     }
-  }, [currentSession]);
+  }, [currentSession, canManageSession]);
 
   const clearSessions = useCallback(() => {
     setSessions([]);
@@ -355,6 +361,7 @@ export function useAIChat(
 
   const sendMessage = useCallback(async (content: string, selectionText?: string | null, requestContext?: AIRequestContext) => {
     if (!currentSession || !content.trim()) return;
+    if (!isGuestCheck() && !canManageSession(currentSession)) return;
 
     const trimmed = content.trim();
     const isGuest = isGuestCheck();
@@ -746,11 +753,12 @@ export function useAIChat(
       setIsStreaming(false);
       abortControllerRef.current = null;
     }
-  }, [currentSession, entityContextText, entityContext, viewType, auth.user?.id]);
+  }, [currentSession, entityContextText, entityContext, viewType, auth.user?.id, canManageSession]);
 
   useEffect(() => {
     const flushOutbox = async () => {
       if (!currentSession || isStreaming || !navigator.onLine || outboxSyncRef.current) return;
+      if (!isGuestCheck() && !canManageSession(currentSession)) return;
       const sessionUid = String(currentSession.uid ?? currentSession.id);
       const pending = (await listPlanOutbox(sessionUid).catch(() => []))
         .find(item => item.status === 'pending' || item.status === 'pending-assistant');
@@ -819,7 +827,7 @@ export function useAIChat(
     void flushOutbox();
     window.addEventListener('online', flushOutbox);
     return () => window.removeEventListener('online', flushOutbox);
-  }, [currentSession, isStreaming, sendMessage]);
+  }, [currentSession, isStreaming, sendMessage, canManageSession]);
 
   const clearMessages = useCallback(() => setMessages([]), []);
 
@@ -836,7 +844,7 @@ export function useAIChat(
 
   return {
     sessions, currentSession, messages, allMessages,
-    isSessionsLoading, isMessagesLoading, isStreaming,
+    isSessionsLoading, isMessagesLoading, isStreaming, canManageSession,
     listSessions, createSession, selectSession, deleteSession, clearSessions,
     sendMessage, clearMessages, abortStream,
     hasMoreMessages, isLoadingMore, loadMoreMessages,

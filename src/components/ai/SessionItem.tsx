@@ -25,7 +25,7 @@ export function SessionItem({
   session: AIChatSession;
   isActive: boolean;
   onClick: () => void;
-  onDelete: () => void;
+  onDelete?: () => void;
 }) {
   const time = relativeTime(session.updated_at || session.created_at);
 
@@ -76,13 +76,15 @@ export function SessionItem({
         </div>
 
         {/* Delete button — visible on hover */}
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground/40 hover:text-destructive -mr-1"
-          title="Delete session"
-        >
-          <Trash2 className="size-3.5" />
-        </button>
+        {onDelete && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground/40 hover:text-destructive -mr-1"
+            title="Delete session"
+          >
+            <Trash2 className="size-3.5" />
+          </button>
+        )}
       </div>
     </div>
   );

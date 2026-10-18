@@ -98,6 +98,7 @@ export const AIChatPanel = ({
     isSessionsLoading,
     isMessagesLoading,
     isStreaming,
+    canManageSession,
     createSession,
     selectSession,
     deleteSession,
@@ -107,6 +108,7 @@ export const AIChatPanel = ({
     isLoadingMore,
     loadMoreMessages,
   } = useAIChat(entityContext, effectiveEntityContextText, onStreamComplete, projectId, currentViewType);
+  const canWriteCurrentSession = !currentSession || canManageSession(currentSession);
 
   const [lastActionId, setLastActionId] = useState<string | null>(null);
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
@@ -328,7 +330,7 @@ export const AIChatPanel = ({
   // ─── Handle send (reads from uncontrolled textarea) ─
   const handleSend = useCallback(async () => {
     const text = (inputRef.current?.value || '').trim();
-    if (!text || isStreaming) return;
+    if (!canWriteCurrentSession || !text || isStreaming) return;
 
     const { context: mentionContext } = await resolveMentions(text);
 
@@ -345,7 +347,7 @@ export const AIChatPanel = ({
       setActiveActionId(null);
       setActiveActionPrompt(null);
     }
-  }, [isStreaming, sendMessage, selectionText, activeActionPrompt, activeActionId, activeAction, planPhase, resolveMentions]);
+  }, [canWriteCurrentSession, isStreaming, sendMessage, selectionText, activeActionPrompt, activeActionId, activeAction, planPhase, resolveMentions]);
 
   const handlePlanAnswer = useCallback(async (answer: string) => {
     if (isStreaming) return;
@@ -448,7 +450,7 @@ export const AIChatPanel = ({
                         selectSession(session.uid);
                         setPage('chat');
                       }}
-                      onDelete={() => setSessionToDelete(session)}
+                      onDelete={canManageSession(session) ? () => setSessionToDelete(session) : undefined}
                     />
                   ))}
 
@@ -523,7 +525,7 @@ export const AIChatPanel = ({
               activeNoteContent={activeNoteContent}
             />
 
-            {currentSession && (
+            {currentSession && canWriteCurrentSession && (
               <PlanInterviewCard
                 key={String(currentSession.uid ?? currentSession.id)}
                 sessionUid={String(currentSession.uid ?? currentSession.id)}
@@ -537,13 +539,18 @@ export const AIChatPanel = ({
 
             {/* ── Selection Bar ────────────────────────── */}
             <SelectionBar
-              hasActiveSession={hasActiveSession}
+              hasActiveSession={hasActiveSession && canWriteCurrentSession}
               selectionText={selectionText}
               onClear={handleClearSelection}
             />
 
             {/* ── Input Area ───────────────────────────── */}
-            {!isPlanInterviewVisible && (
+            {!canWriteCurrentSession && (
+              <p role="status" className="border-t px-3 py-4 text-sm text-muted-foreground">
+                This conversation is read-only. Only its creator can send messages.
+              </p>
+            )}
+            {!isPlanInterviewVisible && canWriteCurrentSession && (
               <ChatInput
                 hasActiveSession={hasActiveSession}
                 isStreaming={isStreaming}
