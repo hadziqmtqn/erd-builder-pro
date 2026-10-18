@@ -335,6 +335,7 @@ async function mergeNewCommentAnchors(
     const server = await res.json();
     const key = `${draft.id}:${server.version}`;
     if (attempted.has(key) || typeof server.content !== 'string' || typeof parsedData?.content !== 'string') return false;
+    if (server.title !== parsedData.title || String(server.project_id) !== String(parsedData.project_id)) return false;
     attempted.add(key);
     const merged = mergeServerCommentAnchors(server.content, parsedData.content);
     if (merged === null || !Number.isInteger(server.version)) return false;
