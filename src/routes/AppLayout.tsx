@@ -908,6 +908,7 @@ function AppLayoutInner() {
             onOpenChange={(open) => { setIsRenameDialogOpen(open); if (!open) setEditDialogNote(null); }}
             view={view}
             activeDocument={editDialogNote ?? activeDocument}
+            canMoveProject={isFileCreator(editDialogNote ?? activeDocument, user?.id, isGuest)}
             newName={newName}
             setNewName={setNewName}
             projects={selectableProjects}

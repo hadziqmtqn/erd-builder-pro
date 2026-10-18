@@ -33,6 +33,7 @@ interface RenameDocumentDialogProps {
   setNewName: (name: string) => void;
   projects: any[];
   requireProject?: boolean;
+  canMoveProject?: boolean;
   selectedProjectId: string;
   setSelectedProjectId: (id: string) => void;
   /** For create mode — called with (title, projectId) when user confirms */
@@ -65,6 +66,7 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
   setNewName,
   projects,
   requireProject = false,
+  canMoveProject = false,
   selectedProjectId,
   setSelectedProjectId,
   onCreate,
@@ -139,6 +141,10 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
       const currentProjectId = activeDocument?.project_id || activeDocument?.projectId;
       const hasNameChanged = newName.trim() !== (activeDocument?.title || activeDocument?.name);
       const hasProjectChanged = view !== 'db-client' && String(projectId) !== String(currentProjectId);
+      if (hasProjectChanged && !canMoveProject) {
+        toast.error('Only the file creator can move this file.');
+        return;
+      }
 
       try {
         if (hasNameChanged) {
@@ -150,10 +156,12 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
         }
 
         if (hasProjectChanged) {
-          if (view === 'erd') await onMoveDiagramToProject?.(id, projectId, { silent: true });
-          else if (view === 'notes') await onMoveNoteToProject?.(id, projectId, { silent: true });
-          else if (view === 'drawings') await onMoveDrawingToProject?.(id, projectId, { silent: true });
-          else if (view === 'flowchart') await onMoveFlowchartToProject?.(id, projectId, { silent: true });
+          let moved: boolean | undefined;
+          if (view === 'erd') moved = await onMoveDiagramToProject?.(id, projectId, { silent: true });
+          else if (view === 'notes') moved = await onMoveNoteToProject?.(id, projectId, { silent: true });
+          else if (view === 'drawings') moved = await onMoveDrawingToProject?.(id, projectId, { silent: true });
+          else if (view === 'flowchart') moved = await onMoveFlowchartToProject?.(id, projectId, { silent: true });
+          if (moved === false) throw new Error('Failed to move document');
         }
 
         if ((hasNameChanged || hasProjectChanged) && onRenameSuccess) {
@@ -176,7 +184,8 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
           <DialogDescription>
             {isCreate
               ? `Enter a name and select a workspace for your new ${viewLabel(view)}.`
-              : view === 'db-client' ? 'Change the name of this DB Client.' : `Update the name and project for your ${viewLabel(view)}.`}
+              : view === 'db-client' ? 'Change the name of this DB Client.'
+              : canMoveProject ? `Update the name and project for your ${viewLabel(view)}.` : `Update the name of this ${viewLabel(view)}.`}
           </DialogDescription>
         </DialogHeader>
         <DialogBody>
@@ -207,7 +216,7 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
                 <Select
                   value={selectedProjectId}
                   onValueChange={(value) => value !== null && setSelectedProjectId(value)}
-                  disabled={isAddingProject || isCreatingProject}
+                  disabled={(!isCreate && !canMoveProject) || isAddingProject || isCreatingProject}
                 >
                   <SelectTrigger id="document-project-select" className="min-w-0 flex-1">
                     <SelectValue>
