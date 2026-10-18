@@ -15,7 +15,7 @@ export interface UseAutoSaveParams {
   isPublicView: boolean;
   activeDiagramId: any;
   viewportRef: { current: any };
-  saveDiagram: (nodes: Node<Entity>[], edges: Edge[], viewport: any) => Promise<void>;
+  saveDiagram: (nodes: Node<Entity>[], edges: Edge[], viewport: any) => Promise<void | boolean>;
   setIsLocalSaving: (val: boolean) => void;
   triggerDebouncedSync: () => void;
   broadcastMessage: (type: any, draftType: any, id: any) => void;
@@ -197,19 +197,20 @@ export function useAutoSave(params: UseAutoSaveParams) {
 
     try {
       if (view === 'erd' && activeDiagramId) {
-        await saveDiagram(nodes, edges, viewportRef.current);
+        if (await saveDiagram(nodes, edges, viewportRef.current) === false) throw new Error('Could not save the diagram.');
       } else if (view === 'notes' && activeNoteUid) {
         const n = notes.find(n => String(n.uid) === String(activeNoteUid));
-        if (n) await saveNote(n);
+        if (!n || !await saveNote(n)) throw new Error('Could not save the note.');
       } else if (view === 'drawings' && activeDrawingId) {
-        const d = drawings.find(d => String(d.id) === String(activeDrawingId));
-        if (d) await saveDrawing(d);
+        const d = drawings.find(d => String(d.id) === String(activeDrawingId) || String(d.uid) === String(activeDrawingId));
+        if (!d || !await saveDrawing(d)) throw new Error('Could not save the drawing.');
       } else if (view === 'flowchart' && activeFlowchartId) {
         const f = flowcharts.find(f => String(f.id) === String(activeFlowchartId) || (f.uid && String(f.uid) === String(activeFlowchartId)));
-        if (f) await saveFlowchart(f);
+        if (!f || !await saveFlowchart(f)) throw new Error('Could not save the flowchart.');
       }
     } catch (err) {
       console.warn('[AutoSave] Flush save failed:', err);
+      throw err;
     }
 
     lastSaveCallRef.current = Date.now();

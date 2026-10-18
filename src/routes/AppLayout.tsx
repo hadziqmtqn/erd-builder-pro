@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { flushWorkspaceChanges } from '@/lib/workspace-save';
+import { toast } from 'sonner';
 import type { Node, Edge } from '@xyflow/react';
 import type { Entity } from '@/types';
 import { Sparkles, Database, PanelRightClose, Pencil, Eye, RefreshCw } from 'lucide-react';
@@ -233,6 +235,7 @@ function AppLayoutInner() {
     handleEdgeFlip: handleEdgeFlip2,
     breadcrumbLabel,
     refreshTeamScope,
+    flushPendingSaves,
     teamScopeVersion,
     isTeamScopeRefreshing,
   } = useWorkspace();
@@ -246,8 +249,10 @@ function AppLayoutInner() {
     setGlobalSearchResults([]);
     setSelectableProjects([]);
     setRightPanelMode('closed');
+    // Preserve the draft without delaying the removal of revoked content.
+    void flushPendingSaves().catch(() => {});
     void refreshTeamScope();
-  }, [refreshTeamScope, setRightPanelMode]);
+  }, [flushPendingSaves, refreshTeamScope, setRightPanelMode]);
   const teamState = useTeams(isGuest, Boolean(user?.isSso), clearUnavailableTeamScope);
   useEffect(() => {
     if (isGuest) {
@@ -261,14 +266,27 @@ function AppLayoutInner() {
       .catch(() => { if (!cancelled) setSelectableProjects([]); });
     return () => { cancelled = true; };
   }, [createDialogOpen, isGuest, isRenameDialogOpen, teamState.activeTeamId]);
+  const teamSwitchInProgressRef = useRef(false);
   const handleTeamSelect = useCallback(async (teamId: string | null) => {
-    await syncDrafts();
-    teamState.selectTeam(teamId);
-    setGlobalSearchQuery('');
-    setGlobalSearchResults([]);
-    setRightPanelMode('closed');
-    await refreshTeamScope();
-  }, [refreshTeamScope, setRightPanelMode, syncDrafts, teamState.selectTeam]);
+    if (teamSwitchInProgressRef.current || teamId === teamState.activeTeamId) return;
+    teamSwitchInProgressRef.current = true;
+    try {
+      await flushWorkspaceChanges(flushPendingSaves, syncDrafts, { type: view, id: currentActiveId, uid: activeFileUid });
+      teamState.selectTeam(teamId);
+      setGlobalSearchQuery('');
+      setGlobalSearchResults([]);
+      setRightPanelMode('closed');
+      await refreshTeamScope();
+    } catch {
+      toast.error('Could not switch workspaces. Check that your changes are saved and retry.');
+    } finally {
+      teamSwitchInProgressRef.current = false;
+    }
+  }, [activeFileUid, currentActiveId, flushPendingSaves, refreshTeamScope, setRightPanelMode, syncDrafts, teamState.activeTeamId, teamState.selectTeam, view]);
+  const handleTeamCreate = useCallback(async (input: { name: string }) => {
+    await flushWorkspaceChanges(flushPendingSaves, syncDrafts, { type: view, id: currentActiveId, uid: activeFileUid });
+    return teamState.createTeam(input);
+  }, [activeFileUid, currentActiveId, flushPendingSaves, syncDrafts, teamState.createTeam, view]);
   const handleTeamManage = useCallback((team: TeamSummary) => {
     if (team.manageUrl) {
       window.location.assign(team.manageUrl);
@@ -773,7 +791,7 @@ function AppLayoutInner() {
           onTeamsRefresh={() => { void teamState.fetchTeams(); }}
           onTeamSelect={handleTeamSelect}
           onTeamManage={handleTeamManage}
-          onTeamCreate={teamState.createTeam}
+          onTeamCreate={handleTeamCreate}
           onTeamCreated={handleTeamCreated}
           ssoPortalUrl={user?.isSso ? (user.ssoPortalUrl ?? user.sso_portal_url) : null}
         />

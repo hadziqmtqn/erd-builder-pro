@@ -107,6 +107,18 @@ describe.skipIf(!enabled)("COL-004 project roles in an isolated PostgreSQL schem
     expect([...(await inTeam(() => roles.projectRolesFor([project], users.manager))).values()]).toEqual(["manager"]);
   });
 
+  it("SH-002 does not carry Manager edit rights into a Team where the same user is Staff", async () => {
+    await fixture.db.teamMember.create({ data: { teamId: otherTeamId, userId: users.manager, role: "staff", status: "active" } });
+    const otherNote = await fixture.db.note.create({ data: { uid: id(), projectId: otherProject.id, userId: users.outsider, title: "Other Team", content: "<p>retained</p>" } });
+    const elsewhere = <T>(run: () => Promise<T>) => runWithTeamScope({ mode: "team", teamId: otherTeamId }, run);
+
+    expect(await inTeam(() => roles.projectRoleFor(project.id, users.manager))).toBe("manager");
+    expect(await elsewhere(() => roles.projectRoleFor(otherProject.id, users.manager))).toBe("commenter");
+    expect(await elsewhere(() => notes.updateNote(otherNote.uid, users.manager, { content: "<p>forbidden</p>" }))).toBeNull();
+    expect(await inTeam(() => notes.updateNote(otherNote.uid, users.manager, { content: "<p>wrong scope</p>" }))).toBeNull();
+    expect(await fixture.db.note.findUnique({ where: { id: otherNote.id } })).toMatchObject({ content: "<p>retained</p>" });
+  });
+
   it("lets the creator, a Manager and an Editor save every file type, and nobody else", async () => {
     const allowed = [users.creator, users.manager, users.editor];
     const denied = [users.commenter, users.viewer, users.outsider];

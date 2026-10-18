@@ -102,6 +102,56 @@ describe.skipIf(!enabled)("SH-003 PostgreSQL capacity concurrency (isolated sche
     expect(results.find(result => result.status === "rejected")).toMatchObject({ reason: { code: "TEAM_LIMIT_REACHED" } });
     expect(await fixture.client.team.count()).toBe(1);
   });
+  it("SH-002 keeps Manager permissions local to each membership", async () => {
+    fixture.plan = { maxTeams: 2, maxMembers: 2 };
+    await team("one"); await team("two");
+    await user("alice"); await user("bob");
+    await member("one", "alice", "manager");
+    await member("two", "bob", "manager");
+    await teams.addMember("two", "alice@example.test", "admin", true, { role: "staff" });
+
+    expect(await teams.listTeams("alice", false)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "one", canManage: true }),
+      expect.objectContaining({ id: "two", canManage: false }),
+    ]));
+    await expect(teams.updateTeam("one", "Alice's Team", "alice", false)).resolves.toMatchObject({ name: "Alice's Team" });
+    await expect(teams.updateTeam("two", "Unauthorized", "alice", false)).rejects.toMatchObject({ code: "TEAM_MANAGER_REQUIRED", status: 403 });
+    await expect(teams.updateMemberRole("two", "bob", "staff", "alice", false)).rejects.toMatchObject({ code: "TEAM_MANAGER_REQUIRED" });
+    await expect(teams.removeMember("two", "bob", "alice", false)).rejects.toMatchObject({ code: "TEAM_MANAGER_REQUIRED" });
+    await expect(teams.addMember("two", "alice@example.test", "bob", false)).rejects.toMatchObject({ code: "MEMBER_ALREADY_EXISTS", status: 409 });
+    expect(await fixture.client.teamMember.count({ where: { teamId: "two", userId: "alice" } })).toBe(1);
+    expect(await fixture.client.team.findUnique({ where: { id: "two" } })).toMatchObject({ name: "two" });
+    expect(await teams.canAccessTeam("one", "alice", false)).toBe(true);
+    expect(await teams.canAccessTeam("two", "alice", false)).toBe(true);
+  });
+  it("SH-002 hides unrelated Team management resources", async () => {
+    await team("one"); await user("outsider");
+    await expect(teams.getTeam("one", "outsider", false)).resolves.toBeNull();
+    await expect(teams.updateTeam("one", "Unauthorized", "outsider", false)).resolves.toBeNull();
+    await expect(teams.addMember("one", "outsider@example.test", "outsider", false)).resolves.toBeNull();
+    await expect(teams.updateMemberRole("one", "admin", "staff", "outsider", false)).resolves.toBeNull();
+    await expect(teams.removeMember("one", "admin", "outsider", false)).resolves.toBe(false);
+    expect(await fixture.client.team.findUnique({ where: { id: "one" } })).toMatchObject({ name: "one" });
+    expect(await fixture.client.teamMember.count()).toBe(0);
+  });
+  it("SH-002 refuses concurrent duplicate memberships without a second activation", async () => {
+    await team("one"); await user("alice");
+    const results = await Promise.allSettled([
+      teams.addMember("one", "alice@example.test", "admin", true),
+      teams.addMember("one", "alice@example.test", "admin", true),
+    ]);
+    expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.find(result => result.status === "rejected")).toMatchObject({ reason: { code: "MEMBER_ALREADY_EXISTS" } });
+    expect(await fixture.client.teamMember.count()).toBe(1);
+    expect(await fixture.client.teamAuditEvent.count({ where: { action: "member_activated" } })).toBe(1);
+  });
+  it("SH-002 protects the last Manager independently in each Team", async () => {
+    fixture.plan.maxTeams = 2;
+    await team("one"); await team("two"); await user("alice");
+    await member("one", "alice", "manager"); await member("two", "alice", "manager");
+    await expect(teams.updateMemberRole("two", "alice", "staff", "admin", true)).rejects.toMatchObject({ code: "LAST_MANAGER_REQUIRED" });
+    expect(await fixture.client.teamMember.count({ where: { userId: "alice", role: "manager", status: "active" } })).toBe(2);
+  });
   it("allows another active Team when inactive records do not occupy active capacity", async () => {
     await team("inactive", "inactive");
     await expect(teams.createTeam({ name: "new", userId: "admin", isSuperAdmin: true })).resolves.toBeTruthy();

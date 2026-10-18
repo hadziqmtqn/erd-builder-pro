@@ -1029,18 +1029,13 @@ export function WorkspaceProvider({
   const [breadcrumbLabel, setBreadcrumbLabel] = React.useState<string | null>(null);
   const [teamScopeVersion, setTeamScopeVersion] = useState(0);
 
-  // Always call the latest flush: refreshTeamScope is memoized and would otherwise keep stale nodes.
+  // Workspace switches must flush the latest canvas and editor state.
   const flushPendingSavesRef = useRef(flushPendingSaves);
   flushPendingSavesRef.current = flushPendingSaves;
+  const flushCurrentPendingSaves = useCallback(() => flushPendingSavesRef.current(), []);
 
   const refreshTeamScope = useCallback(async () => {
     setIsTeamScopeRefreshing(true);
-    // Switching scope clears the open document; write any pending edit before that happens.
-    try {
-      await flushPendingSavesRef.current();
-    } catch (err) {
-      console.warn('[Workspace] Flush before team scope refresh failed:', err);
-    }
     setActiveDiagramId(null);
     setActiveNoteUid(null);
     setActiveDrawingId(null);
@@ -1139,7 +1134,7 @@ export function WorkspaceProvider({
     featureLabel, initialShareSettings, currentActiveId,
 
     handleViewChange, handleNoteSelect, handleDiagramSelect, handleDrawingSelect, handleFlowchartSelect, refreshActiveDocument,
-    refreshTeamScope, teamScopeVersion,
+    refreshTeamScope, flushPendingSaves: flushCurrentPendingSaves, teamScopeVersion,
     handleNoteChange, cancelPendingNoteSaves, handleDrawingChange, handleFlowchartChange, handleEntityUpdate,
 
     handleSidebarDiagramCreate, handleSidebarNoteCreate, handleSidebarDrawingCreate,
@@ -1232,7 +1227,7 @@ export function WorkspaceProvider({
     featureLabel, initialShareSettings, currentActiveId,
     // Navigation/Content/Entity handlers — stable enough via hooks
     handleViewChange, handleNoteSelect, handleDiagramSelect, handleDrawingSelect, handleFlowchartSelect, refreshActiveDocument,
-    refreshTeamScope, teamScopeVersion, isTeamScopeRefreshing,
+    refreshTeamScope, flushCurrentPendingSaves, teamScopeVersion, isTeamScopeRefreshing,
     handleNoteChange, cancelPendingNoteSaves, handleDrawingChange, handleFlowchartChange, handleEntityUpdate,
     // Sidebar handlers
     handleSidebarDiagramCreate, handleSidebarNoteCreate, handleSidebarDrawingCreate,

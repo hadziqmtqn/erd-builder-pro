@@ -67,9 +67,9 @@ async function integrity(value: any) {
   return plan;
 }
 async function managedTeam(id: string, userId: string, superAdmin: boolean) {
-  manager(await canManageTeam(id, userId, superAdmin));
   const value = await team(id, userId, superAdmin);
   if (!value) return null;
+  manager(await canManageTeam(id, userId, superAdmin));
   if (superAdmin && !isSsoAuthMode()) {
     await verifyTeamIntegrity(value);
     await requireActiveInstanceLicense();

@@ -581,6 +581,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
       }
     } catch (err) {
       console.error('Error in local saveDiagram:', err);
+      return false;
     }
   }, [activeDiagramId, view]);
 

@@ -106,6 +106,7 @@ export interface WorkspaceContextValue {
   handleFlowchartSelect: (id: any, options?: { silent?: boolean }) => Promise<void>;
   refreshActiveDocument: () => Promise<void>;
   refreshTeamScope: () => Promise<void>;
+  flushPendingSaves: () => Promise<void>;
   teamScopeVersion: number;
   isTeamScopeRefreshing: boolean;
 
@@ -261,7 +262,7 @@ export interface WorkspaceContextValue {
     edges: Edge[],
     viewport: any,
     options?: { expectedVersion?: number; retryCount?: number; dbmlSource?: string | null }
-  ) => Promise<void>;
+  ) => Promise<void | boolean>;
   saveNote: (note: any) => Promise<boolean>;
   saveDrawing: (drawing: any) => Promise<boolean>;
   saveFlowchart: (flowchart: any) => Promise<boolean>;

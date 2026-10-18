@@ -31,7 +31,7 @@ export interface SQLImportFormProps {
   setEdges?: (edges: any[]) => void;
   activeDiagramId?: number | string | null;
   takeSnapshot?: (nodes: any[], edges: any[]) => void;
-  saveDiagram?: (nodes: any[], edges: any[], viewport: any) => Promise<void>;
+  saveDiagram?: (nodes: any[], edges: any[], viewport: any) => Promise<void | boolean>;
   triggerDebouncedSync?: () => void;
   broadcastMessage?: (type: BroadcastMessageType, draftType: DraftType, id: number | string) => void;
   setIsLocalSaving?: (loading: boolean) => void;

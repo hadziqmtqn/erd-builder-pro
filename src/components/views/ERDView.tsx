@@ -99,7 +99,7 @@ interface ERDViewProps {
   selectedNodeId?: string | null;
   onMoveEnd?: (e: any, v: any) => void;
   initialViewport?: Viewport;
-  saveDiagram?: (nodes: Node<Entity>[], edges: Edge[], viewport: any, options?: { dbmlSource?: string }) => Promise<void>;
+  saveDiagram?: (nodes: Node<Entity>[], edges: Edge[], viewport: any, options?: { dbmlSource?: string }) => Promise<void | boolean>;
   triggerDebouncedSync?: () => void;
   pendingErdDiffTrigger?: number;
   // Exposed helpers from useERDSession for onReconnect validation
