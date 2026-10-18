@@ -55,6 +55,23 @@ beforeEach(() => {
 });
 
 describe("Team integrity", () => {
+  it.each(["team signature", "membership signature", "capacity", "license"])("fails closed for content access with invalid %s", async (failure) => {
+    mocks.provisionedTeam = true;
+    mocks.provisionedMembership.mockReturnValue(true);
+    mocks.database.teamMember.findFirst.mockResolvedValue({ teamId: "team-1", userId: "user-1", status: "active" });
+    mocks.database.team.findUnique.mockResolvedValue({ id: "team-1", type: "team", status: "active", members: [{ teamId: "team-1", status: "active" }] });
+    mocks.database.team.count.mockResolvedValue(1);
+    mocks.database.teamMember.findMany.mockResolvedValue([{ userId: "user-1" }]);
+    await expect(teams.canAccessTeam("team-1", "user-1", false)).resolves.toBe(true);
+
+    if (failure === "team signature") mocks.provisionedTeam = false;
+    if (failure === "membership signature") mocks.provisionedMembership.mockReturnValue(false);
+    if (failure === "capacity") mocks.database.team.count.mockResolvedValue(11);
+    if (failure === "license") mocks.license.verifyStored.mockImplementation(() => { throw new mocks.license.LicenseClientError("LICENSE_EXPIRED", 403); });
+
+    await expect(teams.canAccessTeam("team-1", "user-1", false)).resolves.toBe(false);
+  });
+
   it("lists locally provisioned Teams in Cloud SSO mode without a self-host instance license", async () => {
     mocks.ssoMode.mockReturnValue(true);
     mocks.database.team.findMany.mockResolvedValue([]);

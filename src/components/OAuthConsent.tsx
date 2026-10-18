@@ -73,7 +73,7 @@ export function OAuthConsent() {
               </div>
               <div>
                 <p className="font-medium">This client can read</p>
-                <p className="mt-1 text-muted-foreground">Projects, regular ERDs, Notes, Flowcharts, Drawings, and document history owned by {details.user.email}.</p>
+                <p className="mt-1 text-muted-foreground">Projects, regular ERDs, Notes, Flowcharts, Drawings, and document history in the Personal workspace and active Teams accessible to {details.user.email}. This authorization covers all permitted workspaces and follows your current access permissions.</p>
               </div>
               <div>
                 <p className="font-medium">It cannot access</p>

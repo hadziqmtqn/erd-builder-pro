@@ -2,6 +2,7 @@ import { prisma } from "../lib/prisma.js";
 import { useLocalAuth } from "../lib/config.js";
 import { parseRevisionChanges } from "../lib/entity-history.js";
 import { readEntity } from "../routes/entity-changes/service.js";
+import { canAccessTeam } from "../routes/teams/service.js";
 import { searchWorkspaceFiles, type WorkspaceSearchType } from "./workspace-search.js";
 
 export const PUBLIC_MCP_DOCUMENT_TYPES = ["notes", "flowcharts", "drawings", "diagrams"] as const;
@@ -40,7 +41,10 @@ async function activeTeamIds(userId: string): Promise<string[]> {
     where: { userId, status: "active", team: { is: { status: "active", type: { not: "personal" } } } },
     select: { teamId: true },
   });
-  return memberships.map((membership: any) => membership.teamId);
+  const allowed = await Promise.all(memberships.map(async (membership: any) =>
+    await canAccessTeam(membership.teamId, userId, false) ? membership.teamId : null,
+  ));
+  return allowed.filter((id): id is string => id !== null);
 }
 
 async function publicProjectScope(userId: string) {
