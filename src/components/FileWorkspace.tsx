@@ -193,10 +193,13 @@ export function FileWorkspace({ children, root, mainAI, teamState, discussionTar
   const selected = panes.find(file => paneKey(file) === focused) ?? current;
   const selectedDocument = sessions.current.get(paneKey(selected))?.workspace.activeDocument
     ?? (loaded && paneKey(selected) === paneKey(loaded) ? currentDocument : undefined);
+  // React 18 drops a boolean `inert`; the empty-string attribute is what blocks input while saves flush.
+  // shortcut: React 18 only, switch back to `inert={busy}` when upgrading to React 19.
+  const inertWhileBusy = (busy ? { inert: '' } : {}) as { inert?: boolean };
   return <FilePanesContext.Provider value={{ files: panes, focused, desktop, open, select, close }}>
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <ProjectFileTabs host currentView={selected.type} currentFile={selectedDocument} />
-      {!panes.length ? <div className="flex min-h-0 flex-1 flex-col overflow-hidden" inert={busy}>{children}</div> : <div ref={host} className="flex min-h-0 flex-1 overflow-hidden" aria-label="Open files">
+      {!panes.length ? <div className="flex min-h-0 flex-1 flex-col overflow-hidden" {...inertWhileBusy}>{children}</div> : <div ref={host} className="flex min-h-0 flex-1 overflow-hidden" aria-label="Open files">
         {panes.map((file, index) => {
           const key = paneKey(file);
           let sessionScope = scopes.current.get(key);
@@ -206,7 +209,7 @@ export function FileWorkspace({ children, root, mainAI, teamState, discussionTar
               className="w-2 shrink-0 cursor-col-resize touch-none border-x bg-muted/30 focus-visible:bg-accent"
               onPointerDown={event => { dragging.current = true; event.currentTarget.setPointerCapture(event.pointerId); }}
               onKeyDown={event => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); setPercent(value => Math.max(30, Math.min(70, value + (event.key === 'ArrowLeft' ? -2 : 2)))); } }} />}
-            <section data-file-session={key} data-active={focused === key} aria-label={file.title} inert={busy}
+            <section data-file-session={key} data-active={focused === key} aria-label={file.title} {...inertWhileBusy}
               onPointerDownCapture={() => focus(file)} onFocusCapture={() => { if (focused !== key) focus(file); }}
               className="relative flex min-h-0 min-w-0 flex-col overflow-hidden" style={split ? { width: index === 0 ? `${percent}%` : undefined, flex: index === 1 ? 1 : undefined } : { flex: 1 }}>
               {split && <div className="flex h-9 shrink-0 items-center justify-between gap-2 border-b px-3 text-sm">
