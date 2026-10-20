@@ -143,3 +143,27 @@ export function formatDate(date: Date) {
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
+
+export type ColumnWidths = Record<string, Record<string, number>>;
+
+const columnWidthsKey = (connectionId: number) => `erd-db-column-widths:${connectionId}`;
+
+// Widths are a per-device view preference, so they live in localStorage (per connection) and never reach the server.
+export function loadColumnWidths(connectionId: number, storage: Pick<Storage, 'getItem'> | undefined = globalThis.localStorage): ColumnWidths {
+  try {
+    const parsed = JSON.parse(storage?.getItem(columnWidthsKey(connectionId)) || '{}');
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const result: ColumnWidths = {};
+    for (const [table, columns] of Object.entries<any>(parsed)) {
+      if (!columns || typeof columns !== 'object') continue;
+      result[table] = Object.fromEntries(Object.entries(columns).filter(([, width]) => typeof width === 'number' && Number.isFinite(width)) as [string, number][]);
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+export function saveColumnWidths(connectionId: number, widths: ColumnWidths, storage: Pick<Storage, 'setItem'> | undefined = globalThis.localStorage) {
+  try { storage?.setItem(columnWidthsKey(connectionId), JSON.stringify(widths)); } catch { /* storage full or blocked: widths stay in memory only */ }
+}

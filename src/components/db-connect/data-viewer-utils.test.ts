@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createColumnHelpers, DEFAULT_VALUE, draftValue, isDefaultValue, quoteTableName, submitValue } from './data-viewer-utils';
+import { createColumnHelpers, DEFAULT_VALUE, draftValue, isDefaultValue, loadColumnWidths, quoteTableName, saveColumnWidths, submitValue } from './data-viewer-utils';
 
 const helpers = createColumnHelpers(new Map<string, any>([
   ['id', { type: 'bigint' }],
@@ -37,5 +37,29 @@ describe('draft cell kinds', () => {
     for (const other of [null, '', 'DEFAULT', "'none'::text", { sqlDefault: true }]) expect(isDefaultValue(other)).toBe(false);
     expect(submitValue('name', '', helpers)).toBe('');
     expect(draftValue('name', null, helpers)).toBe('');
+  });
+});
+
+describe('column width persistence', () => {
+  const memory = () => {
+    const data = new Map<string, string>();
+    return { getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => void data.set(key, value) };
+  };
+
+  it('round-trips widths per connection', () => {
+    const storage = memory();
+    saveColumnWidths(1, { users: { id: 80 } }, storage);
+    expect(loadColumnWidths(1, storage)).toEqual({ users: { id: 80 } });
+    expect(loadColumnWidths(2, storage)).toEqual({});
+  });
+
+  it('ignores corrupt, tampered or unavailable storage', () => {
+    const storage = memory();
+    storage.setItem('erd-db-column-widths:1', '{bad json');
+    expect(loadColumnWidths(1, storage)).toEqual({});
+    storage.setItem('erd-db-column-widths:1', JSON.stringify({ users: { id: 'wide', name: 120 }, orders: 5, list: [] }));
+    expect(loadColumnWidths(1, storage)).toEqual({ users: { name: 120 }, list: {} });
+    expect(loadColumnWidths(1, undefined)).toEqual({});
+    expect(() => saveColumnWidths(1, {}, { setItem: () => { throw new Error('quota'); } })).not.toThrow();
   });
 });

@@ -3,7 +3,7 @@ import { AlertCircle, ArrowDown, ArrowUp, Database, Plus, Trash2 } from 'lucide-
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { createColumnHelpers } from './data-viewer-utils';
+import { ColumnWidths, createColumnHelpers, loadColumnWidths, saveColumnWidths } from './data-viewer-utils';
 import { DataViewerRecordRow } from './DataViewerRecordRow';
 
 type DataViewerRecordsTableProps = {
@@ -102,10 +102,15 @@ export const DataViewerRecordsTable = memo(function DataViewerRecordsTable({
   const columns = records?.columns || [];
   const allPageRowsSelected = canSelectRows && pageRows.length > 0 && pageRows.every((row: any) => selectedRowKeys.has(rowKey(row)));
   const tableRef = useRef<HTMLTableElement>(null);
-  const [widthsByTable, setWidthsByTable] = useState<Record<string, Record<string, number>>>({});
-  const widths = widthsByTable[activeTable] || {};
+  const [stored, setStored] = useState<{ connectionId: number; widthsByTable: ColumnWidths }>(() => ({ connectionId, widthsByTable: loadColumnWidths(connectionId) }));
+  if (stored.connectionId !== connectionId) setStored({ connectionId, widthsByTable: loadColumnWidths(connectionId) });
+  const widths = stored.widthsByTable[activeTable] || {};
   const widthOf = (column: string) => widths[column] ?? DEFAULT_COLUMN_WIDTH;
-  const setWidth = (column: string, width: number) => setWidthsByTable(prev => ({ ...prev, [activeTable]: { ...prev[activeTable], [column]: clampWidth(width) } }));
+  const setWidth = (column: string, width: number) => setStored(prev => {
+    const widthsByTable = { ...prev.widthsByTable, [activeTable]: { ...prev.widthsByTable[activeTable], [column]: clampWidth(width) } };
+    saveColumnWidths(prev.connectionId, widthsByTable);
+    return { ...prev, widthsByTable };
+  });
   const startResize = (event: React.PointerEvent<HTMLDivElement>, column: string) => {
     event.preventDefault();
     event.stopPropagation();
