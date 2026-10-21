@@ -88,7 +88,7 @@ export function SchemaDiffOverlay({
 
           <div className="flex max-h-75 flex-col gap-3 overflow-y-auto pr-1 custom-scrollbar">
             {groupedChanges.map(([table, changes]) => (
-              <section key={table} className="overflow-hidden rounded-lg border">
+              <section key={table} className="shrink-0 overflow-hidden rounded-lg border">
                 <div className="flex items-center justify-between border-b bg-muted/50 px-3 py-2">
                   <span className="text-xs font-semibold">{table}</span>
                   <span className="text-[10px] text-muted-foreground">{changes.length} change{changes.length === 1 ? '' : 's'}</span>

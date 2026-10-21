@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { applyNodeChanges, type Node } from '@xyflow/react';
 import type { Entity } from '@/types';
 import { autoLayoutERD } from '../autoLayoutERD';
-import { alignErdHandles, constrainTableChanges, separateTables, tableSize, tablesOverlap } from '../erd-geometry';
+import { alignErdHandles, constrainDbClientChanges, constrainTableChanges, separateTables, tableSize, tablesOverlap } from '../erd-geometry';
 import { dbmlToERD } from '../dbml-converter';
 import { parseSQLToERD } from '../sqlParser';
 import { edgeRoutingObstacles, routeErdEdge, segmentBlocked } from '../erd-routing';
@@ -81,6 +81,19 @@ describe('SH-004 relational layout', () => {
 });
 
 describe('SH-004 table collision handling', () => {
+  it('uses measured dimensions without rescanning every column on each routing call', () => {
+    const measured = node('large');
+    Object.defineProperty(measured.data, 'columns', { get: () => { throw new Error('unnecessary column scan'); } });
+    expect(tableSize(measured)).toEqual({ width: 220, height: 150 });
+  });
+  it('does not rearrange a DB Client catalog on initial measurement, but constrains a real drag', () => {
+    const nodes = Array.from({ length: 100 }, (_, i) => node(String(i), (i % 4) * 240, Math.floor(i / 4) * 200));
+    const measurements = nodes.map(n => ({ type: 'dimensions' as const, id: n.id, dimensions: { width: 350, height: 800 } }));
+    expect(constrainDbClientChanges(measurements, nodes)).toBe(measurements);
+    const small = [node('fixed', 0, 0), node('moved', 400, 0)];
+    const drag = [{ type: 'position' as const, id: 'moved', position: { x: 5, y: 5 }, dragging: true }];
+    noOverlap(applyNodeChanges(constrainDbClientChanges(drag, small), small));
+  });
   it('separates a whole dragged group without moving other tables or changing group offsets', () => {
     const initial = [node('fixed', 100, 100), node('a', 500, 100), node('b', 500, 350)];
     const changes = [{ type: 'position' as const, id: 'a', position: { x: 120, y: 110 }, dragging: true },
@@ -104,6 +117,19 @@ describe('SH-004 table collision handling', () => {
 });
 
 describe('SH-004 orthogonal routing', () => {
+  it('still routes a multi-turn corridor when no single boundary lane can connect the endpoints', () => {
+    const walls = [
+      { x: 0, y: 0, width: 1000, height: 20 }, { x: 0, y: 380, width: 1000, height: 20 },
+      { x: 0, y: 0, width: 20, height: 400 }, { x: 980, y: 0, width: 20, height: 400 },
+      { x: 250, y: 0, width: 50, height: 300 }, { x: 550, y: 100, width: 50, height: 300 },
+    ];
+    const points = routeErdEdge({ x: 100, y: 50 }, { x: 900, y: 350 }, true, false, walls);
+    expect(points.length).toBeGreaterThan(6);
+    for (let i = 1; i < points.length; i++) {
+      expect(points[i].x === points[i - 1].x || points[i].y === points[i - 1].y).toBe(true);
+      expect(segmentBlocked(points[i - 1], points[i], walls)).toBe(false);
+    }
+  });
   it('uses live endpoint bounds during drag instead of detouring around their previous position', () => {
     const settled = [{ id: 'source', x: 0, y: 0, width: 220, height: 150 },
       { id: 'target', x: 500, y: 0, width: 220, height: 150 }];

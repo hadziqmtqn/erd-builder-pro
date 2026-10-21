@@ -234,14 +234,15 @@ export const DataViewer = memo(function DataViewer({ connectionId, stateKey, onD
     if (activeTable && patch.truncateTables?.includes(activeTable)) recordEditor.resetRecordEditor();
     return data;
   }, [activeTable, mutateTables, recordEditor.resetRecordEditor]);
-  useEffect(() => { const timer = setTimeout(() => fetchTables()); return () => clearTimeout(timer); }, [fetchTables]);
+  useEffect(() => { if (!active) return; const timer = setTimeout(() => fetchTables()); return () => clearTimeout(timer); }, [active, fetchTables]);
   useEffect(() => { onDbTypeChange?.(dbType); }, [dbType, onDbTypeChange]);
   useEffect(() => {
+    if (!active) return;
     setActionContextData({
       aiContextText: buildDbClientTableContext({ dbType, activeView, table: activeTableSchema, tableCount: tables.length }),
     });
     return () => setActionContextData(null);
-  }, [activeTableSchema, activeView, dbType, setActionContextData, tables.length]);
+  }, [active, activeTableSchema, activeView, dbType, setActionContextData, tables.length]);
   useEffect(() => { recordEditor.syncSelectedRowDraft(); }, [recordEditor.syncSelectedRowDraft]);
   useEffect(() => { setFkSearchByColumn({}); }, [activeTable, recordEditor.selectedRow, recordEditor.isCreatingRecord]);
   useEffect(() => {

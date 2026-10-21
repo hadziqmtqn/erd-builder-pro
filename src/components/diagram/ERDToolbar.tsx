@@ -63,7 +63,7 @@ export function ERDToolbar({ nodes, isReadOnly, isProductionDb, addEntity, onImp
       {!isReadOnly && !isProductionDb && isInstalledApp() && action('Repository', <Button onClick={() => setRightPanelMode('repository')} variant="outline" size={isMobile ? 'sm' : 'icon-lg'} aria-label="Repository" className={isMobile ? mobileButton : undefined}>
         <FolderGit2 className={iconClass} />{label('Repository')}
       </Button>)}
-      {!isReadOnly && action('Auto Layout', <Button onClick={onAutoLayout} variant="outline" size={isMobile ? 'sm' : 'icon-lg'} aria-label="Auto Layout" className={isMobile ? mobileButton : undefined}>
+      {onAutoLayout && (!isReadOnly || isProductionDb) && action('Auto Layout', <Button onClick={onAutoLayout} variant="outline" size={isMobile ? 'sm' : 'icon-lg'} aria-label="Auto Layout" className={isMobile ? mobileButton : undefined}>
         <LayoutGrid className={iconClass} />{label('Auto Layout')}
       </Button>)}
       {isProductionDb && action(isSyncing ? 'Syncing...' : 'Sync', <Button onClick={handleSync} variant="outline" size={isMobile ? 'sm' : 'icon-lg'} aria-label={isSyncing ? 'Syncing...' : 'Sync'} disabled={isSyncing}

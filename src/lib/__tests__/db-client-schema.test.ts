@@ -1,7 +1,32 @@
 import { describe, expect, it } from 'vitest';
 import { canvasLayout, dbSchemaToCanvas, keepsDbRelation } from '../db-client-schema';
+import { computeSchemaDiff } from '../schema-diff';
 
 describe('dbSchemaToCanvas', () => {
+  it('syncs an unchanged schema without false FK changes and preserves routing metadata', () => {
+    const schema = [
+      { table_name: 'users', columns: [{ name: 'id', type: 'bigint', is_pk: true }], foreign_keys: [] },
+      { table_name: 'posts', columns: [{ name: 'user_id', type: 'bigint' }], foreign_keys: [{ column: 'user_id', ref_table: 'users', ref_column: 'id', constraint_name: 'posts_user_fk', on_delete: 'CASCADE', on_update: 'NO ACTION' }] },
+    ];
+    const before = dbSchemaToCanvas(schema, null);
+    const layout = canvasLayout(before.nodes, { x: 5, y: 6, zoom: 0.8 }, {}, before.edges);
+    const after = dbSchemaToCanvas(schema, layout);
+    expect(computeSchemaDiff(before.nodes, before.edges, after.nodes, after.edges).changes).toEqual([]);
+    expect(after.nodes.map(node => node.position)).toEqual(before.nodes.map(node => node.position));
+    expect(after.edges[0].data).toMatchObject({ constraint_name: 'posts_user_fk', on_delete: 'CASCADE', on_update: 'NO ACTION' });
+    const changed = structuredClone(schema);
+    changed[1].foreign_keys[0].on_delete = 'RESTRICT';
+    const proposal = dbSchemaToCanvas(changed, layout);
+    expect(computeSchemaDiff(before.nodes, before.edges, proposal.nodes, proposal.edges).changes).toMatchObject([{ kind: 'relation', state: 'modified' }]);
+  });
+
+  it('ignores foreign keys whose table/column is outside the imported schema', () => {
+    const canvas = dbSchemaToCanvas([{ table_name: 'posts', columns: [{ name: 'user_id', type: 'bigint' }], foreign_keys: [
+      { column: 'user_id', ref_table: 'private.users', ref_column: 'id' },
+      { column: 'missing', ref_table: 'posts', ref_column: 'user_id' },
+    ] }], null);
+    expect(canvas.edges).toEqual([]);
+  });
   it('preserves saved positions on reopen instead of applying a new layout', () => {
     const { nodes } = dbSchemaToCanvas([
       { table_name: 'a', columns: [{ name: 'id', type: 'integer' }], foreign_keys: [] },

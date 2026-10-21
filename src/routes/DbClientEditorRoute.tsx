@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { useEdgesState, useNodesState, useReactFlow, type Edge, type Node } from '@xyflow/react';
+import { ReactFlowProvider, useEdgesState, useNodesState, useReactFlow, type Edge, type Node } from '@xyflow/react';
 import { Database } from 'lucide-react';
 import { toast } from 'sonner';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, getAuthToken } from '@/lib/api';
 import { autoLayoutERD } from '@/lib/autoLayoutERD';
 import { alignErdHandles } from '@/lib/erd-geometry';
 import { canvasLayout, dbSchemaToCanvas } from '@/lib/db-client-schema';
-import { getDbClientCache, getSchemaCache, setDbClientCache, setSchemaCache } from '@/hooks/useDataViewerHelpers';
+import { saveDbClientLayout } from '@/lib/db-client-layout';
+import { getSchemaCache, setSchemaCache } from '@/hooks/useDataViewerHelpers';
 import { useImageExporter } from '@/hooks/useImageExporter';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { ERDView } from '@/components/views/ERDView';
@@ -20,6 +21,10 @@ import type { Entity } from '@/types';
 
 export function DbClientEditorRoute() {
   const { id } = useParams<{ id: string }>();
+  return <ReactFlowProvider key={id}><DbClientEditor id={id} /></ReactFlowProvider>;
+}
+
+function DbClientEditor({ id }: { id?: string }) {
   const [params, setParams] = useSearchParams();
   const [client, setClient] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -33,11 +38,19 @@ export function DbClientEditorRoute() {
   const clientRef = useRef<any>(null);
   const layoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadIdRef = useRef(0);
-  const layoutSaveRef = useRef<Promise<void>>(Promise.resolve());
-  const { setViewport, getNodes } = useReactFlow<Node<Entity>>();
+  const loadAbortRef = useRef<AbortController | null>(null);
+  const pendingCanvasRef = useRef<{ schema: any[]; layout: any } | null>(null);
+  const edgesRef = useRef(edges);
+  edgesRef.current = edges;
+  const { setViewport, getViewport, getNodes, fitView } = useReactFlow<Node<Entity>>();
   const { handleExportImage } = useImageExporter();
-  const { setBreadcrumbLabel } = useWorkspace();
-  const mode = (params.get('tab') || 'data') as DataViewerMode;
+  const { setBreadcrumbLabel, user } = useWorkspace();
+  const requestedMode = params.get('tab');
+  const mode: DataViewerMode = requestedMode === 'erd' || requestedMode === 'query' ? requestedMode : 'data';
+  const modeRef = useRef(mode);
+  const aliveRef = useRef(true);
+  modeRef.current = mode;
+  useEffect(() => { aliveRef.current = true; return () => { aliveRef.current = false; }; }, []);
   const mountedModesRef = useRef(new Set<DataViewerMode>(['data']));
   mountedModesRef.current.add(mode);
   const catalogId = Number(client?.catalog_id);
@@ -55,17 +68,18 @@ export function DbClientEditorRoute() {
     if (!id) return;
     // A newer load (another file) supersedes this one; its late responses must not touch state.
     const loadId = ++loadIdRef.current;
-    const stale = () => loadIdRef.current !== loadId;
+    loadAbortRef.current?.abort();
+    const controller = new AbortController();
+    const token = getAuthToken();
+    loadAbortRef.current = controller;
+    const stale = () => loadIdRef.current !== loadId || controller.signal.aborted || getAuthToken() !== token;
     setLoading(true);
     try {
-      let nextClient = getDbClientCache(id);
-      if (!nextClient) {
-        const clientResponse = await apiFetch(`/api/db-clients/${encodeURIComponent(id)}`);
-        nextClient = await clientResponse.json();
-        if (stale()) return;
-        if (!clientResponse.ok) throw new Error(nextClient.error || 'Failed to load DB Client');
-        setDbClientCache(nextClient);
-      }
+      // Cached document data is not an authorization decision, including after a logout/login.
+      const clientResponse = await apiFetch(`/api/db-clients/${encodeURIComponent(id)}`, { signal: controller.signal });
+      const nextClient = await clientResponse.json();
+      if (stale()) return;
+      if (!clientResponse.ok) throw new Error(nextClient.error || 'Failed to load DB Client');
       setClient(nextClient);
       setBreadcrumbLabel(nextClient.name);
       const nextCatalogId = Number(nextClient.catalog_id);
@@ -76,32 +90,38 @@ export function DbClientEditorRoute() {
       }
       let schema = getSchemaCache(nextCatalogId);
       if (!schema) {
-        const schemaResponse = await apiFetch(`/api/catalogs/${nextCatalogId}/schema`, { method: 'POST' });
+        const schemaResponse = await apiFetch(`/api/catalogs/${nextCatalogId}/schema`, { method: 'POST', signal: controller.signal });
         schema = await schemaResponse.json();
         if (stale()) return;
         if (!schemaResponse.ok) throw new Error(schema.error || 'Failed to load database schema');
         setSchemaCache(nextCatalogId, schema);
       }
-      const canvas = dbSchemaToCanvas(schema.schema || [], nextClient.data);
-      setNodes(canvas.nodes);
-      setEdges(canvas.edges);
+      pendingCanvasRef.current = { schema: schema.schema || [], layout: nextClient.data };
       setDbType(schema.dbType || null);
-      const viewport = nextClient.data?.viewport;
-      if (viewport) {
-        viewportRef.current = viewport;
-        requestAnimationFrame(() => setViewport(viewport, { duration: 0 }));
-      }
     } finally {
       if (!stale()) setLoading(false);
     }
-  }, [id, setBreadcrumbLabel, setEdges, setNodes, setViewport]);
+  }, [id, user?.id, setBreadcrumbLabel, setEdges, setNodes, setViewport]);
+
+  useEffect(() => {
+    if (loading || mode !== 'erd' || !pendingCanvasRef.current) return;
+    const { schema, layout } = pendingCanvasRef.current;
+    pendingCanvasRef.current = null;
+    const canvas = dbSchemaToCanvas(schema, layout);
+    setNodes(canvas.nodes);
+    setEdges(canvas.edges);
+    if (!layout?.viewport) return;
+    viewportRef.current = layout.viewport;
+    const frame = requestAnimationFrame(() => setViewport(layout.viewport, { duration: 0 }));
+    return () => cancelAnimationFrame(frame);
+  }, [loading, mode, setEdges, setNodes, setViewport]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       const loadId = loadIdRef.current + 1;
       void load().catch(() => { if (loadIdRef.current === loadId) setClient(null); });
     });
-    return () => { clearTimeout(timer); loadIdRef.current += 1; setBreadcrumbLabel(null); };
+    return () => { clearTimeout(timer); loadAbortRef.current?.abort(); loadIdRef.current += 1; setBreadcrumbLabel(null); };
   }, [load, setBreadcrumbLabel]);
 
   useEffect(() => {
@@ -114,24 +134,16 @@ export function DbClientEditorRoute() {
     return () => window.removeEventListener('db-connect-open-query', openQuery);
   }, [setMode]);
 
-  const saveLayout = useCallback(async (viewport = viewportRef.current, layoutNodes = getNodes(), layoutEdges: Edge[] = edges) => {
+  const saveLayout = useCallback(async (viewport = viewportRef.current, layoutNodes = getNodes(), layoutEdges: Edge[] = edgesRef.current) => {
     const currentClient = clientRef.current;
     if (!currentClient) return;
     const data = canvasLayout(layoutNodes, viewport, currentClient.data, layoutEdges);
+    clientRef.current = { ...currentClient, data };
     setClient((current: any) => current ? { ...current, data } : current);
-    // Saves run one after another so an older PUT can never land after (and overwrite) a newer layout.
-    const save = layoutSaveRef.current.then(async () => {
-      const res = await apiFetch(`/api/db-clients/${encodeURIComponent(currentClient.uid || currentClient.id)}/layout`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data }),
-      });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
-      setDbClientCache({ ...currentClient, data });
-    }).catch(error => {
+    await saveDbClientLayout(String(currentClient.uid || currentClient.id), data).catch(error => {
       toast.error(`ERD layout was not saved: ${error instanceof Error ? error.message : 'network error'}. Move a table to retry.`);
     });
-    layoutSaveRef.current = save;
-    await save;
-  }, [edges, getNodes]);
+  }, [getNodes]);
 
   const scheduleLayoutSave = useCallback(() => {
     if (layoutTimerRef.current) clearTimeout(layoutTimerRef.current);
@@ -142,9 +154,9 @@ export function DbClientEditorRoute() {
   }, [saveLayout]);
 
   const handleCanvasMove = useCallback((_: any, viewport: any) => { viewportRef.current = viewport; }, []);
-  const handleCanvasMoveEnd = useCallback((_: any, viewport: any) => {
+  const handleCanvasMoveEnd = useCallback((event: any, viewport: any) => {
     viewportRef.current = viewport;
-    scheduleLayoutSave();
+    if (event) scheduleLayoutSave();
   }, [scheduleLayoutSave]);
 
   useEffect(() => () => {
@@ -155,12 +167,22 @@ export function DbClientEditorRoute() {
   }, [id, saveLayout]);
 
   const handleAutoLayout = useCallback(() => {
-    const nextNodes = autoLayoutERD(nodes, edges);
-    const nextEdges = alignErdHandles(nextNodes, edges);
+    const nextNodes = autoLayoutERD(getNodes(), edgesRef.current);
+    const nextEdges = alignErdHandles(nextNodes, edgesRef.current);
     setNodes(nextNodes);
     setEdges(nextEdges);
     void saveLayout(viewportRef.current, nextNodes, nextEdges);
-  }, [edges, nodes, saveLayout, setNodes, setEdges]);
+    requestAnimationFrame(() => {
+      if (!aliveRef.current || modeRef.current !== 'erd') return;
+      void fitView({ padding: 0.2, duration: 0 }).then(() => {
+        if (aliveRef.current && modeRef.current === 'erd') return saveLayout(getViewport(), nextNodes, nextEdges);
+      });
+    });
+  }, [getNodes, getViewport, fitView, saveLayout, setNodes, setEdges]);
+
+  const handleSchemaApplied = useCallback((nextNodes: Node<Entity>[], nextEdges: Edge[]) => {
+    void saveLayout(viewportRef.current, nextNodes, nextEdges);
+  }, [saveLayout]);
 
   const handleEdgeFlip = useCallback((edgeId: string) => {
     const toggleSide = (handle?: string | null) => {
@@ -209,7 +231,9 @@ export function DbClientEditorRoute() {
             onEdgeClick={(_, edge) => setSelectedEdgeId(edge.id)}
             addEntity={() => {}} handleExportSQL={() => {}} handleExportImage={() => handleExportImage(client.name)}
             onAutoLayout={handleAutoLayout}
+            onDatabaseSchemaApplied={handleSchemaApplied}
             isReadOnly isDbClient sourceConnectionId={catalogId}
+            isActive={mode === 'erd'}
             onEdgeReconnect={nextEdges => { void saveLayout(viewportRef.current, getNodes(), nextEdges); }}
             onNodeDragStop={scheduleLayoutSave}
             onMoveEnd={handleCanvasMoveEnd}

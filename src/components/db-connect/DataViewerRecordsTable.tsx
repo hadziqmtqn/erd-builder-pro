@@ -1,10 +1,11 @@
-import { memo, ReactNode, useRef, useState } from 'react';
+import { memo, ReactNode, useMemo, useRef, useState } from 'react';
 import { AlertCircle, ArrowDown, ArrowUp, Database, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ColumnWidths, createColumnHelpers, loadColumnWidths, saveColumnWidths } from './data-viewer-utils';
 import { DataViewerRecordRow } from './DataViewerRecordRow';
+import { useRecordColumnWindow } from '@/hooks/useRecordColumnWindow';
 
 type DataViewerRecordsTableProps = {
   activeTable: string;
@@ -44,6 +45,8 @@ const MIN_COLUMN_WIDTH = 32;
 // shortcut: auto-fit caps very long values (JSON, text) so one column cannot span thousands of pixels; raise if users need wider.
 const MAX_FIT_WIDTH = 1000;
 const clampWidth = (width: number) => Math.max(MIN_COLUMN_WIDTH, Math.round(width));
+const EMPTY_WIDTHS: Record<string, number> = {};
+const EMPTY_COLUMNS: string[] = [];
 
 // Natural width of a column: the widest [data-fit] text (measured with a Range, so it can shrink as well as grow)
 // plus the rest of its cell (padding, sort icon, FK button), which stays fixed because [data-fit] takes the free space.
@@ -99,13 +102,15 @@ export const DataViewerRecordsTable = memo(function DataViewerRecordsTable({
   const canSelectRows = primaryKeyColumns.length > 0;
   const rowKey = (row: Record<string, any>) => JSON.stringify(primaryKeyColumns.map(column => row[column]));
   const pageRows = records?.rows || [];
-  const columns = records?.columns || [];
+  const columns: string[] = records?.columns || EMPTY_COLUMNS;
   const allPageRowsSelected = canSelectRows && pageRows.length > 0 && pageRows.every((row: any) => selectedRowKeys.has(rowKey(row)));
   const tableRef = useRef<HTMLTableElement>(null);
   const [stored, setStored] = useState<{ connectionId: number; widthsByTable: ColumnWidths }>(() => ({ connectionId, widthsByTable: loadColumnWidths(connectionId) }));
   if (stored.connectionId !== connectionId) setStored({ connectionId, widthsByTable: loadColumnWidths(connectionId) });
-  const widths = stored.widthsByTable[activeTable] || {};
-  const widthOf = (column: string) => widths[column] ?? DEFAULT_COLUMN_WIDTH;
+  const widths = stored.widthsByTable[activeTable] || EMPTY_WIDTHS;
+  const widthOf = (column: string) => clampWidth(widths[column] ?? DEFAULT_COLUMN_WIDTH);
+  const columnSizes = useMemo(() => columns.map(column => clampWidth(widths[column] ?? DEFAULT_COLUMN_WIDTH)), [columns, widths]);
+  const { scrollRef, columnWindow } = useRecordColumnWindow(columnSizes, canSelectRows ? 40 : 0);
   const setWidth = (column: string, width: number) => setStored(prev => {
     const widthsByTable = { ...prev.widthsByTable, [activeTable]: { ...prev.widthsByTable[activeTable], [column]: clampWidth(width) } };
     saveColumnWidths(prev.connectionId, widthsByTable);
@@ -183,14 +188,17 @@ export const DataViewerRecordsTable = memo(function DataViewerRecordsTable({
           </div>
           <RefreshProgress active={isLoadingRecords} />
           <div
-            className="flex-1 overflow-auto custom-scrollbar min-h-0"
+            ref={scrollRef}
+            data-records-scroll
+            className="flex-1 overflow-auto custom-scrollbar min-h-0 isolate"
+            style={{ contain: 'layout paint' }}
           >
             {!records && isLoadingRecords && (
               <div role="status" className="flex h-32 items-center justify-center text-sm text-muted-foreground">Loading records…</div>
             )}
             {records && (
               <div className="min-w-fit inline-block align-middle">
-              <table ref={tableRef} className="table-fixed caption-bottom text-sm" style={{ width: tableWidth }}>
+              <table ref={tableRef} aria-colcount={columns.length + (canSelectRows ? 1 : 0)} className="table-fixed caption-bottom text-sm" style={{ width: tableWidth }}>
                 <colgroup>
                   {canSelectRows && <col style={{ width: 40 }} />}
                   {columns.map((column: string) => <col key={column} style={{ width: widthOf(column) }} />)}
@@ -198,7 +206,7 @@ export const DataViewerRecordsTable = memo(function DataViewerRecordsTable({
                 <TableHeader className="sticky top-0 z-20 bg-background">
                   <TableRow className="bg-background">
                     {canSelectRows && (
-                      <TableHead className="sticky top-0 z-20 w-10 bg-background px-3">
+                      <TableHead className="w-10 bg-background px-3">
                         <Checkbox
                           checked={allPageRowsSelected}
                           disabled={pageRows.length === 0}
@@ -211,7 +219,7 @@ export const DataViewerRecordsTable = memo(function DataViewerRecordsTable({
                         key={column}
                         aria-sort={sort?.column === column ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
                         data-column={column}
-                        className="sticky top-0 z-20 cursor-pointer select-none overflow-hidden whitespace-nowrap bg-background px-2 py-0 hover:bg-muted/60"
+                        className="relative cursor-pointer select-none overflow-hidden whitespace-nowrap bg-background px-2 py-0 hover:bg-muted/60"
                         onClick={() => warnUnsaved() && toggleSort(column)}
                         title={`Sort by ${column}`}
                       >
@@ -274,6 +282,7 @@ export const DataViewerRecordsTable = memo(function DataViewerRecordsTable({
                           connectionId={connectionId}
                           dbType={dbType}
                           columns={columns}
+                          columnWindow={columnWindow}
                           columnHelpers={columnHelpers}
                           foreignKeyByColumn={foreignKeyByColumn}
                           pageRows={pageRows}
