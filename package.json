@@ -51,7 +51,7 @@
     "@excalidraw/excalidraw": "^0.18.1",
     "@fontsource-variable/geist": "^5.2.8",
     "@fontsource/jetbrains-mono": "^5.2.8",
-    "@modelcontextprotocol/express": "^2.0.0",
+    "@modelcontextprotocol/express": "^2.0.2",
     "@modelcontextprotocol/node": "^2.0.0",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "@modelcontextprotocol/server": "^2.0.0",
