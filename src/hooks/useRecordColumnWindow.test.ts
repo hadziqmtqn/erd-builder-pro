@@ -20,7 +20,9 @@ const render = () => { mocks.cursor = 0; return useRecordColumnWindow(Array(56).
 
 it('coalesces scroll events and does not update React inside the buffered column range', () => {
   const element = { scrollLeft: 0, clientWidth: 400, addEventListener: vi.fn(), removeEventListener: vi.fn() };
-  render().scrollRef(element as any);
+  const initial = render();
+  expect(initial.columnWindow).toEqual({ start: 0, end: 0 });
+  initial.scrollRef(element as any);
   mocks.effects = []; render(); const cleanup = mocks.effects[0]();
   const scroll = element.addEventListener.mock.calls[0][1];
   expect(element.addEventListener).toHaveBeenCalledWith('scroll', expect.any(Function), { passive: true });
@@ -29,10 +31,31 @@ it('coalesces scroll events and does not update React inside the buffered column
   for (let i = 0; i < 20; i++) scroll();
   expect(frames).toHaveLength(1); frames.shift()!(0);
   expect(mocks.updates).toEqual([]);
+  // Refill while the actual viewport is still inside the existing 12-column window.
+  element.scrollLeft = 150; scroll(); frames.shift()!(0);
+  expect(render().columnWindow).toEqual({ start: 0, end: 15 });
+  expect(mocks.updates).toEqual([1]);
+  mocks.updates = [];
   element.scrollLeft = 500; scroll(); frames.shift()!(0);
   expect(mocks.updates).toEqual([1]);
   expect(render().columnWindow).toEqual({ start: 5, end: 22 });
   scroll(); cleanup();
   expect(cancel).toHaveBeenCalled(); expect(disconnect).toHaveBeenCalled();
   expect(element.removeEventListener).toHaveBeenCalledWith('scroll', scroll);
+});
+
+it('caps the larger buffer and refills early in either direction', () => {
+  const element = { scrollLeft: 1000, clientWidth: 1000, addEventListener: vi.fn(), removeEventListener: vi.fn() };
+  render().scrollRef(element as any);
+  mocks.effects = []; render(); const cleanup = mocks.effects[0]();
+  const scroll = element.addEventListener.mock.calls[0][1];
+  expect(render().columnWindow).toEqual({ start: 11, end: 48 });
+  mocks.updates = [];
+  element.scrollLeft = 850; scroll(); frames.shift()!(0);
+  expect(mocks.updates).toEqual([]);
+  element.scrollLeft = 750; scroll(); frames.shift()!(0);
+  expect(render().columnWindow).toEqual({ start: 6, end: 43 });
+  element.scrollLeft = 1050; scroll(); frames.shift()!(0);
+  expect(render().columnWindow).toEqual({ start: 12, end: 49 });
+  cleanup();
 });

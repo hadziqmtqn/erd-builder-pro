@@ -1,4 +1,4 @@
-import { memo, ReactNode, useMemo, useRef, useState } from 'react';
+import { memo, ReactNode, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, ArrowDown, ArrowUp, Database, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -111,11 +111,20 @@ export const DataViewerRecordsTable = memo(function DataViewerRecordsTable({
   const widthOf = (column: string) => clampWidth(widths[column] ?? DEFAULT_COLUMN_WIDTH);
   const columnSizes = useMemo(() => columns.map(column => clampWidth(widths[column] ?? DEFAULT_COLUMN_WIDTH)), [columns, widths]);
   const { scrollRef, columnWindow } = useRecordColumnWindow(columnSizes, canSelectRows ? 40 : 0);
+  const [fitRequest, setFitRequest] = useState<{ column: string; table: string; connectionId: number } | null>(null);
+  const measureColumn = fitRequest?.table === activeTable && fitRequest.connectionId === connectionId ? fitRequest.column : null;
   const setWidth = (column: string, width: number) => setStored(prev => {
     const widthsByTable = { ...prev.widthsByTable, [activeTable]: { ...prev.widthsByTable[activeTable], [column]: clampWidth(width) } };
     saveColumnWidths(prev.connectionId, widthsByTable);
     return { ...prev, widthsByTable };
   });
+  useLayoutEffect(() => {
+    if (!fitRequest) return;
+    // Auto-fit must measure all page rows, including cells normally kept outside the render window.
+    if (measureColumn) setWidth(measureColumn, fitColumnWidth(tableRef.current, measureColumn));
+    setFitRequest(null);
+  }, [fitRequest, measureColumn]);
+  const autoFit = (column: string) => setFitRequest({ column, table: activeTable, connectionId });
   const startResize = (event: React.PointerEvent<HTMLDivElement>, column: string) => {
     event.preventDefault();
     event.stopPropagation();
@@ -255,10 +264,10 @@ export const DataViewerRecordsTable = memo(function DataViewerRecordsTable({
                           className="absolute inset-y-0 right-0 z-10 w-1.5 cursor-col-resize touch-none border-r border-border hover:bg-primary/40 focus-visible:bg-primary/40 focus-visible:outline-none"
                           onPointerDown={event => startResize(event, column)}
                           onClick={event => event.stopPropagation()}
-                          onDoubleClick={event => { event.stopPropagation(); setWidth(column, fitColumnWidth(tableRef.current, column)); }}
+                          onDoubleClick={event => { event.stopPropagation(); autoFit(column); }}
                           onKeyDown={event => {
                             if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); event.stopPropagation(); setWidth(column, widthOf(column) + (event.key === 'ArrowLeft' ? -10 : 10)); }
-                            if (event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); setWidth(column, fitColumnWidth(tableRef.current, column)); }
+                            if (event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); autoFit(column); }
                           }}
                         />
                       </TableHead>
@@ -273,8 +282,8 @@ export const DataViewerRecordsTable = memo(function DataViewerRecordsTable({
                       </TableCell>
                     </TableRow>
                   ) : (
-                    pageRows.map((row: Record<string, any>) => {
-                      const rowKeyValue = rowKey(row);
+                    pageRows.map((row: Record<string, any>, index: number) => {
+                      const rowKeyValue = canSelectRows ? rowKey(row) : `row:${index}`;
                       return (
                         <DataViewerRecordRow
                           key={rowKeyValue}
@@ -283,6 +292,7 @@ export const DataViewerRecordsTable = memo(function DataViewerRecordsTable({
                           dbType={dbType}
                           columns={columns}
                           columnWindow={columnWindow}
+                          measureColumn={measureColumn}
                           columnHelpers={columnHelpers}
                           foreignKeyByColumn={foreignKeyByColumn}
                           pageRows={pageRows}
