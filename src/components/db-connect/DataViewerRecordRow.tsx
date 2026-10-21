@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/context-menu';
 import { createColumnHelpers, DEFAULT_VALUE, displayCellValue, draftValue, formatRawCellValue, isDefaultValue, quoteTableName } from './data-viewer-utils';
 import { DataViewerTableActions } from './DataViewerTableActions';
+import { pinRecordColumns, type ColumnWindow } from '@/lib/record-column-window';
 
 const csvCell = (value: any) => {
   const text = formatRawCellValue(value);
@@ -38,6 +39,7 @@ type DataViewerRecordRowProps = {
   connectionId: number;
   dbType: string | null;
   columns: string[];
+  columnWindow: ColumnWindow;
   columnHelpers: ReturnType<typeof createColumnHelpers>;
   foreignKeyByColumn: Map<string, any>;
   pageRows: Record<string, any>[];
@@ -64,6 +66,7 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
   connectionId,
   dbType,
   columns,
+  columnWindow,
   columnHelpers,
   foreignKeyByColumn,
   pageRows,
@@ -86,6 +89,7 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
 }: DataViewerRecordRowProps) {
   const [editingColumn, setEditingColumn] = useState<string | null>(null);
   const [menuColumn, setMenuColumn] = useState<string | null>(null);
+  const visible = pinRecordColumns(columnWindow, columns, [editingColumn, menuColumn]);
   const copyText = async (text: string, label = 'Copied') => {
     await navigator.clipboard.writeText(text);
     toast.success(label);
@@ -110,10 +114,10 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
 
   return (
     <ContextMenu>
-      <ContextMenuTrigger className="contents">
+      <ContextMenuTrigger render={
     <TableRow
       key={rowKeyValue}
-      className={`cursor-pointer hover:bg-muted/50 ${isActive ? 'bg-muted/70' : isSelected ? 'bg-primary/10' : ''}`}
+      className={`cursor-pointer transition-none hover:bg-muted/50 ${isActive ? 'bg-muted/70' : isSelected ? 'bg-primary/10' : ''}`}
       onMouseDown={e => { if (e.shiftKey || e.metaKey || e.ctrlKey) e.preventDefault(); }}
       onClick={e => handleSelectRow(row, e)}
     >
@@ -122,7 +126,8 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
           <Checkbox checked={isSelected} onClick={e => onToggleSelectedRow(row, !isSelected, e)} />
         </TableCell>
       )}
-      {columns.map(column => {
+      {visible.start > 0 && <TableCell aria-hidden="true" colSpan={visible.start} className="p-0" />}
+      {columns.slice(visible.start, visible.end).map((column, index) => {
         const val = row[column];
         const draft = recordDrafts[`${rowKeyValue}:${column}`];
         const displayValue = draft ? draft.value : val;
@@ -133,6 +138,7 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
           <TableCell
             key={column}
             data-column={column}
+            aria-colindex={visible.start + index + (canSelectRows ? 2 : 1)}
             className={`group relative overflow-hidden text-sm font-mono ${isEditing ? 'p-0.5' : ''} ${draft ? 'bg-primary/10 ring-1 ring-inset ring-primary/30' : ''}`}
             onDoubleClick={e => {
               e.stopPropagation();
@@ -235,8 +241,9 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
           </TableCell>
         );
       })}
+      {visible.end < columns.length && <TableCell aria-hidden="true" colSpan={columns.length - visible.end} className="p-0" />}
     </TableRow>
-      </ContextMenuTrigger>
+      } />
       <ContextMenuContent className="min-w-36">
         <ContextMenuItem onClick={() => onEditRecord(row)}><Pencil className="h-3.5 w-3.5" />Edit</ContextMenuItem>
         <ContextMenuSeparator />
@@ -259,6 +266,7 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
     prev.connectionId !== next.connectionId ||
     prev.dbType !== next.dbType ||
     prev.columns !== next.columns ||
+    prev.columnWindow !== next.columnWindow ||
     prev.columnHelpers !== next.columnHelpers ||
     prev.foreignKeyByColumn !== next.foreignKeyByColumn ||
     prev.pageRows !== next.pageRows ||

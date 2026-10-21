@@ -42,8 +42,10 @@ export function dbSchemaToCanvas(schema: any[], layout: any): { nodes: Node<Enti
     };
   });
   const edges: Edge[] = [];
+  const columns = new Map(nodes.map(node => [node.id, new Set(node.data.columns.map(column => column.name))]));
   for (const table of schema) {
     for (const foreignKey of table.foreign_keys || []) {
+      if (!columns.get(table.table_name)?.has(foreignKey.column) || !columns.get(foreignKey.ref_table)?.has(foreignKey.ref_column)) continue;
       const id = `${table.table_name}.${foreignKey.column}->${foreignKey.ref_table}.${foreignKey.ref_column}`;
       const saved = layout?.edgeHandles?.[id] || {};
       edges.push({
@@ -53,7 +55,7 @@ export function dbSchemaToCanvas(schema: any[], layout: any): { nodes: Node<Enti
         sourceHandle: saved.sourceHandle || `col-${table.table_name}.${foreignKey.column}-source`,
         targetHandle: saved.targetHandle || `col-${foreignKey.ref_table}.${foreignKey.ref_column}-target`,
         type: 'smoothstep',
-        data: { constraint_name: foreignKey.constraint_name },
+        data: { constraint_name: foreignKey.constraint_name, on_delete: foreignKey.on_delete, on_update: foreignKey.on_update },
       });
     }
   }

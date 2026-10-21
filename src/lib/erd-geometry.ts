@@ -5,6 +5,9 @@ import { formatColumnType } from './column-metadata';
 export const TABLE_GAP = 32;
 
 export function tableSize(node: Node<Entity>) {
+  const measuredWidth = node.measured?.width ?? node.width;
+  const measuredHeight = node.measured?.height ?? node.height;
+  if (measuredWidth !== undefined && measuredHeight !== undefined) return { width: measuredWidth, height: measuredHeight };
   const columns = node.data.columns || [];
   const width = Math.max(220, 70 + node.data.name.length * 8,
     ...columns.map(c => 100 + c.name.length * 8 + formatColumnType(c.type, c.max_length, c.numeric_precision, c.numeric_scale).length * 7));
@@ -55,6 +58,11 @@ export function constrainTableChanges(changes: NodeChange<Node<Entity>>[], nodes
   const corrections: NodeChange<Node<Entity>>[] = safe.flatMap((n, i) => n.position.x !== next[i].position.x || n.position.y !== next[i].position.y
     ? [{ type: 'position' as const, id: n.id, position: n.position }] : []);
   return corrections.length ? [...changes, ...corrections] : changes;
+}
+
+export function constrainDbClientChanges(changes: NodeChange<Node<Entity>>[], nodes: Node<Entity>[]) {
+  // Read-only tables cannot be resized by users; initial measurements must not repeatedly rearrange the whole catalog.
+  return changes.some(change => change.type === 'position') ? constrainTableChanges(changes, nodes) : changes;
 }
 
 export function alignErdHandles(nodes: Node<Entity>[], edges: Edge[]): Edge[] {

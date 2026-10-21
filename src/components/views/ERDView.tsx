@@ -35,19 +35,19 @@ import { computeSchemaDiff, DiffResult } from '@/lib/schema-diff';
 import { mergeSchemaChanges } from '@/lib/schema-merge';
 import { useWorkspace } from '@/providers/WorkspaceContext';
 import { storedHasAnchor } from '@/lib/fileComments';
-import { apiFetch } from '@/lib/api';
 import { EyeOff, Monitor } from 'lucide-react';
 import { buildErdIndexes, erdColumnKey, erdSourceColumnKey } from '@/lib/erd-indexes';
-import { databaseColumnToERD } from '@/lib/column-metadata';
-import { keepsDbRelation } from '@/lib/db-client-schema';
+import { canvasLayout, dbSchemaToCanvas, keepsDbRelation } from '@/lib/db-client-schema';
+import { useDatabaseSchemaSync } from '@/hooks/useDatabaseSchemaSync';
 import { styleErdEdges } from '@/lib/erd-edge-style';
 import { ERD_HISTORY_PREVIEW_EVENT, type ErdHistoryPreview } from '@/lib/history-diagram';
 import { ERD_REPOSITORY_APPLIED_EVENT, ERD_REPOSITORY_PREVIEW_EVENT, type RepositoryPreview } from '@/lib/repository-preview';
 import { erdToDBML } from '@/lib/dbml-converter';
-import { constrainTableChanges, tableSize } from '@/lib/erd-geometry';
+import { constrainDbClientChanges, constrainTableChanges, tableSize } from '@/lib/erd-geometry';
 import { ERDRoutedEdge, ERDRoutingContext } from '@/components/diagram/ERDRoutedEdge';
 import { ERDEdgeLabels } from '@/components/diagram/ERDEdgeLabels';
 import { useSettledERDCanvasSnapshot } from '@/contexts/ERDCanvasContext';
+import { sameCanvasItems } from '@/lib/erd-canvas-equality';
 
 const nodeTypes = {
   entity: EntityNode,
@@ -86,12 +86,14 @@ interface ERDViewProps {
   addEntity: () => void;
   onImportSQL?: () => void;
   onAutoLayout?: () => void;
+  onDatabaseSchemaApplied?: (nodes: Node<Entity>[], edges: Edge[]) => void;
   handleExportSQL: (dialect: 'postgresql' | 'mysql') => void;
   onNodeDragStop?: () => void;
 
   handleExportImage: () => void;
   isReadOnly?: boolean;
   isDbClient?: boolean;
+  isActive?: boolean;
   sourceConnectionId?: number;
 
   undo?: () => void;
@@ -137,9 +139,11 @@ const ERDViewComponent = ({
   addEntity,
   onImportSQL,
   onAutoLayout,
+  onDatabaseSchemaApplied,
   handleExportImage,
   isReadOnly = false,
   isDbClient = false,
+  isActive = true,
   sourceConnectionId,
 
   undo,
@@ -181,7 +185,6 @@ const ERDViewComponent = ({
     await syncDrafts();
   };
 
-  const [isSyncing, setIsSyncing] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const handleEdgeMouseEnterLocal = useCallback((_: React.MouseEvent, edge: Edge) => setHoveredEdgeId(edge.id), []);
@@ -290,7 +293,7 @@ const ERDViewComponent = ({
     diffNodes: Node<Entity>[];
     diffEdges: Edge[];
     diffResult: DiffResult;
-    source: 'proposal' | 'history' | 'repository' | 'repository-compare';
+    source: 'proposal' | 'history' | 'repository' | 'repository-compare' | 'database';
     version?: number;
     sourceLabel?: string;
     commit?: string;
@@ -357,7 +360,8 @@ const ERDViewComponent = ({
     (changes: any[]) => {
       const dataChanges = changes.filter((change: any) => change.type !== 'select');
       if (dataChanges.length === 0) return;
-      const safeChanges = isReadOnly && !isProductionDb ? dataChanges : constrainTableChanges(dataChanges, nodesRef.current);
+      const safeChanges = isProductionDb ? constrainDbClientChanges(dataChanges, nodesRef.current)
+        : isReadOnly ? dataChanges : constrainTableChanges(dataChanges, nodesRef.current);
       onNodesChange(safeChanges);
       if (safeChanges !== dataChanges && dataChanges.some(change => change.type === 'dimensions')) {
         requestAnimationFrame(() => { onNodeDragStop?.(); saveCanvasAfterNodeDrag(); });
@@ -379,6 +383,7 @@ const ERDViewComponent = ({
   // ─── Send selected tables context to AI ──────────────
   // Only fires when selection (set of IDs) changes — NOT on position changes during drag
   React.useEffect(() => {
+    if (!isActive) { setSelectionText(null); return; }
     if (allSelectedIds.length > 0) {
       const selectedNodes = allSelectedIds
         .map(id => nodesRef.current.find(n => n.id === id))
@@ -394,9 +399,10 @@ const ERDViewComponent = ({
     } else {
       setSelectionText(null);
     }
-  }, [allSelectedIds, setSelectionText]);
+  }, [allSelectedIds, setSelectionText, isActive]);
 
   React.useEffect(() => {
+    if (!isActive) return;
     const primaryNode = selectedNodeId ? nodesRef.current.find(n => n.id === selectedNodeId) ?? null : null;
     const multiSelected = allSelectedIds
       .map(id => nodesRef.current.find(n => n.id === id))
@@ -407,7 +413,7 @@ const ERDViewComponent = ({
       selectedNode: primaryNode,
       multiSelectedNodes: multiSelected,
     });
-  }, [selectedNodeId, allSelectedIds, setActionContextData]);
+  }, [selectedNodeId, allSelectedIds, setActionContextData, isActive]);
   const takeSnapshotRef = React.useRef(takeSnapshot);
   takeSnapshotRef.current = takeSnapshot;
   const handleNodeDragStartLocal = useCallback(() => {
@@ -493,7 +499,7 @@ const ERDViewComponent = ({
   }, [pendingDiff, isProductionDb, isReadOnly, setEdges, onEdgeReconnect, extractColumnIdFromHandle, getRelationKey, dedupeEdgesByRelation]);
 
   // ─── Visual Schema Diffing Callbacks ────────────────
-  const startDiff = useCallback((origNodes: Node<Entity>[], origEdges: Edge[], propNodes: Node<Entity>[], propEdges: Edge[], options: { source?: 'proposal' | 'history' | 'repository' | 'repository-compare'; version?: number; sourceLabel?: string; commit?: string; dbmlSource?: string } = {}) => {
+  const startDiff = useCallback((origNodes: Node<Entity>[], origEdges: Edge[], propNodes: Node<Entity>[], propEdges: Edge[], options: { source?: 'proposal' | 'history' | 'repository' | 'repository-compare' | 'database'; version?: number; sourceLabel?: string; commit?: string; dbmlSource?: string } = {}) => {
     const diffData = computeSchemaDiff(origNodes, origEdges, propNodes, propEdges);
     const source = options.source || 'proposal';
     if (diffData.changes.length === 0) {
@@ -521,6 +527,7 @@ const ERDViewComponent = ({
 
   React.useEffect(() => {
     const previewHistory = (event: Event) => {
+      if (isProductionDb) return;
       if (!editorActive()) return;
       const preview = (event as CustomEvent<ErdHistoryPreview | undefined>).detail;
       if (!preview) {
@@ -531,10 +538,11 @@ const ERDViewComponent = ({
     };
     window.addEventListener(ERD_HISTORY_PREVIEW_EVENT, previewHistory);
     return () => window.removeEventListener(ERD_HISTORY_PREVIEW_EVENT, previewHistory);
-  }, [startDiff]);
+  }, [startDiff, isProductionDb]);
 
   React.useEffect(() => {
     const previewRepository = (event: Event) => {
+      if (isProductionDb) return;
       if (!editorActive()) return;
       const preview = (event as CustomEvent<RepositoryPreview | undefined>).detail;
       if (!preview) {
@@ -556,84 +564,11 @@ const ERDViewComponent = ({
     };
     window.addEventListener(ERD_REPOSITORY_PREVIEW_EVENT, previewRepository);
     return () => window.removeEventListener(ERD_REPOSITORY_PREVIEW_EVENT, previewRepository);
-  }, [startDiff]);
-  const handleSync = useCallback(async () => {
-    if (!sourceConnectionId) return;
-    setIsSyncing(true);
-    try {
-      const res = await apiFetch(`/api/catalogs/${sourceConnectionId}/schema`, {
-        method: 'POST',
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Failed to sync schema' }));
-        toast.error(err.error || 'Failed to sync schema');
-        return;
-      }
-      const data = await res.json();
-      const tables: any[] = data.schema || [];
-
-      // Convert tables to Node<Entity>[]
-      const idMap = new Map<string, string>();
-      const newNodes: Node<Entity>[] = tables.map((t: any, i: number) => {
-        const nodeId = crypto.randomUUID();
-        idMap.set(t.table_name, nodeId);
-        return {
-          id: nodeId,
-          type: 'entity',
-          position: { x: (i % 4) * 280 + 50, y: Math.floor(i / 4) * 200 + 50 },
-          data: {
-            id: nodeId,
-            name: t.table_name,
-            x: (i % 4) * 280 + 50,
-            y: Math.floor(i / 4) * 200 + 50,
-            color: '#6b7280',
-            columns: (t.columns || []).map((c: any) => databaseColumnToERD(c, crypto.randomUUID())),
-          },
-        };
-      });
-
-      // Build edges from foreign_keys
-      const columnIdMap = new Map<string, string>();
-      newNodes.forEach(n => {
-        n.data.columns.forEach(c => {
-          columnIdMap.set(`${n.data.name}.${c.name}`, c.id);
-        });
-      });
-      const newEdges: Edge[] = [];
-      tables.forEach((t: any) => {
-        const sourceId = idMap.get(t.table_name);
-        if (!sourceId) return;
-        (t.foreign_keys || []).forEach((fk: any) => {
-          const targetId = idMap.get(fk.ref_table);
-          if (!targetId) return;
-          const srcColId = columnIdMap.get(`${t.table_name}.${fk.column}`);
-          const tgtColId = columnIdMap.get(`${fk.ref_table}.${fk.ref_column}`);
-          if (!srcColId || !tgtColId) return;
-          if (newEdges.some(e =>
-            e.source === sourceId &&
-            e.target === targetId &&
-            e.sourceHandle === `col-${srcColId}-source` &&
-            e.targetHandle === `col-${tgtColId}-target`
-          )) return;
-          newEdges.push({
-            id: crypto.randomUUID(),
-            source: sourceId,
-            target: targetId,
-            sourceHandle: `col-${srcColId}-source`,
-            targetHandle: `col-${tgtColId}-target`,
-            type: 'smoothstep',
-          });
-        });
-      });
-
-      startDiff(nodesRef.current, edgesRef.current, newNodes, newEdges);
-      toast.success(`Fetched ${tables.length} tables from production DB`);
-    } catch (e: any) {
-      toast.error(e.message || 'Failed to sync schema');
-    } finally {
-      setIsSyncing(false);
-    }
-  }, [sourceConnectionId, startDiff]);
+  }, [startDiff, isProductionDb]);
+  const { sync: handleSync, isSyncing } = useDatabaseSchemaSync(isActive ? sourceConnectionId : undefined, data => {
+    const canvas = dbSchemaToCanvas(data.schema, canvasLayout(nodesRef.current, getViewport(), {}, edgesRef.current));
+    startDiff(nodesRef.current, edgesRef.current, canvas.nodes, canvas.edges, { source: 'database' });
+  });
 
   const handleRejectAll = useCallback(() => {
     setPendingDiff(null);
@@ -643,12 +578,13 @@ const ERDViewComponent = ({
     } else if (pendingDiff?.source.startsWith('repository')) {
       toast.info('Repository preview closed');
     } else {
-      toast.info('AI schema update rejected');
+      toast.info(pendingDiff?.source === 'database' ? 'Database schema preview closed' : 'AI schema update rejected');
     }
   }, [pendingDiff?.source, setRightPanelMode]);
 
   const handleApplyMerge = useCallback(() => {
     if (!pendingDiff) return;
+    if (isReadOnly && !(isProductionDb && pendingDiff.source === 'database')) return;
 
     const { originalNodes, originalEdges, proposedNodes, proposedEdges, diffResult } = pendingDiff;
     const { nodes: finalNodes, edges: finalEdges } = mergeSchemaChanges(
@@ -659,7 +595,8 @@ const ERDViewComponent = ({
     setNodes(finalNodes);
     setEdges(finalEdges);
     setPendingDiff(null);
-    toast.success(pendingDiff.source === 'repository' ? 'Repository schema merged successfully' : 'AI changes merged successfully!');
+    if (pendingDiff.source === 'database') onDatabaseSchemaApplied?.(finalNodes, finalEdges);
+    toast.success(pendingDiff.source === 'database' ? 'Database schema view updated' : pendingDiff.source === 'repository' ? 'Repository schema merged successfully' : 'AI changes merged successfully!');
     if (saveDiagram) {
       const repositoryDbml = pendingDiff.source === 'repository'
         ? approvedChangeIds.length === diffResult.changes.length && pendingDiff.dbmlSource
@@ -676,7 +613,7 @@ const ERDViewComponent = ({
         }
       }).catch(err => console.error('Error saving after merge:', err));
     }
-  }, [pendingDiff, approvedChangeIds, setNodes, setEdges, saveDiagram, triggerDebouncedSync, getViewport]);
+  }, [pendingDiff, approvedChangeIds, setNodes, setEdges, saveDiagram, triggerDebouncedSync, getViewport, isReadOnly, isProductionDb, onDatabaseSchemaApplied]);
 
   const defaultEdgeOptions = React.useMemo(() => ({
     type: 'smoothstep' as const,
@@ -696,6 +633,7 @@ const ERDViewComponent = ({
 
   // ─── AI Content Handler: apply AI responses back to ERD diagram ──
   React.useEffect(() => {
+    if (isReadOnly || isProductionDb) return;
     const unregister = registerContentHandler((content: string, _strategy: 'replace' | 'append', actionId?: string) => {
       if (!content) return;
 
@@ -730,9 +668,10 @@ const ERDViewComponent = ({
       }
     }, ['append']);
     return unregister;
-  }, [registerContentHandler, startDiff]);
+  }, [registerContentHandler, startDiff, isReadOnly, isProductionDb]);
 
   React.useEffect(() => {
+    if (isReadOnly || isProductionDb) return;
     const pendingSchema = localStorage.getItem('pending_create_erd_schema')
       || localStorage.getItem('pending_create_erd_ddl');
     if (pendingSchema) {
@@ -759,13 +698,14 @@ const ERDViewComponent = ({
         }
       }
     }
-  }, [setNodes, setEdges, startDiff, saveDiagram, triggerDebouncedSync]);
+  }, [setNodes, setEdges, startDiff, saveDiagram, triggerDebouncedSync, isReadOnly, isProductionDb]);
 
   // ─── Handle pending UPDATE schema ──
   // Unlike create, update waits for server data to load first (nodes.length > 0),
   // then shows the diff/merge UI so the user can selectively merge changes.
   // pendingErdDiffTrigger allows re-processing when already on the same page.
   React.useEffect(() => {
+    if (isReadOnly || isProductionDb) return;
     const pendingUpdateSchema = localStorage.getItem('pending_update_erd_schema')
       || localStorage.getItem('pending_update_erd_ddl');
     if (!pendingUpdateSchema) return;
@@ -786,7 +726,7 @@ const ERDViewComponent = ({
     } else {
       toast.error('Could not parse the schema for diff');
     }
-  }, [nodes, startDiff, pendingErdDiffTrigger]);
+  }, [nodes, startDiff, pendingErdDiffTrigger, isReadOnly, isProductionDb]);
 
   const content = (
     <div className="flex-1 relative flex flex-col overflow-hidden border rounded-xl bg-muted/20" style={{ contain: 'paint layout' }}>
@@ -796,7 +736,7 @@ const ERDViewComponent = ({
         <div className="absolute bottom-4 inset-x-0 z-20 flex justify-center pointer-events-none">
           <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/30 rounded-lg pointer-events-auto text-sm text-amber-700 dark:text-amber-400 shadow-lg">
             <EyeOff className="h-4 w-4 shrink-0" />
-            <span>Read-only — imported from production database. Switch to desktop app to modify.</span>
+            <span>Schema is read-only. Layout changes do not modify the database.</span>
           </div>
         </div>
       )}
@@ -815,7 +755,7 @@ const ERDViewComponent = ({
       )}
       <div ref={canvasRef} className="flex-1">
         <ReactFlow
-          id={activeDiagram?.uid ? `erd-${activeDiagram.uid}` : undefined}
+          id={isProductionDb ? `db-client-${sourceConnectionId}` : activeDiagram?.uid ? `erd-${activeDiagram.uid}` : undefined}
           nodes={pendingDiff ? diffNodesWithMode : styledNodes}
           edges={pendingDiff ? styledDiffEdges : styledEdges}
           onNodesChange={handleNodesChangeLocal}
@@ -883,8 +823,8 @@ const ERDViewComponent = ({
             : pendingDiff.source === 'repository' ? `Repository Schema · ${pendingDiff.sourceLabel}`
               : undefined}
         rejectLabel={pendingDiff.source === 'proposal' ? 'Reject All' : 'Close Preview'}
-        canMerge={pendingDiff.source !== 'history' && pendingDiff.source !== 'repository-compare'}
-        selectable={pendingDiff.source !== 'history' && pendingDiff.source !== 'repository-compare'}
+        canMerge={(!isReadOnly || (isProductionDb && pendingDiff.source === 'database')) && pendingDiff.source !== 'history' && pendingDiff.source !== 'repository-compare'}
+        selectable={(!isReadOnly || (isProductionDb && pendingDiff.source === 'database')) && pendingDiff.source !== 'history' && pendingDiff.source !== 'repository-compare'}
         checklistTitle={pendingDiff.source === 'history' ? 'Changes in this version:' : 'Select changes to merge:'}
         onApprovedIdsChange={setApprovedChangeIds}
         onShowChecklistChange={setShowChecklist}
@@ -908,43 +848,6 @@ const ERDViewComponent = ({
 // Custom comparator: skip function props to prevent unnecessary re-renders
 // from App.tsx's inline callbacks (save/sync cycle triggers re-render but
 // shouldn't cause ReactFlow to re-initialize)
-function nodesEqual(a: Node<Entity>[], b: Node<Entity>[]): boolean {
-  if (a === b) return true;
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    const na = a[i], nb = b[i];
-    if (na.id !== nb.id || na.position?.x !== nb.position?.x || na.position?.y !== nb.position?.y) return false;
-    if (na.measured?.width !== nb.measured?.width || na.measured?.height !== nb.measured?.height || na.dragging !== nb.dragging) return false;
-    if (na.selected !== nb.selected) return false;
-    if (na.data?.name !== nb.data?.name || na.data?.color !== nb.data?.color) return false;
-    const ca = na.data?.columns, cb = nb.data?.columns;
-    if (!ca !== !cb) return false;
-    if (ca && cb && ca.length !== cb.length) return false;
-    if (ca && cb) {
-      for (let j = 0; j < ca.length; j++) {
-        const ca2 = ca[j], cb2 = cb[j];
-        if (ca2.id !== cb2.id || ca2.name !== cb2.name || ca2.type !== cb2.type ||
-            ca2.sort_order !== cb2.sort_order || ca2.is_pk !== cb2.is_pk || ca2.is_nullable !== cb2.is_nullable ||
-            ca2.comment !== cb2.comment || ca2.max_length !== cb2.max_length ||
-            ca2.numeric_precision !== cb2.numeric_precision || ca2.numeric_scale !== cb2.numeric_scale) return false;
-      }
-    }
-  }
-  return true;
-}
-
-function edgesEqual(a: Edge[], b: Edge[]): boolean {
-  if (a === b) return true;
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    const ea = a[i], eb = b[i];
-    if (ea.id !== eb.id || ea.source !== eb.source || ea.target !== eb.target ||
-        ea.sourceHandle !== eb.sourceHandle || ea.targetHandle !== eb.targetHandle ||
-        ea.label !== eb.label || ea.selected !== eb.selected) return false;
-  }
-  return true;
-}
-
 export const ERDView = React.memo(ERDViewComponent, (prev, next) => {
   // If we already have nodes, don't re-render just because isLoading flickers
   const loadingFlickered = prev.isLoading !== next.isLoading;
@@ -956,10 +859,13 @@ export const ERDView = React.memo(ERDViewComponent, (prev, next) => {
     prev.initialViewport?.zoom === next.initialViewport?.zoom;
 
   return (
-    nodesEqual(prev.nodes, next.nodes) &&
-    edgesEqual(prev.edges, next.edges) &&
+    sameCanvasItems(prev.nodes, next.nodes) &&
+    sameCanvasItems(prev.edges, next.edges) &&
     (shouldIgnoreLoading || prev.isLoading === next.isLoading) &&
     prev.isReadOnly === next.isReadOnly &&
+    prev.isDbClient === next.isDbClient && prev.sourceConnectionId === next.sourceConnectionId &&
+    prev.isActive === next.isActive &&
+    prev.onAutoLayout === next.onAutoLayout && prev.onDatabaseSchemaApplied === next.onDatabaseSchemaApplied &&
     prev.onRefresh === next.onRefresh && prev.isRefreshingDocument === next.isRefreshingDocument &&
     prev.comments?.projectId === next.comments?.projectId && prev.comments?.teamId === next.comments?.teamId && prev.comments?.fileId === next.comments?.fileId && prev.comments?.userId === next.comments?.userId &&
     sameViewport &&

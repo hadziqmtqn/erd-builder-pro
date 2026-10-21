@@ -77,7 +77,6 @@ import { closeRepositoryPreview, ERD_REPOSITORY_APPLIED_EVENT } from '@/lib/repo
 import { mergeDBMLCanvas } from '@/lib/dbml-canvas-merge';
 import { isRightPanelAvailable } from '@/lib/right-panel-availability';
 import { AIChatToggle } from '@/components/ai/AIChatToggle';
-import { getDbClientCache, setDbClientCache } from '@/hooks/useDataViewerHelpers';
 import { isFileCreator, readOnlyNotice } from '@/lib/fileOwnership';
 import { useSettledERDCanvas } from '@/contexts/ERDCanvasContext';
 import { getAppPageTitle } from '@/lib/app-page-title';
@@ -177,21 +176,16 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
       setActiveDbClient(null);
       return;
     }
-    const cached = getDbClientCache(entityContext.entityUid);
-    if (cached) {
-      setActiveDbClient(cached);
-      return;
-    }
+    setActiveDbClient(null);
     let cancelled = false;
     apiFetch(`/api/db-clients/${encodeURIComponent(entityContext.entityUid)}`)
       .then(response => response.ok ? response.json() : null)
       .then(value => {
-        if (value) setDbClientCache(value);
         if (!cancelled) setActiveDbClient(value);
       })
       .catch(() => { if (!cancelled) setActiveDbClient(null); });
     return () => { cancelled = true; };
-  }, [entityContext]);
+  }, [entityContext, root.user?.id]);
 
   const {
     view, sidebarView,
