@@ -269,6 +269,7 @@ export function useStructureEditor(
     }
   }, [dbType, draft, isDirty, target, updateStructure]);
 
+  const addTable = useCallback(() => setTarget({ kind: 'addTable' }), []);
   return {
     target,
     draft,
@@ -282,7 +283,7 @@ export function useStructureEditor(
     editTable: () => setTarget({ kind: 'table' }),
     editColumn: (columnName: string) => setTarget({ kind: 'column', columnName }),
     addColumn: () => setTarget({ kind: 'addColumn' }),
-    addTable: () => setTarget({ kind: 'addTable' }),
+    addTable,
     editIndex: (indexName: string) => setTarget({ kind: 'index', indexName }),
     addIndex: () => setTarget({ kind: 'addIndex' }),
     editCheck: (checkName: string) => setTarget({ kind: 'check', checkName }),

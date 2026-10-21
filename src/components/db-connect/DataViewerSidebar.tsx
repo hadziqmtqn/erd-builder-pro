@@ -1,4 +1,4 @@
-import { RefObject, useState } from 'react';
+import { memo, RefObject, useState } from 'react';
 import { AlertCircle, ChevronDown, Database, FileUp, Plus, Search, TableIcon, Trash2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { Input } from '@/components/ui/input';
@@ -49,7 +49,7 @@ type DataViewerSidebarProps = {
   readOnlyReason?: string | null;
 };
 
-export function DataViewerSidebar({
+export const DataViewerSidebar = memo(function DataViewerSidebar({
   activeTable,
   connectionId,
   dbType,
@@ -369,4 +369,4 @@ export function DataViewerSidebar({
       </AlertDialog>
     </div>
   );
-}
+});

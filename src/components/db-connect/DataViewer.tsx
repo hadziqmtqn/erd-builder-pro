@@ -74,7 +74,7 @@ export const DataViewer = memo(function DataViewer({ connectionId, stateKey, onD
     const table = tables.find((item: any) => item.table_name === activeTable);
     return createColumnHelpers(new Map<string, any>((table?.columns || []).map((col: any) => [col.name, col])));
   }, [activeTable, tables]);
-  const primaryKeyColumns = useMemo(() => {
+  const primaryKeyColumns = useMemo<string[]>(() => {
     const table = tables.find((item: any) => item.table_name === activeTable);
     return (table?.columns || []).filter((col: any) => col.is_pk).map((col: any) => col.name);
   }, [activeTable, tables]);
@@ -161,6 +161,12 @@ export const DataViewer = memo(function DataViewer({ connectionId, stateKey, onD
   const handleAddRecord = useCallback(() => {
     if (warnUnsaved()) recordEditor.addRecord();
   }, [recordEditor.addRecord, warnUnsaved]);
+  const handleAddTable = useCallback(() => {
+    if (!warnUnsaved()) return;
+    openNewTableTab();
+    setActiveView('structure');
+    structureEditor.addTable();
+  }, [openNewTableTab, structureEditor.addTable, warnUnsaved]);
   const handleDeleteSelectedRecords = useCallback(() => {
     if (warnUnsaved()) setConfirmAction('records');
   }, [warnUnsaved]);
@@ -360,12 +366,7 @@ export const DataViewer = memo(function DataViewer({ connectionId, stateKey, onD
         shortcutLabel={shortcutLabel}
         tableSearch={tableSearch}
         tables={tables}
-        onAddTable={() => {
-          if (!warnUnsaved()) return;
-          openNewTableTab();
-          setActiveView('structure');
-          structureEditor.addTable();
-        }}
+        onAddTable={handleAddTable}
         onDeleteTables={deleteTables} onMutateTables={handleMutateTables} onRefreshTables={refreshAll} onSelectTable={handleSelectTable}
         setTableSearch={setTableSearch}
         readOnlyReason={readOnlyReason}

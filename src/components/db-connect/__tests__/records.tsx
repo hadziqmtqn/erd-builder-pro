@@ -8,6 +8,7 @@ import '@/index.css';
 const columns = Array.from({ length: 56 }, (_, i) => `column_${String(i).padStart(2, '0')}`);
 const tableSchema = { table_name: 'qa_wide_records', columns: columns.map((name, i) => ({ name, type: i === 0 ? 'BIGINT' : 'VARCHAR(255)', is_pk: i === 0 })) };
 const records = { columns, total: 721, page: 1, pageSize: 50, rows: Array.from({ length: 50 }, (_, r) => Object.fromEntries(columns.map((name, c) => [name, c === 0 ? r + 1 : c % 5 === 0 ? null : `QA row ${r + 1}, column ${c}, value`]))) };
+records.rows[49].column_03 = 'QA offscreen auto-fit must include this deliberately long value from row fifty';
 const helpers = createColumnHelpers(new Map(tableSchema.columns.map(c => [c.name, c])));
 const fks = new Map(columns.filter((_, i) => i > 0 && i % 7 === 0).map(column => [column, { ref_table: 'qa_parent', ref_column: 'id' }]));
 const pk = [columns[0]];
@@ -20,6 +21,7 @@ function Acceptance() {
   const [sort, setSort] = useState<any>(null);
   const [theme, setTheme] = useState('light');
   const [message, setMessage] = useState('');
+  const [hasPrimaryKey, setHasPrimaryKey] = useState(true);
   const commits = useRef(0);
   const count = useRef<HTMLOutputElement>(null);
   const select = useCallback((row: any) => setSelected(row), []);
@@ -30,11 +32,12 @@ function Acceptance() {
       <span>Synthetic 50 rows × 56 columns; no database writes</span>
       <button onClick={() => { const next = theme === 'light' ? 'dark' : 'light'; document.documentElement.classList.toggle('dark', next === 'dark'); setTheme(next); }}>Toggle theme</button>
       <button onClick={() => { if (count.current) count.current.textContent = `${commits.current} commits`; }}>Read render count</button><output ref={count} />
+      <button onClick={() => setHasPrimaryKey(value => !value)}>Toggle primary key</button>
       <output>{Object.keys(drafts).length} drafts; {keys.size} selected; {message}</output>
     </header>
     <Profiler id="records" onRender={() => { commits.current++; }}>
       <DataViewerRecordsTable activeTable="qa_wide_records" connectionId={990056} dbType="postgresql" columnHelpers={helpers} error={null}
-        foreignKeyByColumn={fks} isLoadingRecords={false} records={records} tableSchema={tableSchema} primaryKeyColumns={pk}
+        foreignKeyByColumn={fks} isLoadingRecords={false} records={records} tableSchema={tableSchema} primaryKeyColumns={hasPrimaryKey ? pk : []}
         selectedRow={selected} selectedRowKeys={keys} sort={sort} recordDrafts={drafts} handleSelectRow={select} onEditRecord={select}
         onDeleteTables={asyncNoop} onMutateTables={asyncNoop} openRelatedRecord={(table, column) => setMessage(`FK ${table}.${column}`)}
         onAddRecord={noop} onDraftCell={draft} onDeleteSelectedRecords={noop} onTogglePageRows={(rows, checked) => setKeys(checked ? new Set(rows.map(row => `[${row[columns[0]]}]`)) : new Set())}

@@ -28,6 +28,7 @@ function DbClientEditor({ id }: { id?: string }) {
   const [params, setParams] = useSearchParams();
   const [client, setClient] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [schemaLoading, setSchemaLoading] = useState(false);
   const [dbType, setDbType] = useState<string | null>(null);
   const [queryInitialTable, setQueryInitialTable] = useState<string | null>(null);
   const [queryOpenNonce, setQueryOpenNonce] = useState(0);
@@ -39,7 +40,7 @@ function DbClientEditor({ id }: { id?: string }) {
   const layoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadIdRef = useRef(0);
   const loadAbortRef = useRef<AbortController | null>(null);
-  const pendingCanvasRef = useRef<{ schema: any[]; layout: any } | null>(null);
+  const canvasSchemaRef = useRef<any[] | null>(null);
   const edgesRef = useRef(edges);
   edgesRef.current = edges;
   const { setViewport, getViewport, getNodes, fitView } = useReactFlow<Node<Entity>>();
@@ -88,33 +89,48 @@ function DbClientEditor({ id }: { id?: string }) {
         setEdges([]);
         return;
       }
-      let schema = getSchemaCache(nextCatalogId);
-      if (!schema) {
-        const schemaResponse = await apiFetch(`/api/catalogs/${nextCatalogId}/schema`, { method: 'POST', signal: controller.signal });
-        schema = await schemaResponse.json();
-        if (stale()) return;
-        if (!schemaResponse.ok) throw new Error(schema.error || 'Failed to load database schema');
-        setSchemaCache(nextCatalogId, schema);
-      }
-      pendingCanvasRef.current = { schema: schema.schema || [], layout: nextClient.data };
-      setDbType(schema.dbType || null);
     } finally {
       if (!stale()) setLoading(false);
     }
   }, [id, user?.id, setBreadcrumbLabel, setEdges, setNodes, setViewport]);
 
   useEffect(() => {
-    if (loading || mode !== 'erd' || !pendingCanvasRef.current) return;
-    const { schema, layout } = pendingCanvasRef.current;
-    pendingCanvasRef.current = null;
-    const canvas = dbSchemaToCanvas(schema, layout);
-    setNodes(canvas.nodes);
-    setEdges(canvas.edges);
-    if (!layout?.viewport) return;
-    viewportRef.current = layout.viewport;
-    const frame = requestAnimationFrame(() => setViewport(layout.viewport, { duration: 0 }));
-    return () => cancelAnimationFrame(frame);
-  }, [loading, mode, setEdges, setNodes, setViewport]);
+    if (loading || mode !== 'erd' || !catalogId) return;
+    const controller = new AbortController();
+    const token = getAuthToken();
+    let frame: number | null = null;
+    const stale = () => controller.signal.aborted || getAuthToken() !== token;
+    setSchemaLoading(true);
+    void (async () => {
+      try {
+        let schema = getSchemaCache(catalogId);
+        if (!schema) {
+          const response = await apiFetch(`/api/catalogs/${catalogId}/schema`, { method: 'POST', signal: controller.signal });
+          schema = await response.json();
+          if (stale()) return;
+          if (!response.ok) throw new Error(schema.error || 'Failed to load database schema');
+          setSchemaCache(catalogId, schema);
+        }
+        if (stale()) return;
+        if (canvasSchemaRef.current === schema.schema) return;
+        const layout = clientRef.current?.data;
+        const canvas = dbSchemaToCanvas(schema.schema || [], layout);
+        canvasSchemaRef.current = schema.schema;
+        setNodes(canvas.nodes);
+        setEdges(canvas.edges);
+        setDbType(schema.dbType || null);
+        if (layout?.viewport) {
+          viewportRef.current = layout.viewport;
+          frame = requestAnimationFrame(() => setViewport(layout.viewport, { duration: 0 }));
+        }
+      } catch (error) {
+        if (!stale()) toast.error(error instanceof Error ? error.message : 'Failed to load database schema');
+      } finally {
+        if (!stale()) setSchemaLoading(false);
+      }
+    })();
+    return () => { controller.abort(); if (frame !== null) cancelAnimationFrame(frame); };
+  }, [loading, mode, catalogId, user?.id, setEdges, setNodes, setViewport]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -237,7 +253,7 @@ function DbClientEditor({ id }: { id?: string }) {
             onEdgeReconnect={nextEdges => { void saveLayout(viewportRef.current, getNodes(), nextEdges); }}
             onNodeDragStop={scheduleLayoutSave}
             onMoveEnd={handleCanvasMoveEnd}
-            isLoading={loading}
+            isLoading={schemaLoading}
           />
           <RelationshipPropertiesModal
             isOpen={!!selectedEdgeId}

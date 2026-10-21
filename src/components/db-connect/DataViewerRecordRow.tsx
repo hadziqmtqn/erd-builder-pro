@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { TableCell, TableRow } from '@/components/ui/table';
+import { useRecordRowVisibility } from '@/hooks/useRecordRowVisibility';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -40,6 +41,7 @@ type DataViewerRecordRowProps = {
   dbType: string | null;
   columns: string[];
   columnWindow: ColumnWindow;
+  measureColumn: string | null;
   columnHelpers: ReturnType<typeof createColumnHelpers>;
   foreignKeyByColumn: Map<string, any>;
   pageRows: Record<string, any>[];
@@ -67,6 +69,7 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
   dbType,
   columns,
   columnWindow,
+  measureColumn,
   columnHelpers,
   foreignKeyByColumn,
   pageRows,
@@ -89,7 +92,10 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
 }: DataViewerRecordRowProps) {
   const [editingColumn, setEditingColumn] = useState<string | null>(null);
   const [menuColumn, setMenuColumn] = useState<string | null>(null);
-  const visible = pinRecordColumns(columnWindow, columns, [editingColumn, menuColumn]);
+  const [rowMenuOpen, setRowMenuOpen] = useState(false);
+  const rowVisibility = useRecordRowVisibility();
+  const renderCells = rowVisibility.visible || isActive || editingColumn !== null || menuColumn !== null || rowMenuOpen || measureColumn !== null;
+  const visible = pinRecordColumns(columnWindow, columns, [editingColumn, menuColumn, measureColumn]);
   const copyText = async (text: string, label = 'Copied') => {
     await navigator.clipboard.writeText(text);
     toast.success(label);
@@ -113,9 +119,14 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
   };
 
   return (
-    <ContextMenu>
+    <ContextMenu onOpenChange={setRowMenuOpen}>
       <ContextMenuTrigger render={
     <TableRow
+      ref={rowVisibility.rowRef}
+      style={!renderCells ? { height: rowVisibility.height } : undefined}
+      tabIndex={!renderCells && !canSelectRows ? 0 : undefined}
+      aria-label={!renderCells && !canSelectRows ? 'Show record' : undefined}
+      onFocusCapture={rowVisibility.reveal}
       key={rowKeyValue}
       className={`cursor-pointer transition-none hover:bg-muted/50 ${isActive ? 'bg-muted/70' : isSelected ? 'bg-primary/10' : ''}`}
       onMouseDown={e => { if (e.shiftKey || e.metaKey || e.ctrlKey) e.preventDefault(); }}
@@ -126,6 +137,7 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
           <Checkbox checked={isSelected} onClick={e => onToggleSelectedRow(row, !isSelected, e)} />
         </TableCell>
       )}
+      {!renderCells ? <TableCell aria-hidden="true" colSpan={columns.length} className="p-0" /> : <>
       {visible.start > 0 && <TableCell aria-hidden="true" colSpan={visible.start} className="p-0" />}
       {columns.slice(visible.start, visible.end).map((column, index) => {
         const val = row[column];
@@ -242,6 +254,7 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
         );
       })}
       {visible.end < columns.length && <TableCell aria-hidden="true" colSpan={columns.length - visible.end} className="p-0" />}
+      </>}
     </TableRow>
       } />
       <ContextMenuContent className="min-w-36">
@@ -267,6 +280,7 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
     prev.dbType !== next.dbType ||
     prev.columns !== next.columns ||
     prev.columnWindow !== next.columnWindow ||
+    prev.measureColumn !== next.measureColumn ||
     prev.columnHelpers !== next.columnHelpers ||
     prev.foreignKeyByColumn !== next.foreignKeyByColumn ||
     prev.pageRows !== next.pageRows ||

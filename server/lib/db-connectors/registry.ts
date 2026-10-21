@@ -12,6 +12,7 @@ const connectors: Record<string, DbConnector> = {
 
 // ponytail: short TTL avoids a schema query on every record request; structure writes invalidate it.
 const schemaCache = new Map<string, { expiresAt: number; schema: TableSchema[] }>();
+const pendingSchemas = new Map<string, Promise<TableSchema[]>>();
 const SCHEMA_CACHE_TTL_MS = 5_000;
 
 function schemaCacheKey(info: ConnectionInfo) {
@@ -32,14 +33,23 @@ export async function fetchSchemaForClient(client: any, info: ConnectionInfo): P
   const key = schemaCacheKey(info);
   const cached = schemaCache.get(key);
   if (cached && cached.expiresAt > Date.now()) return cached.schema;
-
-  const schema = await getConnector(info.type).fetchSchema(client, info);
-  schemaCache.set(key, { expiresAt: Date.now() + SCHEMA_CACHE_TTL_MS, schema });
-  return schema;
+  const pending = pendingSchemas.get(key);
+  if (pending) return pending;
+  const request = getConnector(info.type).fetchSchema(client, info);
+  pendingSchemas.set(key, request);
+  try {
+    const schema = await request;
+    // A structure mutation may invalidate this request while its query is still running.
+    if (pendingSchemas.get(key) === request) schemaCache.set(key, { expiresAt: Date.now() + SCHEMA_CACHE_TTL_MS, schema });
+    return schema;
+  } finally {
+    if (pendingSchemas.get(key) === request) pendingSchemas.delete(key);
+  }
 }
 
 export function invalidateSchemaCache(info: ConnectionInfo) {
   schemaCache.delete(schemaCacheKey(info));
+  pendingSchemas.delete(schemaCacheKey(info));
 }
 
 export async function connectExternal(info: ConnectionInfo): Promise<ConnectorClient> {
