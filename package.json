@@ -173,7 +173,7 @@
     "tailwindcss": "^4.1.14",
     "tsx": "^4.23.13",
     "typescript": "~5.8.2",
-    "vite": "^8.2.2",
+    "vite": "^8.3.4",
     "vitest": "^4.1.11"
   },
   "overrides": {
