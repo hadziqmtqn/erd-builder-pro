@@ -25,10 +25,13 @@ import { normalizeFlowchartCanvas } from '@/lib/flowchart-canvas';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useFlowchartHistoryShortcuts } from '@/hooks/useFlowchartHistoryShortcuts';
 
 import FlowchartNode, { FlowchartNodeData } from '../FlowchartNode';
 import { initialNodes, initialEdges } from '../flowchart/flowchartConstants';
@@ -151,6 +154,7 @@ const FlowchartCanvas = React.memo(({
 
   // ── Derived (guaranteed stable number of hooks) ──
   const showLoader = isLoading && (!activeFlowchart || !activeFlowchart.data);
+  useFlowchartHistoryShortcuts(!isReadOnly && !showLoader && !isAddingNode && !isClearingCanvas && !selectedNodeId && !selectedEdgeId && !pendingPreview && !exportPreview, handleUndo, handleRedo);
 
   // Initialize from db or use defaults
   // Depend on activeFlowchain.data instead of just id,
@@ -810,14 +814,21 @@ const FlowchartCanvas = React.memo(({
               <>
                 <div className={cn('bg-border shrink-0', isMobile ? 'w-px h-6 mx-0.5' : 'h-px w-6 my-0.5')} />
                 <Select value={selectedGroup ?? ''} onValueChange={(val) => { setSelectedGroup(val || null); setSelectedNodeId(null); }}>
-                  <SelectTrigger className={cn('border-none bg-transparent hover:bg-muted text-xs font-medium cursor-pointer [&>svg]:text-muted-foreground', isMobile ? 'h-9 min-w-[130px] px-2' : 'size-11 p-0')} title="Select a group to move" aria-label="Select a group to move">
-                    <Move className={cn('w-3.5 h-3.5 text-muted-foreground shrink-0', isMobile && 'mr-1')} />
-                    <SelectValue placeholder="Move Group" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover border-border text-popover-foreground min-w-[150px]">
-                    {canvasGroups.map((g) => (
-                      <SelectItem key={g} value={g} className="focus:bg-muted text-xs">{g}</SelectItem>
-                    ))}
+                  <Tooltip>
+                    <TooltipTrigger render={
+                      <SelectTrigger className={cn('shrink-0 border-none bg-transparent hover:bg-muted cursor-pointer', isMobile ? 'h-9 w-auto max-w-48 px-2' : 'size-9 justify-center p-0 [&>svg:last-child]:hidden')} aria-label="Select a group to move">
+                        <Move />
+                        <SelectValue className={isMobile ? 'min-w-0 truncate' : 'sr-only'}>{selectedGroup ?? 'Move Group'}</SelectValue>
+                      </SelectTrigger>
+                    } />
+                    <TooltipContent side={isMobile ? 'bottom' : 'right'}>{selectedGroup ? `Move group: ${selectedGroup}` : 'Select a group to move'}</TooltipContent>
+                  </Tooltip>
+                  <SelectContent side={isMobile ? 'bottom' : 'right'} alignItemWithTrigger={false} className="w-64 max-w-[calc(100vw-2rem)]">
+                    <SelectGroup>
+                      {canvasGroups.map((g) => (
+                        <SelectItem key={g} value={g}><span className="max-w-48 truncate">{g}</span></SelectItem>
+                      ))}
+                    </SelectGroup>
                   </SelectContent>
                 </Select>
               </>
@@ -834,10 +845,10 @@ const FlowchartCanvas = React.memo(({
               </Button>
             </>
             <div className={cn('bg-border shrink-0', isMobile ? 'w-px h-6 mx-0.5' : 'h-px w-6 my-0.5')} />
-            <Button onClick={handleUndo} disabled={!canUndo} size={isMobile ? 'sm' : 'icon-lg'} variant="ghost" aria-label="Undo" className={isMobile ? 'h-9 w-9 p-0 cursor-pointer' : undefined} title={isMobile ? 'Undo' : undefined}>
+            <Button onClick={handleUndo} disabled={!canUndo} size={isMobile ? 'sm' : 'icon-lg'} variant="ghost" aria-label="Undo" aria-keyshortcuts="Control+z Meta+z" className={isMobile ? 'h-9 w-9 p-0 cursor-pointer' : undefined} title="Undo (Ctrl/Cmd+Z)">
               <Undo2 className="w-4 h-4" />
             </Button>
-            <Button onClick={handleRedo} disabled={!canRedo} size={isMobile ? 'sm' : 'icon-lg'} variant="ghost" aria-label="Redo" className={isMobile ? 'h-9 w-9 p-0 cursor-pointer' : undefined} title={isMobile ? 'Redo' : undefined}>
+            <Button onClick={handleRedo} disabled={!canRedo} size={isMobile ? 'sm' : 'icon-lg'} variant="ghost" aria-label="Redo" aria-keyshortcuts="Control+Shift+z Meta+Shift+z" className={isMobile ? 'h-9 w-9 p-0 cursor-pointer' : undefined} title="Redo (Ctrl/Cmd+Shift+Z)">
               <Redo2 className="w-4 h-4" />
             </Button>
             <Button onClick={() => setIsClearingCanvas(true)} disabled={nodes.length === 0 && edges.length === 0} size="icon-lg" variant="ghost" aria-label="Clear Canvas" title="Clear Canvas">

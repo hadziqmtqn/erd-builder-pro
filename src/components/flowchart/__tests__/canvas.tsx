@@ -36,7 +36,7 @@ function Acceptance() {
   const parsed = JSON.parse(data);
   return <WorkspaceContext.Provider value={workspace as any}>
     <div className={theme === 'dark' ? 'dark' : ''} style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <header className="bg-background text-foreground flex gap-6 p-3">
+      <header className="bg-background text-foreground flex flex-wrap gap-6 p-3">
         <span>BUG-015 disposable component acceptance</span>
         <button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>Toggle theme</button>
         <button onClick={() => applyContent(fixture, 'replace')}>Apply AI fixture</button>
@@ -44,6 +44,7 @@ function Acceptance() {
         <button onClick={() => applyContent(fixture, 'append')}>Preview append</button>
         <button onClick={() => applyContent(JSON.stringify({ nodes: [{ label: 'Default monochrome', shape: 'rectangle' }, { label: 'Requested red', shape: 'rectangle', color: '#ef4444' }], edges: [{ sourceLabel: 'Default monochrome', targetLabel: 'Requested red' }] }), 'replace')}>Preview requested red</button>
         <button onClick={() => save(initial.nodes.slice(0, 2), [{ source: initial.nodes[0].id, target: initial.nodes[1].id }])}>Load legacy connector</button>
+        <button onClick={() => save(initial.nodes.map((node, index) => index === 0 ? { ...node, data: { ...node.data, section: 'QA Workflow N8N with a long group name' } } : node), initial.edges)}>Load grouped fixture</button>
         <output>{parsed.nodes.length} symbols / {parsed.edges.length} connectors saved</output>
       </header>
       <ReactFlowProvider><FlowchartView activeFlowchartId="bug-015-fixture" activeFlowchart={{ id: 'bug-015-fixture', uid: 'bug-015-fixture', title: 'Acceptance', data } as any} handleFlowchartChange={save} /></ReactFlowProvider>
