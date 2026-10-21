@@ -5,6 +5,9 @@ import { dbmlToERD, erdToDBML } from '@/lib/dbml-converter';
 import CodeMirror from '@uiw/react-codemirror';
 import { sql as sqlLang } from '@codemirror/lang-sql';
 import { oneDark } from '@codemirror/theme-one-dark';
+import { search, openSearchPanel } from '@codemirror/search';
+import { foldService } from '@codemirror/language';
+import { dbmlFoldRange } from './dbml-editor-folding';
 import { Prec, Transaction } from '@codemirror/state';
 import { EditorView, keymap, type ViewUpdate } from '@codemirror/view';
 import { useWorkspace } from '@/providers/WorkspaceContext';
@@ -31,6 +34,10 @@ const REVERSE_DEBOUNCE_MS = 800;
 const MAX_SUGGESTIONS = 8;
 const SUGGESTION_MENU_HEIGHT = 176;
 const SUGGESTION_MENU_WIDTH = 320;
+const BASIC_SETUP = {
+  lineNumbers: true, foldGutter: true, highlightActiveLine: true,
+  bracketMatching: true, closeBrackets: true, indentOnInput: true, autocompletion: false,
+};
 
 /** Live two-way DBML ↔ ERD editor. */
 export const DBMLEditorPanel = memo(function DBMLEditorPanel({
@@ -139,6 +146,7 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({
 
   const handleEditorUpdate = useCallback((viewUpdate: ViewUpdate) => {
     if (viewUpdate.focusChanged && !viewUpdate.view.hasFocus) {
+      if (!suggestionsRef.current.length) return;
       suggestionsRef.current = [];
       setSuggestions([]);
       return;
@@ -148,9 +156,12 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({
 
   const extensions = useMemo(() => [
     sqlLang(),
+    search({ top: true }),
+    foldService.of(dbmlFoldRange),
     dbmlLinter,
     cursorTracker,
     Prec.highest(keymap.of([
+      { key: 'Mod-f', scope: 'editor search-panel', run: openSearchPanel, preventDefault: true },
       {
         key: 'ArrowDown',
         run: () => {
@@ -327,15 +338,7 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({
           extensions={extensions}
           placeholder={`// DBML (Database Markup Language)\n// Type your schema — live preview on canvas\n\nTable users {\n  id integer [pk]\n  name varchar\n}\n`}
           className="h-full text-sm"
-          basicSetup={{
-            lineNumbers: true,
-            foldGutter: true,
-            highlightActiveLine: true,
-            bracketMatching: true,
-            closeBrackets: true,
-            indentOnInput: true,
-            autocompletion: false,
-          }}
+          basicSetup={BASIC_SETUP}
           onCreateEditor={view => { editorViewRef.current = view; }}
           onChange={handleChange}
           onUpdate={handleEditorUpdate}

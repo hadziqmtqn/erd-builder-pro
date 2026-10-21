@@ -2,6 +2,7 @@ import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import { useEditorActive } from '@/contexts/FileSessionContext';
 import {
   ReactFlow,
+  ReactFlowProvider,
   Controls,
   Background,
   useNodesState,
@@ -69,7 +70,7 @@ interface FlowchartViewProps {
   commentsEnabled?: boolean;
 }
 
-export const FlowchartView = React.memo(({ 
+const FlowchartCanvas = React.memo(({
   activeFlowchartId, 
   activeFlowchart, 
   handleFlowchartChange, 
@@ -964,3 +965,10 @@ export const FlowchartView = React.memo(({
     </Card>
   );
 });
+
+// ERD and Flowchart must not share React Flow's live nodes or renderer registry.
+export const FlowchartView = React.memo((props: FlowchartViewProps) => (
+  <ReactFlowProvider key={props.activeFlowchartId}>
+    <FlowchartCanvas {...props} />
+  </ReactFlowProvider>
+));
