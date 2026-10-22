@@ -1,7 +1,7 @@
 {
   "name": "erd-builder-pro",
   "private": true,
-  "version": "3.4.7-rc.37",
+  "version": "3.4.7-rc.38",
   "type": "module",
   "scripts": {
     "dev": "npm run db:generate:pg && cross-env NODE_ENV=development NODE_USE_SYSTEM_CA=1 tsx watch server/dev.ts",
@@ -68,7 +68,7 @@
     "@tauri-apps/plugin-opener": "^2.5.4",
     "@tauri-apps/plugin-os": "^2.3.2",
     "@tauri-apps/plugin-process": "^2.3.1",
-    "@tauri-apps/plugin-updater": "^2.10.1",
+    "@tauri-apps/plugin-updater": "~2.12.0",
     "@tauri-apps/plugin-window-state": "^2.4.1",
     "@tiptap/core": "^3.31.4",
     "@tiptap/extension-bubble-menu": "^3.31.4",
