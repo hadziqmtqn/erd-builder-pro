@@ -116,7 +116,12 @@ app.use(cors({
     }
     
     // Vercel domains: allow all *.vercel.app subdomains
-    const url = new URL(origin);
+    let url: URL;
+    try {
+      url = new URL(origin);
+    } catch {
+      return callback(Object.assign(new Error("Not allowed by CORS"), { status: 403 }));
+    }
     if (url.hostname.endsWith(".vercel.app")) {
       return callback(null, true);
     }
@@ -134,7 +139,7 @@ app.use(cors({
     if (process.env.NODE_ENV === "production") {
       logger.warn({ origin }, "CORS origin rejected");
     }
-    callback(new Error("Not allowed by CORS"));
+    callback(Object.assign(new Error("Not allowed by CORS"), { status: 403 }));
   },
   credentials: true
 }));

@@ -19,8 +19,11 @@ RUN npm ci --ignore-scripts
 COPY prisma.config.ts ./
 COPY prisma/ ./prisma/
 
-# Generate Prisma client (Supabase variant — default)
-RUN npx prisma generate
+# Generate every runtime-specific Prisma client. The server selects one from
+# @erdbpro based on its database URL before it can run a migration.
+RUN DB_VARIANT=pg npx prisma generate \
+    && DB_VARIANT=sqlite npx prisma generate \
+    && DB_VARIANT=supabase npx prisma generate
 
 # Copy all remaining source files
 COPY . .
@@ -54,6 +57,7 @@ RUN npm_config_build_from_source=true npm rebuild better-sqlite3 || echo "WARNIN
 
 # Copy pre-generated Prisma client from build stage (fallback for Supabase)
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=build /app/node_modules/@erdbpro ./node_modules/@erdbpro
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/prisma.config.ts ./
 
