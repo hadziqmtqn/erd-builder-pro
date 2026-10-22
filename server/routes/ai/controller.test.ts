@@ -46,6 +46,7 @@ describe("AI proxy first-byte timeout", () => {
     await done;
     expect(res.code).toBe(504);
     expect(res.body).toMatchObject({ code: "AI_PROVIDER_TIMEOUT" });
+    expect(fetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ redirect: "error" }));
   });
 
   it("sends nothing after the browser itself disconnects", async () => {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   findFirst: vi.fn(),
@@ -15,8 +15,25 @@ vi.mock('../../lib/prisma.js', () => ({
     },
   },
 }));
+vi.mock('../../lib/ai-security.js', () => ({
+  safeAiBaseUrl: async (url: string) => url,
+}));
 
-import { savePrompt, toggleDefaultPrompt } from './service.js';
+import { fetchProviderModels, savePrompt, toggleDefaultPrompt } from './service.js';
+
+afterEach(() => vi.unstubAllGlobals());
+
+it('does not follow a provider redirect to an unvalidated endpoint (QA-001)', async () => {
+  const fetchMock = vi.fn().mockRejectedValue(new TypeError('redirect rejected'));
+  vi.stubGlobal('fetch', fetchMock);
+
+  await expect(fetchProviderModels({
+    user_id: 'admin', provider_code: 'openai', base_url: 'https://provider.test/v1', api_key: 'test-key',
+  })).rejects.toThrow('redirect rejected');
+  expect(fetchMock).toHaveBeenCalledWith('https://provider.test/v1/models', expect.objectContaining({
+    redirect: 'error', headers: { Authorization: 'Bearer test-key' },
+  }));
+});
 
 beforeEach(() => {
   mocks.findFirst.mockReset();

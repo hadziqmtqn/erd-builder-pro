@@ -181,6 +181,7 @@ export async function proxy(req: Request, res: Response): Promise<void> {
     };
 
     const response = await fetch(fetchUrl, {
+      redirect: "error",
       method: "POST",
       headers: fetchHeaders,
       body: JSON.stringify({

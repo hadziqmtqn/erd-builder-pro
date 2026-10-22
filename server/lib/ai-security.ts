@@ -20,10 +20,15 @@ function isPrivateIp(address: string): boolean {
   if (!net.isIPv6(normalized)) return false;
 
   if (normalized.startsWith("::ffff:")) {
-    return isPrivateIpv4(normalized.slice(7));
+    const mapped = normalized.slice(7);
+    if (net.isIPv4(mapped)) return isPrivateIpv4(mapped);
+    const words = mapped.split(":").map((word) => Number.parseInt(word, 16));
+    if (words.length === 2) {
+      return isPrivateIpv4([words[0] >> 8, words[0] & 255, words[1] >> 8, words[1] & 255].join("."));
+    }
   }
 
-  return normalized === "::1" || normalized.startsWith("fc") || normalized.startsWith("fd") ||
+  return normalized === "::" || normalized === "::1" || normalized.startsWith("fc") || normalized.startsWith("fd") ||
     normalized.startsWith("fe8") || normalized.startsWith("fe9") ||
     normalized.startsWith("fea") || normalized.startsWith("feb");
 }
