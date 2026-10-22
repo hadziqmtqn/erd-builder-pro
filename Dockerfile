@@ -34,6 +34,8 @@ RUN npm run build
 # Production Stage
 FROM node:26-alpine
 
+RUN node -e 'const [a,b,c]=process.versions.node.split(".").map(Number); if (a*1e6+b*1e3+c < 26012001) { console.error("Node 26.12.1+ is required (SEC-001)."); process.exit(1); }'
+
 ARG APP_VERSION=unknown
 
 WORKDIR /app

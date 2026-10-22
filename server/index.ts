@@ -54,7 +54,8 @@ app.use(helmet({
   contentSecurityPolicy: isProd ? {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      // wasm-unsafe-eval: sql.js WebAssembly. Staging RC.39 showed no eval/Function calls in Notes, docx import/export, Drawing or Mermaid (SEC-001).
+      scriptSrc: ["'self'", "'unsafe-inline'", "'wasm-unsafe-eval'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       // Excalidraw loads fonts via esm.sh CDN
       fontSrc: ["'self'", "data:", "https://fonts.gstatic.com", "https://esm.sh"],
@@ -71,18 +72,6 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
   crossOriginResourcePolicy: { policy: "cross-origin" },
 }));
-
-// shortcut: 'unsafe-eval' stays enforced because Excalidraw/Notes chunks contain eval/new Function;
-// this Report-Only policy surfaces the real violations in the browser console before we drop it (SEC-001).
-if (isProd) {
-  app.use((_req, res, next) => {
-    res.setHeader(
-      "Content-Security-Policy-Report-Only",
-      "default-src 'self';script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval';style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;font-src 'self' data: https://fonts.gstatic.com https://esm.sh;img-src 'self' data: blob: https:;connect-src 'self' https:;frame-src 'self';object-src 'none';base-uri 'self';form-action 'self';frame-ancestors 'self'",
-    );
-    next();
-  });
-}
 
 // CORS — configurable via CORS_ORIGINS env var
 // In production, Vercel domains (*.vercel.app) are allowed by default
