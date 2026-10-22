@@ -1,9 +1,11 @@
 import express from "express";
+import { request } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OAuthError } from "@modelcontextprotocol/server";
 import { authInfoFromClaims, getPublicMcpClientConfig, getPublicMcpConfig } from "./public-auth.js";
 import { PUBLIC_MCP_TOOL_NAMES } from "./public-tools.js";
 import { createPublicMcpRouter } from "./public-router.js";
+import { LocalMcpOAuthProvider } from "./local-oauth.js";
 
 describe("public MCP boundary", () => {
   const env = {
@@ -13,7 +15,7 @@ describe("public MCP boundary", () => {
     VITE_SUPABASE_ANON_KEY: "anon-key",
   } as NodeJS.ProcessEnv;
 
-  afterEach(() => vi.unstubAllEnvs());
+  afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
   it("uses one canonical resource URL and rejects tokens for another audience", () => {
     const config = getPublicMcpConfig(env)!;
@@ -98,6 +100,36 @@ describe("public MCP boundary", () => {
 
       const localAuthorize = await fetch(`${baseUrl}/authorize`);
       expect(localAuthorize.status).toBe(403);
+
+      const authInfo = {
+        token: "test-token", clientId: "test-client", scopes: ["mcp:read"],
+        expiresAt: Math.floor(Date.now() / 1000) + 60,
+        resource: new URL("https://other.example.com/api/mcp"), extra: { userId: "user-id" },
+      };
+      const verifier = vi.spyOn(LocalMcpOAuthProvider.prototype, "verifyAccessToken").mockResolvedValue(authInfo);
+      const postMcp = (body: unknown) => new Promise<{ status: number | undefined; body: string }>((resolve, reject) => {
+        const req = request(`${baseUrl}/api/mcp`, {
+          method: "POST",
+          headers: { Host: "mcp.example.com", Authorization: "Bearer test-token", "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
+        }, res => {
+          let body = "";
+          res.on("data", chunk => { body += chunk; });
+          res.on("end", () => resolve({ status: res.statusCode, body }));
+        });
+        req.on("error", reject);
+        req.end(JSON.stringify(body));
+      });
+      const wrongResource = await postMcp({});
+      expect(verifier).toHaveBeenCalledOnce();
+      expect(wrongResource.status).toBe(401);
+
+      verifier.mockResolvedValue({ ...authInfo, resource: new URL("https://mcp.example.com/api/mcp") });
+      const oversizedArguments = await postMcp({
+        jsonrpc: "2.0", id: 1, method: "tools/call",
+        params: { name: "document_read", arguments: { type: "notes", uid: "doc", extra: Array(1001).fill(0) } },
+      });
+      expect(oversizedArguments.status).toBe(200);
+      expect(oversizedArguments.body).toContain("maximum of 1000 elements");
     } finally {
       await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     }

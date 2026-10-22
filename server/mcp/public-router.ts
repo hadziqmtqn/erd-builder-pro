@@ -48,6 +48,7 @@ export function createPublicMcpRouter(): Router | null {
     const userId = authInfo?.extra?.userId;
     if (typeof userId !== "string" || !userId) throw new Error("Authenticated MCP user is missing");
     const server = new McpServer({ name: "erdbpro-web", version: process.env.APP_VERSION || "3.3.4" }, {
+      maxToolInputElements: 1000,
       instructions: "Read ERD Builder Pro Web App workspace content only. DB Client, production database diagrams, credentials, SQL execution, filesystem access, and all write operations are unavailable.",
     });
     registerPublicMcpTools(server, userId);
@@ -94,7 +95,7 @@ export function createPublicMcpRouter(): Router | null {
     secureOrigin,
     limiter,
     express.json({ limit: "1mb", type: ["application/json", "application/*+json"] }),
-    requireBearerAuth({ verifier, requiredScopes: config.scopes, resourceMetadataUrl: metadataUrl }),
+    requireBearerAuth({ verifier, requiredScopes: config.scopes, resourceMetadataUrl: metadataUrl, expectedResource: config.resourceUrl }),
     (req, res, next) => { void nodeHandler(req, res, req.body).catch(next); },
   );
   router.all(endpointPath, secureHost, (_req, res) => {

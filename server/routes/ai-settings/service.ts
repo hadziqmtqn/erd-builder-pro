@@ -212,6 +212,7 @@ export async function fetchProviderModels(body: {
 
   const baseUrl = await safeAiBaseUrl(body.base_url, "https://api.openai.com/v1");
   const response = await fetch(`${baseUrl}/models`, {
+    redirect: "error",
     headers: { Authorization: `Bearer ${apiKey}` },
     signal: AbortSignal.timeout(15000),
   });
@@ -435,6 +436,7 @@ export async function testConnection(
     const baseUrl = await safeAiBaseUrl(provider?.baseUrl ?? undefined, "https://api.openai.com/v1");
 
     const response = await fetch(`${baseUrl}/chat/completions`, {
+      redirect: "error",
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -459,6 +461,7 @@ export async function testConnection(
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`,
       {
+        redirect: "error",
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ contents: [{ parts: [{ text: "hi" }] }] }),

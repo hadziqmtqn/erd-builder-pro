@@ -13,7 +13,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies (skip postinstall — prisma generate needs prisma.config.ts, not yet copied)
-RUN npm install --ignore-scripts
+RUN npm ci --ignore-scripts
 
 # Copy Prisma files (needed for client generation)
 COPY prisma.config.ts ./
@@ -38,12 +38,12 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install production dependencies (skip postinstall — prisma CLI is a devDep)
+# Install the locked production dependencies without running postinstall.
 # prisma CLI is needed at runtime for client regeneration + db push
 # better-sqlite3: native addon required by @prisma/adapter-better-sqlite3 for SQLite mode
 # --ignore-scripts prevents native compilation; we rebuild explicitly below
 # --fetch-timeout=300000 handles slow/distanced npm registries
-RUN npm install --omit=dev --ignore-scripts --fetch-timeout=300000 && npm install tsx prisma better-sqlite3 --fetch-timeout=300000
+RUN npm ci --omit=dev --ignore-scripts --fetch-timeout=300000
 
 # Install build tools for better-sqlite3 native compilation + psql for PostgreSQL probing
 RUN apk add --no-cache postgresql-client python3 make g++
