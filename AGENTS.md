@@ -2,11 +2,34 @@
 
 ## Project Overview
 
-All frontend DB access goes through `apiFetch` → Express → Prisma — no direct DB client in frontend. Three DB modes: Supabase (Postgres), pure PostgreSQL, SQLite (desktop).
+All frontend DB access goes through `apiFetch` → Express → Prisma — no direct DB client in frontend. DB modes: pure PostgreSQL (main, web), SQLite (Desktop/CLI), and legacy Supabase. New code targets PostgreSQL and SQLite; do not add new Supabase-only behavior.
 
 **Features**: Notes (Tiptap), ERD (React Flow), Flowchart (React Flow), Drawings (Excalidraw), AI Assistant.
 
 **DB mode detection** (see full table below): `DATABASE_URL` + `SUPABASE_URL` env vars. Local auth routes use `useLocalAuth()`. Prisma 7 with driver adapters (`@prisma/adapter-pg`, `@prisma/adapter-better-sqlite3`).
+
+## Contribution Rules
+
+Full rules are in [`CONTRIBUTING.md`](./CONTRIBUTING.md). In short:
+
+- Work starts from an issue on the [ERD Builder Pro Roadmap](https://github.com/users/hadziqmtqn/projects/8). Roadmap IDs (`CLD-008F`, `BUG-016`) are assigned by maintainers only; never invent one.
+- Branch from the latest `master` as `<type>/<id>-<short-name>` (`feat/cld-008f-cloud-import-lockdown`), or `<type>/issue-<number>-<short-name>` before triage. `development` is not used.
+- Commits use `<type>(<ID>): <description>`. PRs target `master`, are written in English, and include `Fixes #<issue>`.
+- One roadmap ID per branch and PR. `npm run lint` must pass.
+
+## Product and Security Rules
+
+These rules constrain code in every mode. Do not weaken them to make a feature easier.
+
+- **One Team model.** Every document belongs to a Personal Workspace or a Team. Do not add private packages, private forks, or a second nested Team.
+- **Server-side authorization only.** Every Team-scoped request re-checks membership, member status, and entitlement on the server. Browser state, cached grants, and Team IDs from the client are never proof of access.
+- **Generic not-found.** A resource owned by another user or Team returns the same not-found response as a missing one. Never reveal that a protected resource exists.
+- **Locked Team keeps data.** When a Team is locked or revoked, deny Team access per request and keep its data. Never delete documents as a licensing reaction. The Personal Workspace stays usable.
+- **Self-host data stays local.** Self-host users, documents, office data, and AI credentials are never sent to the Cloud control plane. Cloud telemetry is aggregate and redacted only; Self-host sends none.
+- **Official Cloud has no local SuperAdmin.** Identity, Team membership, roles, subscription, entitlement, billing, and AI configuration come from the control plane; the runtime keeps only the minimum local mapping.
+- **Public MCP** is Web-only and read-only, limited to explicitly allowed Personal or Team documents.
+- **Separate secrets.** Instance-license and Cloud-user tokens use separate audiences, signing keys, and session paths. Webhooks stay signed, replay-protected, and idempotent.
+- **Preserve installed data.** Migrations are additive and idempotent; never reset, truncate, or rebuild user data in startup code.
 
 ## State Management
 
@@ -132,11 +155,14 @@ CSS variables from shadcn (`var(--popover)`, `var(--popover-foreground)`) used i
 
 | Mode | Detection | Auth | IDs | Schema |
 |------|-----------|------|-----|--------|
-| Desktop/SQLite | `file:` or `.db` in URL | Local (desktop-auth) | Int | `schema.sqlite.prisma` |
-| Local PostgreSQL | `postgresql://` + no `SUPABASE_URL` | Local (same) | Int | `schema.pg.prisma` |
-| Supabase | `postgresql://` + `SUPABASE_URL` | Supabase JWT | BigInt | `schema.prisma` |
+| Pure PostgreSQL (main) | `postgresql://` + no `SUPABASE_URL` | Local | Int | `schema.pg.prisma` |
+| Official Cloud | Pure PostgreSQL + `AUTH_MODE=sso` | SSO; local password routes disabled | Int | `schema.pg.prisma` |
+| Desktop/SQLite (and CLI) | `file:` or `.db` in URL | Local (desktop-auth) | Int | `schema.sqlite.prisma` |
+| Supabase (legacy) | `postgresql://` + `SUPABASE_URL` | Supabase JWT | BigInt | `schema.prisma` |
 
 Detection: `isDesktopMode()`, `isLocalPostgres()`, `useLocalAuth()`. Supabase auth via `supabase.auth.getUser(token)`.
+
+Local web development uses `npm run dev:pg:local` and `npm run test:pg`. `npm run dev`, `npm run dev:api`, and `postinstall` still generate the legacy Supabase client (`DB_VARIANT=supabase`).
 
 ### Prisma 7 Migration
 - Driver adapters mandatory (`@prisma/adapter-pg`, `@prisma/adapter-better-sqlite3`)

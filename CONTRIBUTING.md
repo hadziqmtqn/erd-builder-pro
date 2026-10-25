@@ -2,9 +2,20 @@
 
 ## Branching
 
-- `master` — production (protected). PR from `development` via **Rebase and merge**.
-- `development` — default branch for PRs. All feature branches originate from here.
-- Feature branches: `feat/<name>`, `fix/<name>`, `refactor/<name>`.
+- `master` is the default and protected branch. Never commit to it directly; every change goes through a PR into `master`.
+- `development` is no longer used. Do not branch from it or open PRs against it.
+- Create one branch per issue from the latest `master`, named `<type>/<id>-<short-name>`:
+  - `<type>` is the commit type of the main change: `feat`, `fix`, `refactor`, `docs`, `chore`, `perf`, or `test`.
+  - `<id>` is the roadmap ID in lowercase (`cld-008f`). If the issue has no roadmap ID yet, use `issue-<number>` instead.
+  - `<short-name>` is two to five lowercase words joined by hyphens.
+
+| Case | Branch |
+|------|--------|
+| Roadmap issue `CLD-008F` | `feat/cld-008f-cloud-import-lockdown` |
+| Bug with roadmap ID `BUG-016` | `fix/bug-016-notes-cursor-jump` |
+| Issue `#312`, not triaged yet | `fix/issue-312-export-filename` |
+
+Keep a branch to one roadmap ID. Split unrelated work into separate branches and PRs.
 
 ## Commit Convention
 
@@ -36,17 +47,44 @@ docs: add Docker Hub badges to README
 
 ## PR Workflow
 
-1. Create feature branch from `development`
-2. Commit with convention above
-3. Open PR against `development`
-4. Ensure `npm run lint` passes (zero TypeScript errors)
-5. Maintainer reviews → squash or rebase merge
+1. Create a branch from the latest `master` as described under Branching.
+2. Commit with the convention above. Use the roadmap ID as the scope when there is one, for example `feat(CLD-008F): reject Import/Export/Backup in Cloud mode`.
+3. Before opening the PR, update your branch with the latest `master`.
+4. Open a PR against `master`, written in English. Start the title with the same type and scope as the main commit, and put `Fixes #<issue>` in the description.
+5. Ensure `npm run lint` passes (zero TypeScript errors).
+6. A maintainer reviews, then squash- or rebase-merges it.
+
+## Roadmap
+
+The public roadmap is the [ERD Builder Pro Roadmap](https://github.com/users/hadziqmtqn/projects/8) GitHub Project. Its columns are **Planned**, **In Progress**, and **Done**.
+
+- **Issues** are work you can pick up. Their titles start with a roadmap ID such as `CLD-008F`.
+- **Draft items** announce planned work that is still maintainer-led. They cannot be claimed yet.
+
+### Opening a new issue
+
+1. Search existing issues and the roadmap first.
+2. Open an issue with the bug report, feature request, or documentation template. Do not put a roadmap ID in the title; the issue number (`#123`) is enough.
+3. A maintainer triages it:
+   - **Accepted**: the maintainer assigns a roadmap ID, prefixes the title with it, and adds the issue to the roadmap as Planned.
+   - **Not accepted**: the issue is closed with `duplicate`, `invalid`, or `wontfix` and a short reason.
+
+Roadmap IDs are assigned by maintainers only, because they are used in commits and PRs.
+
+### Claiming an issue
+
+1. Pick an issue labeled `help wanted` or `good first issue`. If an issue says it is waiting on other work, ask before starting.
+2. Comment on the issue that you want to work on it, with a short plan.
+3. Wait until a maintainer assigns you. The item then moves to In Progress.
+4. Open a PR following the steps above and put `Fixes #<issue>` in its description. Merging the PR closes the issue and moves it to Done.
+
+If an assigned issue has no activity for 14 days, a maintainer may unassign it so someone else can take it.
 
 ## Prerequisites
 
 - **Node.js** v20+
 - **npm** v10+
-- **Supabase** account (free tier works) for Auth + database
+- **PostgreSQL** running locally (the main database for web development)
 - **Cloudflare R2** account (optional, for storage)
 
 ## Setup
@@ -55,16 +93,20 @@ docs: add Docker Hub badges to README
 git clone https://github.com/hadziqmtqn/erd-builder-pro
 cd erd-builder-pro
 
+createdb erd_builder_pro
 cp .env.example .env
-# Fill in SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
-# Optional: VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY for mentions, AI context, and realtime
+# Set DATABASE_URL to your local database, for example:
+# DATABASE_URL="postgresql://postgres:postgres@localhost:5432/erd_builder_pro"
+# Leave SUPABASE_URL unset: pure PostgreSQL uses local auth.
 
 npm install
-npm run dev        # Full stack (Express + Vite middleware)
-npm run dev:api    # Backend only
-npm run dev:client # Frontend only (proxies /api to :3000)
-npm run clean      # Remove dist/
+npm run dev:pg:local # Push the PostgreSQL schema, generate the client, start full stack
+npm run dev:client   # Frontend only (proxies /api to :3000)
+npm run test:pg      # Tests against the PostgreSQL client
+npm run clean        # Remove dist/
 ```
+
+Use `npm run dev:pg:local` rather than `npm run dev` or `npm run dev:api`; those regenerate the legacy Supabase Prisma client. For PostgreSQL schema changes, edit `prisma/schema.pg.prisma` and add a migration with `npm run db:migrate:pg:local`.
 
 ## CLI Development and Releases
 
@@ -100,7 +142,7 @@ The CLI stores its system database at `~/.erdbpro/data.db`. Updating the npm pac
 
 - **Read [`AGENTS.md`](./AGENTS.md)** — contains agent memory about architecture, patterns, bug fixes, and technical decisions. Must be read before making changes.
 - **Understand Guest Mode**: All data hooks (`useNotes`, `useDiagrams`, `useFlowcharts`, `useDrawings`, `useTrash`, `useProjects`, `useAIChat`) use the `isGuestCheck()` pattern — `isGuestRef.current || sessionStorage.getItem('auth_mode') === 'guest'`. Never use raw `if (isGuest)` — it causes stale closures on initial render.
-- **Auth is Supabase-only**: the server verifies Supabase session JWTs from the `httpOnly` `token` cookie. Do not add local `JWT_SECRET` or custom credential env var assumptions back into new code.
+- **Database and auth modes**: pure PostgreSQL is the main database. It uses local auth (`useLocalAuth()`), like Desktop/SQLite. Supabase is a legacy mode, detected only when `SUPABASE_URL` is set; do not make new code depend on it. Official Cloud uses SSO (`AUTH_MODE=sso`). The server reads the session from the `token` cookie in every mode. Do not add `JWT_SECRET` or custom credential env var assumptions.
 - **Keep AGENTS.md updated**: After completing a feature/fix, update `AGENTS.md` with any relevant new patterns.
 
 ## Code Style
@@ -139,13 +181,12 @@ shared/
 Minimal required in `.env`:
 
 ```
-SUPABASE_URL=
-SUPABASE_SERVICE_ROLE_KEY=
-VITE_SUPABASE_URL=
-VITE_SUPABASE_ANON_KEY=
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/erd_builder_pro"
+APP_TIMEZONE=Asia/Jakarta
+PORT=3000
 ```
 
-Optional: `R2_*` (Cloudflare storage), `GITHUB_*`, `TELEGRAM_*`.
+Optional: `R2_*` (Cloudflare storage), `GITHUB_*`, `TELEGRAM_*`. See [`.env.example`](./.env.example) for every setting.
 
 ## Need Help?
 
