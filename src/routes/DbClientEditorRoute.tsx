@@ -196,7 +196,9 @@ function DbClientEditor({ id }: { id?: string }) {
     });
   }, [getNodes, getViewport, fitView, saveLayout, setNodes, setEdges]);
 
-  const handleSchemaApplied = useCallback((nextNodes: Node<Entity>[], nextEdges: Edge[]) => {
+  const handleSchemaApplied = useCallback((nextNodes: Node<Entity>[], nextEdges: Edge[], schema: any) => {
+    // The merged canvas already reflects this schema; revisiting ERD must not rebuild it from the cache.
+    if (Array.isArray(schema?.schema)) canvasSchemaRef.current = schema.schema;
     void saveLayout(viewportRef.current, nextNodes, nextEdges);
   }, [saveLayout]);
 

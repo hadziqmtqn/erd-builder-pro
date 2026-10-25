@@ -17,14 +17,15 @@ afterEach(() => vi.restoreAllMocks());
 const render = (id: number | undefined, receive = vi.fn()) => { mocks.cursor = 0; return useDatabaseSchemaSync(id, receive); };
 const response = (schema: any = []) => ({ ok: true, json: async () => ({ schema }) });
 
-it('prevents double Sync, refreshes cache, and delivers schema exactly once', async () => {
+it('prevents double Sync, leaves the shared cache to the accepted merge, and delivers schema exactly once', async () => {
   let resolve!: (result: unknown) => void;
   mocks.api.mockReturnValue(new Promise(r => { resolve = r; }));
   const receive = vi.fn(); const sync = render(4, receive); mocks.effects.shift()();
   const first = sync.sync(); await sync.sync();
   expect(mocks.api).toHaveBeenCalledTimes(1);
   resolve(response([{ table_name: 'users' }])); await first;
-  expect(mocks.cache).toHaveBeenCalledWith(4, { schema: [{ table_name: 'users' }] });
+  expect(mocks.cache).not.toHaveBeenCalled();
+  expect(receive).toHaveBeenCalledWith({ schema: [{ table_name: 'users' }] });
   expect(receive).toHaveBeenCalledOnce();
   expect(render(4).isSyncing).toBe(false);
 });

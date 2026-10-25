@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { apiFetch, getAuthToken } from '@/lib/api';
-import { setSchemaCache } from './useDataViewerHelpers';
 
 export function useDatabaseSchemaSync(connectionId: number | undefined, onSchema: (schema: any) => void) {
   const [isSyncing, setIsSyncing] = useState(false);
@@ -27,7 +26,7 @@ export function useDatabaseSchemaSync(connectionId: number | undefined, onSchema
       if (!current()) return;
       if (!response.ok) throw new Error(data.error || 'Failed to sync schema');
       if (!Array.isArray(data.schema)) throw new Error('Invalid database schema response');
-      setSchemaCache(connectionId, data);
+      // Only a review preview: the shared schema cache is updated when the merge is accepted.
       receive.current(data);
     } catch (error) {
       if (current()) toast.error(error instanceof Error ? error.message : 'Failed to sync schema');

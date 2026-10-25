@@ -71,3 +71,18 @@ it('reuses schema already read by Data and preserves the canvas on a mode round-
   expect(mock.setNodes).toHaveBeenCalledTimes(1);
   expect(mock.api).toHaveBeenCalledTimes(1);
 });
+
+it('keeps the merged canvas on an ERD → Data → ERD round trip after a database Sync is applied', async () => {
+  const findErd = (node: any, depth = 0): any => node?.type === 'erd' ? node
+    : depth < 8 && node?.props ? [node.props.children].flat().map(child => findErd(child, depth + 1)).find(Boolean) : undefined;
+  mock.api.mockResolvedValueOnce(response(document));
+  render(); mock.effects[2](); await vi.runAllTimersAsync();
+  mock.cache.set(42, { schema: [], dbType: 'mysql' });
+  mock.mode = 'erd'; render(); mock.effects[1](); await vi.runAllTimersAsync();
+  const synced = { schema: [{ table_name: 'users' }], dbType: 'mysql' };
+  mock.cache.set(42, synced); // ERDView stores the Sync result only when the merge is accepted.
+  findErd(render()).props.onDatabaseSchemaApplied([], [], synced);
+  mock.mode = 'data'; render(); mock.effects[1]();
+  mock.mode = 'erd'; render(); mock.effects[1](); await vi.runAllTimersAsync();
+  expect(mock.setNodes).toHaveBeenCalledTimes(1);
+});

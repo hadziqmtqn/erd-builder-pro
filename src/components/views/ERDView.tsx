@@ -39,6 +39,7 @@ import { EyeOff, Monitor } from 'lucide-react';
 import { buildErdIndexes, erdColumnKey, erdSourceColumnKey } from '@/lib/erd-indexes';
 import { canvasLayout, dbSchemaToCanvas, keepsDbRelation } from '@/lib/db-client-schema';
 import { useDatabaseSchemaSync } from '@/hooks/useDatabaseSchemaSync';
+import { setSchemaCache } from '@/hooks/useDataViewerHelpers';
 import { styleErdEdges } from '@/lib/erd-edge-style';
 import { ERD_HISTORY_PREVIEW_EVENT, type ErdHistoryPreview } from '@/lib/history-diagram';
 import { ERD_REPOSITORY_APPLIED_EVENT, ERD_REPOSITORY_PREVIEW_EVENT, type RepositoryPreview } from '@/lib/repository-preview';
@@ -86,7 +87,7 @@ interface ERDViewProps {
   addEntity: () => void;
   onImportSQL?: () => void;
   onAutoLayout?: () => void;
-  onDatabaseSchemaApplied?: (nodes: Node<Entity>[], edges: Edge[]) => void;
+  onDatabaseSchemaApplied?: (nodes: Node<Entity>[], edges: Edge[], schema: any) => void;
   handleExportSQL: (dialect: 'postgresql' | 'mysql') => void;
   onNodeDragStop?: () => void;
 
@@ -565,7 +566,9 @@ const ERDViewComponent = ({
     window.addEventListener(ERD_REPOSITORY_PREVIEW_EVENT, previewRepository);
     return () => window.removeEventListener(ERD_REPOSITORY_PREVIEW_EVENT, previewRepository);
   }, [startDiff, isProductionDb]);
+  const syncedSchemaRef = React.useRef<any>(null);
   const { sync: handleSync, isSyncing } = useDatabaseSchemaSync(isActive ? sourceConnectionId : undefined, data => {
+    syncedSchemaRef.current = data;
     const canvas = dbSchemaToCanvas(data.schema, canvasLayout(nodesRef.current, getViewport(), {}, edgesRef.current));
     startDiff(nodesRef.current, edgesRef.current, canvas.nodes, canvas.edges, { source: 'database' });
   });
@@ -595,7 +598,11 @@ const ERDViewComponent = ({
     setNodes(finalNodes);
     setEdges(finalEdges);
     setPendingDiff(null);
-    if (pendingDiff.source === 'database') onDatabaseSchemaApplied?.(finalNodes, finalEdges);
+    if (pendingDiff.source === 'database') {
+      const synced = syncedSchemaRef.current;
+      if (synced && sourceConnectionId) setSchemaCache(sourceConnectionId, synced);
+      onDatabaseSchemaApplied?.(finalNodes, finalEdges, synced);
+    }
     toast.success(pendingDiff.source === 'database' ? 'Database schema view updated' : pendingDiff.source === 'repository' ? 'Repository schema merged successfully' : 'AI changes merged successfully!');
     if (saveDiagram) {
       const repositoryDbml = pendingDiff.source === 'repository'
@@ -613,7 +620,7 @@ const ERDViewComponent = ({
         }
       }).catch(err => console.error('Error saving after merge:', err));
     }
-  }, [pendingDiff, approvedChangeIds, setNodes, setEdges, saveDiagram, triggerDebouncedSync, getViewport, isReadOnly, isProductionDb, onDatabaseSchemaApplied]);
+  }, [pendingDiff, approvedChangeIds, setNodes, setEdges, saveDiagram, triggerDebouncedSync, getViewport, isReadOnly, isProductionDb, onDatabaseSchemaApplied, sourceConnectionId]);
 
   const defaultEdgeOptions = React.useMemo(() => ({
     type: 'smoothstep' as const,
