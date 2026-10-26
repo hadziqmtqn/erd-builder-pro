@@ -92,7 +92,8 @@ export function NoteCommentsLayer({ editor, page, container, file, wide, request
     if (!activeId || !wide || confirmDiscard) return;
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Element | null;
-      if (target?.closest?.(`[data-comment-card="${CSS.escape(activeId)}"]`)) return;
+      // The card's own confirm dialog (delete thread) renders in a portal outside the card.
+      if (target?.closest?.(`[data-comment-card="${CSS.escape(activeId)}"], [role="alertdialog"]`)) return;
       requestCollapse();
     };
     document.addEventListener('pointerdown', onPointerDown, true);

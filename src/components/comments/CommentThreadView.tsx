@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { ArrowUp, Check, Maximize2, RotateCcw, X } from 'lucide-react';
+import ConfirmModal from '@/components/ConfirmModal';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 import { useCommentThread } from '@/hooks/useCommentThread';
-import type { CommentAnchorRef, CommentFileRef } from '@/lib/fileComments';
+import type { CommentAnchorRef, CommentFileRef, CommentMessage } from '@/lib/fileComments';
 
 const AVATAR_COLORS = ['bg-teal-600', 'bg-sky-600', 'bg-violet-600', 'bg-rose-600', 'bg-amber-600', 'bg-emerald-600'];
 
@@ -31,7 +33,7 @@ export function commentTime(value: string): string {
   return Number.isNaN(date.getTime()) ? '' : formatDistanceToNowStrict(date, { addSuffix: true });
 }
 
-/** One comment thread: its messages (10 at a time), a composer, resolve, and an optional expand-to-panel action. */
+/** One comment thread: its messages (10 at a time), a composer, edit of one's own messages, resolve, delete by the thread's creator, and an optional expand-to-panel action. */
 export function CommentThreadView({ file, anchor, autoFocus = false, showActions = true, onDirtyChange, onClose, onExpand, className }: {
   file: CommentFileRef;
   anchor: CommentAnchorRef;
@@ -45,13 +47,17 @@ export function CommentThreadView({ file, anchor, autoFocus = false, showActions
   className?: string;
 }) {
   const thread = useCommentThread(file, anchor);
+  const userId = String(useAuth().user?.id ?? '');
   const [draft, setDraft] = useState('');
+  const [editing, setEditing] = useState<CommentMessage | null>(null);
+  const [editDraft, setEditDraft] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
   const list = useRef<HTMLUListElement>(null);
   const newest = thread.messages[thread.messages.length - 1]?.id;
 
   useEffect(() => { if (autoFocus) input.current?.focus(); }, [autoFocus]);
-  useEffect(() => { onDirtyChange?.(draft.trim().length > 0); }, [draft, onDirtyChange]);
+  useEffect(() => { onDirtyChange?.(draft.trim().length > 0 || (editing !== null && editDraft.trim() !== editing.body)); }, [draft, editing, editDraft, onDirtyChange]);
   useEffect(() => {
     const element = input.current;
     if (!element) return;
@@ -64,6 +70,15 @@ export function CommentThreadView({ file, anchor, autoFocus = false, showActions
 
   const submit = async () => {
     if (await thread.send(draft)) setDraft('');
+  };
+
+  const saveEdit = async () => {
+    if (editing && await thread.edit(editing, editDraft)) setEditing(null);
+  };
+
+  const deleteThread = async () => {
+    setConfirmDelete(false);
+    if (await thread.deleteThread()) onClose?.();
   };
 
   return (
@@ -95,15 +110,38 @@ export function CommentThreadView({ file, anchor, autoFocus = false, showActions
       )}
 
       <ul ref={list} className="flex max-h-72 flex-col gap-2.5 overflow-y-auto pr-1">
-        {thread.messages.map((message) => (
+        {thread.messages.map((message, index) => (
           <li key={message.id} className="flex gap-2">
             <CommentAvatar name={message.authorName} className="size-5 text-[10px]" />
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline gap-2">
                 <span className="truncate text-xs font-semibold">{message.authorName}</span>
                 <span className="shrink-0 text-[11px] text-muted-foreground">{shortCommentTime(message.createdAt)}</span>
+                {message.authorId === userId && editing?.id !== message.id && (
+                  <button type="button" disabled={thread.sending} onClick={() => { setEditing(message); setEditDraft(message.body); }}
+                    className="shrink-0 text-[11px] text-muted-foreground hover:text-foreground hover:underline disabled:opacity-60">Edit</button>
+                )}
+                {index === 0 && !thread.hasOlder && thread.threadId && thread.createdBy === userId && editing?.id !== message.id && (
+                  <button type="button" disabled={thread.sending} onClick={() => setConfirmDelete(true)}
+                    className="shrink-0 text-[11px] text-muted-foreground hover:text-destructive hover:underline disabled:opacity-60">Delete</button>
+                )}
               </div>
-              <p className="whitespace-pre-wrap break-words text-xs leading-snug">{message.body}</p>
+              {editing?.id === message.id ? (
+                <form className="mt-1 flex items-end gap-1 rounded-md border bg-background px-2 py-1 focus-within:border-ring"
+                  onSubmit={(event) => { event.preventDefault(); void saveEdit(); }}>
+                  <textarea data-comment-draft autoFocus rows={1} maxLength={4000} value={editDraft} aria-label="Edit comment"
+                    onChange={(event) => setEditDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void saveEdit(); }
+                      if (event.key === 'Escape') { event.stopPropagation(); setEditing(null); }
+                    }}
+                    className="max-h-[120px] min-h-5 min-w-0 flex-1 resize-none bg-transparent text-xs outline-none" />
+                  <button type="button" aria-label="Cancel edit" disabled={thread.sending} onClick={() => setEditing(null)}
+                    className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground hover:text-foreground disabled:opacity-40"><X aria-hidden="true" className="size-3" /></button>
+                  <button type="submit" aria-label="Save comment" disabled={!editDraft.trim() || thread.sending}
+                    className="flex size-5 shrink-0 items-center justify-center rounded-full bg-sky-500 text-white disabled:opacity-40"><Check aria-hidden="true" className="size-3" /></button>
+                </form>
+              ) : <p className="whitespace-pre-wrap break-words text-xs leading-snug">{message.body}</p>}
             </div>
           </li>
         ))}
@@ -136,6 +174,16 @@ export function CommentThreadView({ file, anchor, autoFocus = false, showActions
           </button>
         </form>
       )}
+      <ConfirmModal
+        isOpen={confirmDelete}
+        title="Delete thread?"
+        message="This permanently deletes the thread and all of its comments."
+        confirmText="Delete Thread"
+        cancelText="Cancel"
+        variant="danger"
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={() => { void deleteThread(); }}
+      />
     </div>
   );
 }

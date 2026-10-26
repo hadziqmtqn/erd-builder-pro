@@ -148,9 +148,11 @@ function avatarInitials(name: string): string {
   return initials.toUpperCase() || "?";
 }
 
-function DiscussionMessage({ message, canEdit, editing, editDraft, editOriginalBody, disabled, onEdit, onDelete, onEditDraftChange, onCancelEdit, onSaveEdit }: {
+function DiscussionMessage({ message, canEdit, canDelete = canEdit, editing, editDraft, editOriginalBody, disabled, onEdit, onDelete, onEditDraftChange, onCancelEdit, onSaveEdit }: {
   message: DiscussionMessageData;
   canEdit: boolean;
+  /** Comment messages are edited, not deleted one by one: the thread's creator deletes the whole thread. */
+  canDelete?: boolean;
   editing: boolean;
   editDraft: string;
   editOriginalBody: string;
@@ -203,12 +205,12 @@ function DiscussionMessage({ message, canEdit, editing, editDraft, editOriginalB
             } />
             <TooltipContent side="top">Edit</TooltipContent>
           </Tooltip>
-          <Tooltip>
+          {canDelete && <Tooltip>
             <TooltipTrigger render={
               <Button type="button" variant="ghost" size="icon-xs" className="text-destructive hover:text-destructive" aria-label="Delete message" onClick={onDelete}><Trash2 aria-hidden="true" className="size-3.5" /></Button>
             } />
             <TooltipContent side="top">Delete</TooltipContent>
-          </Tooltip>
+          </Tooltip>}
         </div>
       )}
     </div>
@@ -418,7 +420,8 @@ export function DiscussionsPanel({
   anchorContext?: DiscussionAnchor | null;
   onContextSelected?: (context: CollaborationContext) => void;
   /** Text of the commented content (e.g. a Note block); null when unknown. */
-  anchorPreview?: (anchorId: string) => string | null;
+  /** Note block text for a comment anchor; `null` means the block was deleted, `undefined` that it is not known yet. */
+  anchorPreview?: (anchorId: string) => string | null | undefined;
   /** A Project Viewer reads threads but cannot start, reply to, resolve or edit them (COL-004). */
   readOnly?: boolean;
 }) {
@@ -869,8 +872,14 @@ export function DiscussionsPanel({
     }
   };
 
+  // Comment endpoints are file-scoped: every call names the file the thread lives on.
+  const commentFileQuery = isCommentRail ? { feature_type: fileContext.featureType, file_id: fileContext.fileId } : {};
+  const reloadActiveThread = (threadId: string) => isCommentRail && activeCommentAnchor
+    ? loadAnchor(activeCommentAnchor, true, true, threadId)
+    : loadThread(threadId, true, true);
+
   const startEditMessage = (message: DiscussionMessageData) => {
-    if (activeTab !== "discussions" || message.authorId !== userId) return;
+    if (message.authorId !== userId) return;
     setEditingMessageId(message.id);
     setEditDraft(message.body);
     setEditOriginalBody(message.body);
@@ -886,10 +895,10 @@ export function DiscussionsPanel({
     event.preventDefault();
     const body = editDraft.trim();
     const threadId = selectedThreadId;
-    if (activeTab !== "discussions" || message.authorId !== userId || !threadId || !body || message.body !== editOriginalBody || sending) return;
+    if (message.authorId !== userId || !threadId || !body || message.body !== editOriginalBody || sending) return;
     setSending(true);
     try {
-      await requestJson(`${endpoint}/${encodeURIComponent(threadId)}/messages/${encodeURIComponent(message.id)}`, {
+      await requestJson(requestPath(`${endpoint}/${encodeURIComponent(threadId)}/messages/${encodeURIComponent(message.id)}`, commentFileQuery), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body, expectedBody: editOriginalBody }),
@@ -901,7 +910,7 @@ export function DiscussionsPanel({
       cancelEditMessage();
       notifyLocalUpdate();
     } catch (cause) {
-      await loadThread(threadId, true, true);
+      await reloadActiveThread(threadId);
       toast.error(cause instanceof Error ? cause.message : "Couldn't update this message. Try again.");
     } finally {
       setSending(false);
@@ -910,17 +919,18 @@ export function DiscussionsPanel({
 
   const deleteThread = async (threadId: string) => {
     const thread = threads.find((item) => item.id === threadId);
-    if (activeTab !== "discussions" || !thread?.canDelete || sending) return;
+    if (!thread?.canDelete || sending) return;
     setSending(true);
     try {
-      await requestJson(`${endpoint}/${encodeURIComponent(thread.id)}`, { method: "DELETE" });
+      await requestJson(requestPath(`${endpoint}/${encodeURIComponent(thread.id)}`, commentFileQuery), { method: "DELETE" });
       setPendingDelete(null);
       if (selectedThreadId === threadId) {
         clearThreadView();
       }
       notifyLocalUpdate();
+      if (isCommentRail) await loadThreads();
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : "Couldn't delete this discussion. Try again.");
+      toast.error(cause instanceof Error ? cause.message : `Couldn't delete this ${isCommentRail ? "comment" : "discussion"}. Try again.`);
     } finally {
       setSending(false);
     }
@@ -1103,7 +1113,7 @@ export function DiscussionsPanel({
               {!loadError && isCommentRail && commentGroups.map((group) => {
                 const thread = group.representative;
                 const latest = group.previewMessages[group.previewMessages.length - 1];
-                const quoted = thread.anchorId ? anchorPreview?.(thread.anchorId) : null;
+                const quoted = thread.anchorId ? anchorPreview?.(thread.anchorId) : undefined;
                 const authorName = latest?.authorName || "Team member";
                 return (
                   <button
@@ -1124,7 +1134,7 @@ export function DiscussionsPanel({
                     <span className="mt-1 block space-y-0.5 pl-8">
                       {quoted
                         ? <span className="line-clamp-2 border-l-2 border-yellow-500/70 pl-2 text-xs leading-snug text-muted-foreground">{quoted.length > 50 ? `${quoted.slice(0, 50).trimEnd()}…` : quoted}</span>
-                        : <span className="block truncate text-[11px] text-muted-foreground">{thread.anchorLabel || "Comment"}</span>}
+                        : <span className="block truncate text-[11px] text-muted-foreground">{quoted === null ? "Deleted block" : thread.anchorLabel || "Comment"}</span>}
                       {latest && <span className="block truncate text-xs">{latest.body}</span>}
                     </span>
                   </button>
@@ -1190,7 +1200,8 @@ export function DiscussionsPanel({
               <div className="flex items-start gap-2 border-b border-border px-3 py-1.5">
                 <div className="min-w-0 flex-1">
                   {(() => {
-                    const quoted = activeThread.anchorId && (isCommentRail || activeThread.fileId === fileContext.fileId) ? anchorPreview?.(activeThread.anchorId) : null;
+                    const quoted = activeThread.anchorId && (isCommentRail || activeThread.fileId === fileContext.fileId) ? anchorPreview?.(activeThread.anchorId) : undefined;
+                    if (quoted === null) return <span className="block truncate text-xs text-muted-foreground">Deleted block · {featureLabel(activeThread.featureType ?? "note")}</span>;
                     return quoted
                       ? <p className="line-clamp-2 border-l-2 border-yellow-500/70 pl-2 text-xs leading-snug text-muted-foreground">{quoted}</p>
                       : <span className="block truncate text-xs text-muted-foreground">{activeThread.anchorType === "general" ? "General" : activeThread.anchorType}{activeThread.featureType && ` · ${featureLabel(activeThread.featureType)}`}</span>;
@@ -1205,6 +1216,14 @@ export function DiscussionsPanel({
                     } />
                     <TooltipContent side="left">{activeThread.status === "open" ? "Resolve" : "Reopen"}</TooltipContent>
                   </Tooltip>
+                  {activeThread.canDelete && <Tooltip>
+                    <TooltipTrigger render={
+                      <Button type="button" variant="ghost" size="icon-xs" className="shrink-0 text-destructive hover:text-destructive" aria-label="Delete thread" onClick={() => setPendingDelete({ type: "thread", threadId: activeThread.id })} disabled={sending}>
+                        <Trash2 aria-hidden="true" className="size-4" />
+                      </Button>
+                    } />
+                    <TooltipContent side="left">Delete thread</TooltipContent>
+                  </Tooltip>}
                 </TooltipProvider>)}
               </div>
             )}
@@ -1236,7 +1255,8 @@ export function DiscussionsPanel({
                           <MessageScrollerItem key={message.id} messageId={message.id} scrollAnchor>
                             <DiscussionMessage
                               message={message}
-                              canEdit={activeTab === "discussions" && message.authorId === userId && !readOnly}
+                              canEdit={message.authorId === userId && !readOnly}
+                              canDelete={!isCommentRail}
                               editing={editingMessageId === message.id}
                               editDraft={editDraft}
                               editOriginalBody={editOriginalBody}
@@ -1283,10 +1303,10 @@ export function DiscussionsPanel({
       />
       <ConfirmModal
         isOpen={pendingDelete !== null}
-        title={pendingDelete?.type === "message" ? "Delete message?" : "Delete discussion?"}
+        title={pendingDelete?.type === "message" ? "Delete message?" : isCommentRail ? "Delete thread?" : "Delete discussion?"}
         message={pendingDelete?.type === "message"
           ? "This message will be permanently deleted."
-          : "This permanently deletes the discussion and all its messages. This action cannot be undone."}
+          : `This permanently deletes the ${isCommentRail ? "thread and all of its comments" : "discussion and all its messages"}. This action cannot be undone.`}
         confirmText={pendingDelete?.type === "message" ? "Delete message" : "Delete Thread"}
         cancelText="Cancel"
         variant="danger"

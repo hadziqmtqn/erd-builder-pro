@@ -10,6 +10,7 @@ import { ERDCanvasProvider, SettledERDCanvasProvider } from '@/contexts/ERDCanva
 import { FileSessionContext } from '@/contexts/FileSessionContext';
 import { cn } from '@/lib/utils';
 import { flushWorkspaceChanges } from '@/lib/workspace-save';
+import { noteAnchorText } from '@/lib/noteAnchorMerge';
 import { toast } from 'sonner';
 import type { Node, Edge } from '@xyflow/react';
 import type { Entity } from '@/types';
@@ -601,12 +602,7 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
       window.setTimeout(() => handleDiscussionAnchorSelected(context.anchorType as 'table' | 'relationship', context.anchorId), 0);
     }
   }, [diagrams, discussionFileContext, flowcharts, handleDiscussionAnchorSelected, navigate, notes, drawings]);
-  const noteAnchorPreview = useCallback((anchorId: string) => {
-    if (!activeNote?.content) return null;
-    const block = new DOMParser().parseFromString(String(activeNote.content), 'text/html')
-      .querySelector(`[data-comment-anchor-id="${CSS.escape(anchorId)}"]`);
-    return block?.textContent?.trim() || null;
-  }, [activeNote?.content]);
+  const noteAnchorPreview = useCallback((anchorId: string) => noteAnchorText(activeNote?.content, anchorId), [activeNote?.content]);
   const discussionPanel = activeProjectId && discussionFileContext && discussionTeamId ? (
     <DiscussionsPanel
       key={`${discussionTeamId}:${activeProjectId}:${discussionFileContext.featureType}:${discussionFileContext.fileId}`}
