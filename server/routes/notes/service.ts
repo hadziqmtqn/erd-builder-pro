@@ -188,8 +188,9 @@ export async function updateNote(
 
 const COMMENT_ANCHOR_ATTRIBUTE = /\sdata-comment-anchor-id="([^"]*)"/g;
 
+// Same normalization as normalizeNoteHtml in useNoteCommentPersistence: the editor drops whitespace at block edges on load (BUG-019).
 function withoutCommentAnchors(html: string) {
-  return html.replace(COMMENT_ANCHOR_ATTRIBUTE, "").replace(/\s*class=""\s*/g, "").replace(/<p><\/p>/g, "").replace(/\s+/g, " ").trim();
+  return html.replace(COMMENT_ANCHOR_ATTRIBUTE, "").replace(/\s*class=""\s*/g, "").replace(/<p><\/p>/g, "").replace(/\s+/g, " ").replace(/>\s+/g, ">").replace(/\s+</g, "<").trim();
 }
 
 /** True when the request only adds comment anchors to an unchanged Note, guarded by the comment path's content check. */

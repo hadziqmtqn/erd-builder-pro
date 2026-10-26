@@ -39,6 +39,17 @@ describe("isCommentAnchorOnlyChange", () => {
     expect(isCommentAnchorOnlyChange(before, '<p data-comment-anchor-id="b">Hi</p><p data-comment-anchor-id="a">World</p>', guard)).toBe(false);
   });
 
+  it("allows an anchor when the editor dropped whitespace at a block edge (BUG-019)", () => {
+    const saved = '<p data-comment-anchor-id="a">Paragraf dua akan </p><p>dipecah nanti.</p><p>Paragraf lima.</p>';
+    const editor = '<p data-comment-anchor-id="a">Paragraf dua akan</p><p>dipecah nanti.</p><p data-comment-anchor-id="b">Paragraf lima.</p>';
+    expect(isCommentAnchorOnlyChange(saved, editor, guard)).toBe(true);
+  });
+
+  it("still rejects a text change hidden next to whitespace", () => {
+    const saved = '<p>Paragraf dua akan </p><p>Paragraf lima.</p>';
+    expect(isCommentAnchorOnlyChange(saved, '<p>Paragraf dua akan diubah</p><p data-comment-anchor-id="b">Paragraf lima.</p>', guard)).toBe(false);
+  });
+
   it("rejects removing someone else's anchor", () => {
     expect(isCommentAnchorOnlyChange(before, "<p>Hello</p><p>World</p>", guard)).toBe(false);
   });
