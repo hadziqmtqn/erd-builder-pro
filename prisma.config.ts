@@ -3,7 +3,7 @@ import { defineConfig } from "prisma/config";
 
 type DbVariant = "supabase" | "pg" | "sqlite";
 
-const variant: DbVariant = ((process.env.DB_VARIANT ?? "supabase") as DbVariant);
+const variant: DbVariant = ((process.env.DB_VARIANT ?? "pg") as DbVariant);
 
 const schemaByVariant: Record<DbVariant, string> = {
   supabase: "prisma/schema.prisma",

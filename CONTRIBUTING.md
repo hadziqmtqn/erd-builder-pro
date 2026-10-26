@@ -106,7 +106,7 @@ npm run test:pg      # Tests against the PostgreSQL client
 npm run clean        # Remove dist/
 ```
 
-Use `npm run dev:pg:local` rather than `npm run dev` or `npm run dev:api`; those regenerate the legacy Supabase Prisma client. For PostgreSQL schema changes, edit `prisma/schema.pg.prisma` and add a migration with `npm run db:migrate:pg:local`.
+`npm run dev` and `npm run dev:api` also use PostgreSQL but skip the schema push, so use them only after `dev:pg:local` has run once. For PostgreSQL schema changes, edit `prisma/schema.pg.prisma` and add a migration with `npm run db:migrate:pg:local`.
 
 ## CLI Development and Releases
 

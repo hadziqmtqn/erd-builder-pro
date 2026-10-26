@@ -162,7 +162,7 @@ CSS variables from shadcn (`var(--popover)`, `var(--popover-foreground)`) used i
 
 Detection: `isDesktopMode()`, `isLocalPostgres()`, `useLocalAuth()`. Supabase auth via `supabase.auth.getUser(token)`.
 
-Local web development uses `npm run dev:pg:local` and `npm run test:pg`. `npm run dev`, `npm run dev:api`, and `postinstall` still generate the legacy Supabase client (`DB_VARIANT=supabase`).
+Local web development uses `npm run dev:pg:local` and `npm run test:pg`. `DB_VARIANT` defaults to `pg`; `npm run dev` and `npm run dev:api` generate the PostgreSQL client without pushing the schema. `postinstall` generates the legacy Supabase client first (kept for Supabase deployments that build with `npm install`), then the PostgreSQL client, so `@prisma/client` types follow `schema.pg.prisma`.
 
 ### Prisma 7 Migration
 - Driver adapters mandatory (`@prisma/adapter-pg`, `@prisma/adapter-better-sqlite3`)
