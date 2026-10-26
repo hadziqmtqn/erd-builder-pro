@@ -157,6 +157,8 @@ export async function updateNote(
     if (existingContent === content) {
       return { success: true, version: existing.version, updatedAt: existing.updatedAt };
     }
+    // A comment anchor is not an edit: bumping the version would refuse the creator's next autosave (BUG-020).
+    if (isCommentAnchorOnlyChange(existingContent, content, data)) delete updatePayload.version;
 
     const result = await prisma.note.updateMany({
       where: {
@@ -175,15 +177,27 @@ export async function updateNote(
     return { success: true, version: updated?.version, updatedAt: updated?.updatedAt };
   }
 
-  const result = await prisma.note.updateMany({ where: versionedWhere(existing.id, data.expectedVersion), data: updatePayload });
-  if (result.count !== 1) {
-    const latest = await prisma.note.findUnique({ where: { id: existing.id }, select: { version: true } });
-    return { success: false, conflict: true, currentVersion: latest?.version ?? null };
+  // Anchors other members added are missing from this writer's copy; keep them on blocks that still match (BUG-020).
+  // The content guard catches an anchor saved after the read (it does not bump the version); one retry re-applies it.
+  let storedContent = existing.content;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (content !== undefined) updatePayload.content = restoreCommentAnchors(replacePrivateStorageUrls(storedContent ?? "", {}), content);
+    const result = await prisma.note.updateMany({
+      where: { ...versionedWhere(existing.id, data.expectedVersion), content: storedContent },
+      data: updatePayload,
+    });
+    if (result.count === 1) {
+      await revision();
+      const updated = await prisma.note.findUnique({ where: { id: existing.id }, select: { version: true, updatedAt: true } });
+      return { success: true, version: updated?.version, updatedAt: updated?.updatedAt };
+    }
+    const latest = await prisma.note.findUnique({ where: { id: existing.id }, select: { version: true, content: true } });
+    if (attempt === 1 || !latest || latest.content === storedContent) {
+      return { success: false, conflict: true, currentVersion: latest?.version ?? null };
+    }
+    storedContent = latest.content;
   }
-  await revision();
-
-  const updated = await prisma.note.findUnique({ where: { id: existing.id }, select: { version: true, updatedAt: true } });
-  return { success: true, version: updated?.version, updatedAt: updated?.updatedAt };
+  return { success: false, conflict: true, currentVersion: null };
 }
 
 const COMMENT_ANCHOR_ATTRIBUTE = /\sdata-comment-anchor-id="([^"]*)"/g;
@@ -191,6 +205,40 @@ const COMMENT_ANCHOR_ATTRIBUTE = /\sdata-comment-anchor-id="([^"]*)"/g;
 // Same normalization as normalizeNoteHtml in useNoteCommentPersistence: the editor drops whitespace at block edges on load (BUG-019).
 function withoutCommentAnchors(html: string) {
   return html.replace(COMMENT_ANCHOR_ATTRIBUTE, "").replace(/\s*class=""\s*/g, "").replace(/<p><\/p>/g, "").replace(/\s+/g, " ").replace(/>\s+/g, ">").replace(/\s+</g, "<").trim();
+}
+
+const TEXT_BLOCK = /<(p|h[1-6])\b([^>]*)>([\s\S]*?)<\/\1>/gi;
+const ANCHOR_ID = /\sdata-comment-anchor-id="([^"]*)"/;
+
+/**
+ * Puts stored comment anchors that the incoming HTML lacks back on the block with the same text, matched by the
+ * occurrence of that text. An anchor whose block was edited or removed is dropped and its thread becomes orphaned.
+ */
+export function restoreCommentAnchors(storedHtml: string, incomingHtml: string) {
+  const present = new Set(Array.from(incomingHtml.matchAll(COMMENT_ANCHOR_ATTRIBUTE), match => match[1]));
+  const missing = new Map<string, string[]>();
+  const storedSeen = new Map<string, number>();
+  for (const [, , attrs, inner] of storedHtml.matchAll(TEXT_BLOCK)) {
+    const text = withoutCommentAnchors(inner);
+    const occurrence = storedSeen.get(text) ?? 0;
+    storedSeen.set(text, occurrence + 1);
+    const id = attrs.match(ANCHOR_ID)?.[1];
+    if (!id || present.has(id)) continue;
+    const ids = missing.get(text) ?? [];
+    ids[occurrence] = id;
+    missing.set(text, ids);
+  }
+  if (missing.size === 0) return incomingHtml;
+
+  const incomingSeen = new Map<string, number>();
+  return incomingHtml.replace(TEXT_BLOCK, (whole, tag: string, attrs: string, inner: string) => {
+    const text = withoutCommentAnchors(inner);
+    const occurrence = incomingSeen.get(text) ?? 0;
+    incomingSeen.set(text, occurrence + 1);
+    const id = missing.get(text)?.[occurrence];
+    if (!id || ANCHOR_ID.test(attrs)) return whole;
+    return `<${tag}${attrs} data-comment-anchor-id="${id}">${inner}</${tag}>`;
+  });
 }
 
 /** True when the request only adds comment anchors to an unchanged Note, guarded by the comment path's content check. */
