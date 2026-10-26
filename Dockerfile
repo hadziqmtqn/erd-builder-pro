@@ -31,6 +31,22 @@ COPY . .
 # Build the frontend (Vite)
 RUN npm run build
 
+# Native Addon Builder Stage (builds better-sqlite3 with C++ toolchain)
+FROM node:26-alpine AS addon-builder
+
+WORKDIR /app
+
+COPY package*.json ./
+
+# Install production dependencies without running scripts
+RUN npm ci --omit=dev --ignore-scripts --fetch-timeout=300000
+
+# Install build tools for better-sqlite3 native compilation
+RUN apk add --no-cache python3 make g++
+
+# Rebuild better-sqlite3 native addon against node:26-alpine ABI
+RUN npm_config_build_from_source=true npm rebuild better-sqlite3 || echo "WARNING: better-sqlite3 rebuild failed"
+
 # Production Stage
 FROM node:26-alpine
 
@@ -46,16 +62,15 @@ COPY package*.json ./
 # Install the locked production dependencies without running postinstall.
 # prisma CLI is needed at runtime for client regeneration + db push
 # better-sqlite3: native addon required by @prisma/adapter-better-sqlite3 for SQLite mode
-# --ignore-scripts prevents native compilation; we rebuild explicitly below
+# --ignore-scripts prevents native compilation; built module is copied from addon-builder below
 # --fetch-timeout=300000 handles slow/distanced npm registries
 RUN npm ci --omit=dev --ignore-scripts --fetch-timeout=300000
 
-# Install build tools for better-sqlite3 native compilation + psql for PostgreSQL probing
-RUN apk add --no-cache postgresql-client python3 make g++
+# Install runtime dependencies only (postgresql-client for psql database probing)
+RUN apk add --no-cache postgresql-client
 
-# Rebuild better-sqlite3 native addon against this container's Node.js ABI
-# npm_config_build_from_source=true ensures compilation even without prebuild binaries
-RUN npm_config_build_from_source=true npm rebuild better-sqlite3 || echo "WARNING: better-sqlite3 rebuild failed (SQLite mode will not work)"
+# Copy built better-sqlite3 native addon from addon-builder stage
+COPY --from=addon-builder /app/node_modules/better-sqlite3 ./node_modules/better-sqlite3
 
 # Copy pre-generated Prisma client from build stage (fallback for Supabase)
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
