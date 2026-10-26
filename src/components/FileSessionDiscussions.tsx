@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useWorkspace } from '@/providers/WorkspaceContext';
 import { DiscussionsPanel, type CollaborationContext, type CollaborationFeatureType } from './diagram/DiscussionsPanel';
 import type { PaneFile } from '@/lib/file-panes';
+import { noteAnchorText } from '@/lib/noteAnchorMerge';
 
 export function FileSessionDiscussions({ file, active, target, teamId }: { file: PaneFile; active: boolean; target: HTMLElement | null; teamId?: string | null }) {
   const workspace = useWorkspace();
@@ -27,6 +28,6 @@ export function FileSessionDiscussions({ file, active, target, teamId }: { file:
     <DiscussionsPanel projectId={String(projectId)} teamId={String(teamId)} fileContext={{ featureType, fileId: file.uid, label: document.title || document.name || file.title }}
       userId={workspace.user?.id ? String(workspace.user.id) : undefined} userName={workspace.user?.name || workspace.user?.email}
       readOnly={workspace.getFileAccessRole(document) === 'viewer'} anchorContext={anchor} onContextSelected={onContextSelected}
-      anchorPreview={featureType === 'note' ? id => new DOMParser().parseFromString(document.content || '', 'text/html').querySelector(`[data-comment-anchor-id="${CSS.escape(id)}"]`)?.textContent?.trim() || null : undefined} />
+      anchorPreview={featureType === 'note' ? id => noteAnchorText(document.content, id) : undefined} />
   </span>, target);
 }

@@ -381,7 +381,8 @@ async function listComments(req: Request, res: Response, resource: ScopedResourc
   const threads = await prisma!.$queryRawUnsafe<Array<Record<string, any>>>(`
     SELECT t."id", t."feature_type" AS "featureType", t."file_id" AS "fileId",
       t."anchor_type" AS "anchorType", t."anchor_id" AS "anchorId", t."anchor_label" AS "anchorLabel",
-      t."status", latest."id" AS "latestMessageId", latest."body" AS "latestMessage",
+      t."status", (t."created_by" = ${actorRef}) AS "canDelete",
+      latest."id" AS "latestMessageId", latest."body" AS "latestMessage",
       latest."author_id" AS "latestAuthorId", latest."created_at" AS "lastMessageAt",
       recent."previewMessages",
       EXISTS (
@@ -518,18 +519,19 @@ router.get("/anchor", async (req, res) => {
       return;
     }
     const anchorLabel = await resolveCommentAnchorLabel(scopedFile, anchorType, anchorId);
-    if (!anchorLabel) { res.status(404).json(notFound); return; }
     const scopedFileId = String(scopedFile.id);
     const threads = await prisma.$queryRawUnsafe<Array<Record<string, any>>>(`
       SELECT t."id", t."feature_type" AS "featureType", t."file_id" AS "fileId",
         t."anchor_type" AS "anchorType", t."anchor_id" AS "anchorId", t."anchor_label" AS "anchorLabel",
-        t."status", t."created_by" AS "createdBy", t."updated_at" AS "lastMessageAt"
+        t."status", t."created_by" AS "createdBy", (t."created_by" = $7) AS "canDelete", t."updated_at" AS "lastMessageAt"
       FROM "comment_threads" t
       WHERE t."project_id" = $1 AND t."team_id" = $2
         AND t."feature_type" = $3 AND t."file_id" = $4
         AND t."anchor_type" = $5 AND t."anchor_id" = $6
       ORDER BY t."updated_at" DESC, t."id" DESC
-    `, resource.projectId, actor.teamId, featureType, scopedFileId, anchorType, anchorId);
+    `, resource.projectId, actor.teamId, featureType, scopedFileId, anchorType, anchorId, actor.id);
+    // A thread whose block was deleted stays readable from the file's comment list (COL-005); an unknown anchor stays not-found.
+    if (!anchorLabel && !threads.length) { res.status(404).json(notFound); return; }
     const cursorClause = paging.cursor
       ? `AND (m."created_at" < $7 OR (m."created_at" = $7 AND m."id" < $8))`
       : "";

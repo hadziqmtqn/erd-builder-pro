@@ -512,6 +512,59 @@ describe("Cloud ERD discussions scope", () => {
         messages: [expect.objectContaining({ id: "message-1", body: "Keep this table tenant-scoped." })],
         threads: [expect.objectContaining({ id: "thread-1", anchorId: "entity-1" })],
       });
+      // Only the thread's creator gets a Delete action (COL-005); the server still checks `created_by` on DELETE.
+      const threadQuery = mocks.queryRaw.mock.calls.find(([query]) => String(query).includes('FROM "comment_threads" t'));
+      expect(threadQuery?.[0]).toContain('(t."created_by" = $7) AS "canDelete"');
+      expect(threadQuery?.[7]).toBe("member-a");
+    });
+  });
+
+  it("keeps a comment thread readable after its anchored block or table is deleted", async () => {
+    mocks.queryRaw.mockImplementation(async (query: string) => {
+      if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
+      if (query.includes('FROM "diagrams" f')) return [{ id: 42, uid: "diagram-uid", projectId: 7, label: "ERD" }];
+      if (query.includes('FROM "entities"')) return [];
+      if (query.includes('FROM "comment_threads" t')) return [{ id: "thread-1", anchorLabel: "users", status: "open", createdBy: "member-a" }];
+      if (query.includes('FROM "comment_messages" m')) return [{ id: "message-1", threadId: "thread-1", authorId: "member-a", authorName: "Member A", body: "Old note", createdAt: "2026-09-29T10:00:00.000Z" }];
+      return [];
+    });
+
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/projects/7/comments/anchor?feature_type=diagram&file_id=diagram-uid&anchor_type=table&anchor_id=entity-gone`);
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.messages).toEqual([expect.objectContaining({ id: "message-1" })]);
+      expect(data.contexts[0].anchorLabel).toBe("users");
+    });
+  });
+
+  it("answers not-found for an unknown anchor with no thread", async () => {
+    mocks.queryRaw.mockImplementation(async (query: string) => {
+      if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
+      if (query.includes('FROM "diagrams" f')) return [{ id: 42, uid: "diagram-uid", projectId: 7, label: "ERD" }];
+      return [];
+    });
+
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/projects/7/comments/anchor?feature_type=diagram&file_id=diagram-uid&anchor_type=table&anchor_id=entity-gone`);
+      expect(response.status).toBe(404);
+    });
+    expect(mocks.queryRaw.mock.calls.some(([query]) => String(query).includes('FROM "comment_messages" m'))).toBe(false);
+  });
+
+  it("tells the member which file comment threads they may delete", async () => {
+    mocks.queryRaw.mockImplementation(async (query: string) => {
+      if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
+      if (query.includes('FROM "diagrams" f')) return [{ id: 42, uid: "diagram-uid", projectId: 7, label: "ERD" }];
+      return [];
+    });
+
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/projects/7/comments?feature_type=diagram&file_id=diagram-uid`);
+      expect(response.status).toBe(200);
+      const listQuery = mocks.queryRaw.mock.calls.find(([query]) => String(query).includes('FROM "comment_threads" t') && String(query).includes('"previewMessages"'));
+      expect(listQuery?.[0]).toContain('(t."created_by" = $5) AS "canDelete"');
+      expect(listQuery?.[5]).toBe("member-a");
     });
   });
 

@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  COMMENT_STEP, fetchAnchorPage, hiddenCount, markCommentRead, postComment, setCommentStatus, visibleMessages,
+  COMMENT_STEP, deleteCommentThread, editComment, fetchAnchorPage, hiddenCount, markCommentRead, postComment, setCommentStatus, visibleMessages,
   type CommentAnchorRef, type CommentFileRef, type CommentMessage, type CommentPage,
 } from '@/lib/fileComments';
 
-/** One comment thread (one anchor): newest 10 messages, "Show old comments" for 10 more, send, and resolve. */
+/** One comment thread (one anchor): newest 10 messages, "Show old comments" for 10 more, send, edit, resolve, and delete. */
 export function useCommentThread(file: CommentFileRef, anchor: CommentAnchorRef, enabled = true) {
   const [messages, setMessages] = useState<CommentMessage[]>([]);
   const [threadId, setThreadId] = useState<string | null>(null);
+  const [createdBy, setCreatedBy] = useState<string | null>(null);
   const [status, setStatus] = useState<'open' | 'resolved'>('open');
   const [cursor, setCursor] = useState<CommentPage['nextCursor']>(null);
   const [shown, setShown] = useState(COMMENT_STEP);
@@ -19,6 +20,7 @@ export function useCommentThread(file: CommentFileRef, anchor: CommentAnchorRef,
 
   const apply = useCallback((page: CommentPage, merge: boolean) => {
     setThreadId(page.threadId);
+    setCreatedBy(page.createdBy);
     setStatus(page.status);
     setCursor(page.nextCursor);
     setMessages((current) => {
@@ -37,6 +39,7 @@ export function useCommentThread(file: CommentFileRef, anchor: CommentAnchorRef,
       if (current !== requestId.current) return;
       setMessages(page.messages);
       setThreadId(page.threadId);
+      setCreatedBy(page.createdBy);
       setStatus(page.status);
       setCursor(page.nextCursor);
       if (page.threadId) void markCommentRead(file, page.threadId);
@@ -50,7 +53,7 @@ export function useCommentThread(file: CommentFileRef, anchor: CommentAnchorRef,
   }, [key]);
 
   useEffect(() => {
-    setMessages([]); setThreadId(null); setShown(COMMENT_STEP); setCursor(null);
+    setMessages([]); setThreadId(null); setCreatedBy(null); setShown(COMMENT_STEP); setCursor(null);
     if (enabled) void load();
     return () => { requestId.current++; };
   }, [enabled, key, load]);
@@ -98,12 +101,50 @@ export function useCommentThread(file: CommentFileRef, anchor: CommentAnchorRef,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadId, status, key, load]);
 
+  const edit = useCallback(async (message: CommentMessage, body: string) => {
+    const text = body.trim();
+    if (!threadId || !text || sending) return false;
+    if (text === message.body) return true;
+    setSending(true);
+    setError('');
+    try {
+      await editComment(file, threadId, message, text);
+      setMessages((current) => current.map((item) => item.id === message.id ? { ...item, body: text } : item));
+      return true;
+    } catch (cause: any) {
+      setError(cause?.status === 409 ? 'This comment changed. Check the latest text and edit again.' : 'Could not edit the comment. Try again.');
+      await load();
+      return false;
+    } finally {
+      setSending(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadId, sending, key, load]);
+
+  const deleteThread = useCallback(async () => {
+    if (!threadId || sending) return false;
+    setSending(true);
+    setError('');
+    try {
+      await deleteCommentThread(file, threadId);
+      requestId.current++;
+      setMessages([]); setThreadId(null); setCreatedBy(null); setCursor(null);
+      return true;
+    } catch {
+      setError('Could not delete this comment. Refresh and try again.');
+      return false;
+    } finally {
+      setSending(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadId, sending, key]);
+
   return {
     messages: visibleMessages(messages, shown),
     hidden: hiddenCount(messages.length, shown) + (cursor ? 1 : 0),
     hasOlder: hiddenCount(messages.length, shown) > 0 || Boolean(cursor),
     total: messages.length,
-    threadId, status, loading, sending, error,
-    showOlder, send, toggleResolved, reload: load,
+    threadId, createdBy, status, loading, sending, error,
+    showOlder, send, edit, toggleResolved, deleteThread, reload: load,
   };
 }

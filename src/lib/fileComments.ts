@@ -19,6 +19,8 @@ export type CommentMarker = {
 };
 export type CommentPage = {
   threadId: string | null;
+  /** Who started the thread: only they may delete it. */
+  createdBy: string | null;
   status: 'open' | 'resolved';
   messages: CommentMessage[];
   hasMore: boolean;
@@ -70,6 +72,7 @@ export async function fetchAnchorPage(file: CommentFileRef, anchor: CommentAncho
   const next = pick(body, 'nextCursor', 'next_cursor');
   return {
     threadId: thread ? String(thread.id) : null,
+    createdBy: thread ? String(pick(thread, 'createdBy', 'created_by') ?? '') || null : null,
     status: thread?.status === 'resolved' ? 'resolved' : 'open',
     messages: (body.messages || []).map((message: any): CommentMessage => ({
       id: String(message.id),
@@ -89,7 +92,7 @@ export async function postComment(file: CommentFileRef, anchor: CommentAnchorRef
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ body, context: { type: anchor.type, id: anchor.id, featureType: file.featureType, fileId: file.fileId } }),
   }));
-  window.dispatchEvent(new CustomEvent('collaboration-updated', { detail: { teamId: file.teamId, projectId: file.projectId } }));
+  notifyCommentChange(file);
 }
 
 export async function setCommentStatus(file: CommentFileRef, threadId: string, status: 'open' | 'resolved'): Promise<void> {
@@ -98,6 +101,26 @@ export async function setCommentStatus(file: CommentFileRef, threadId: string, s
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status }),
   }));
+  notifyCommentChange(file);
+}
+
+/** The author edits their own message; `expectedBody` makes the server refuse an edit over a newer change. */
+export async function editComment(file: CommentFileRef, threadId: string, message: Pick<CommentMessage, 'id' | 'body'>, body: string): Promise<void> {
+  await json(await apiFetch(`${base(file)}/${encodeURIComponent(threadId)}/messages/${encodeURIComponent(message.id)}?${fileQuery(file)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ body, expectedBody: message.body }),
+  }));
+  notifyCommentChange(file);
+}
+
+/** The thread's creator deletes it with all its messages; the server answers not-found for anyone else. */
+export async function deleteCommentThread(file: CommentFileRef, threadId: string): Promise<void> {
+  await json(await apiFetch(`${base(file)}/${encodeURIComponent(threadId)}?${fileQuery(file)}`, { method: 'DELETE' }));
+  notifyCommentChange(file);
+}
+
+function notifyCommentChange(file: CommentFileRef) {
   window.dispatchEvent(new CustomEvent('collaboration-updated', { detail: { teamId: file.teamId, projectId: file.projectId } }));
 }
 

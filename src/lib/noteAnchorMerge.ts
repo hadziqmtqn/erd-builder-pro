@@ -24,3 +24,13 @@ export function mergeServerCommentAnchors(serverHtml: string, draftHtml: string)
   });
   return added && !conflict ? merged : null;
 }
+
+/**
+ * The text of the Note block a comment anchors to: `null` when no block holds the anchor any more (the block was deleted),
+ * `undefined` while the Note content is not loaded, so a caller never mistakes loading for a deleted block.
+ */
+export function noteAnchorText(content: string | null | undefined, anchorId: string): string | null | undefined {
+  if (content == null) return undefined;
+  const block = new DOMParser().parseFromString(String(content), 'text/html').querySelector(`[data-comment-anchor-id="${CSS.escape(anchorId)}"]`);
+  return block ? block.textContent?.trim() ?? '' : null;
+}
