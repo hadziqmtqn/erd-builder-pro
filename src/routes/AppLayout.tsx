@@ -846,7 +846,8 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
           discussionPanel={session ? <span ref={setDiscussionTarget} className="contents" /> : discussionPanel}
         /></FileSessionContext.Provider>
 
-        {!isPublicView && !canEditActiveDocument && (
+        {/* activeDocument keeps the last opened file on Team, Users and other non-file pages; the notice belongs to a file view only. */}
+        {!isPublicView && entityContext && !canEditActiveDocument && (
           <div className="mx-4 mt-3 flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm" role="status">
             <Eye className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
             <span className="min-w-0 flex-1 text-muted-foreground">
