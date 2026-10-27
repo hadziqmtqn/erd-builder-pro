@@ -29,10 +29,18 @@ elif echo "$DATABASE_URL" | grep -q "^postgresql://"; then
   # Extract database name from URL: postgresql://user:***@host:port/dbname?params
   DB_NAME=$(echo "$DATABASE_URL" | awk -F'/' '{print $NF}' | awk -F'?' '{print $1}')
 
-  # Wait for PostgreSQL to be reachable (handles container startup races)
+  # Admin URL points to the default 'postgres' database (always exists). Anchor the
+  # replacement to the last path segment so a user named like the database is kept.
+  ADMIN_URL="$DATABASE_URL"
+  if [ -n "$DB_NAME" ]; then
+    ADMIN_URL=$(echo "$DATABASE_URL" | sed -E "s#/${DB_NAME}(\?.*)?\$#/postgres\1#")
+  fi
+
+  # Wait for PostgreSQL to be reachable (handles container startup races).
+  # Probe the admin database: the target database may not exist yet.
   echo "Waiting for PostgreSQL to accept connections..."
   for i in $(seq 1 30); do
-    if psql "$DATABASE_URL" -c "SELECT 1" >/dev/null 2>&1; then
+    if psql "$ADMIN_URL" -c "SELECT 1" >/dev/null 2>&1; then
       echo "PostgreSQL ready after ${i}s"
       break
     fi
@@ -43,8 +51,6 @@ elif echo "$DATABASE_URL" | grep -q "^postgresql://"; then
   done
 
   if [ -n "$DB_NAME" ] && [ "$DB_NAME" != "postgres" ]; then
-    # Build admin URL pointing to the default 'postgres' database (always exists).
-    ADMIN_URL=$(echo "$DATABASE_URL" | sed "s|/$DB_NAME|/postgres|")
     echo "Ensuring database \"${DB_NAME}\" exists..."
     if psql "$ADMIN_URL" -tc "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" | grep -q 1; then
       echo "Database \"${DB_NAME}\" already exists"
