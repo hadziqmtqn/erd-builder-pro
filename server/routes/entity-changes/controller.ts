@@ -55,7 +55,7 @@ export async function restore(req: Request, res: Response): Promise<void> {
     });
     if (result.status === "conflict") { res.status(409).json({ error: "Document changed while history was open", current_updated_at: result.currentUpdatedAt }); return; }
     if (result.status !== "ok") { res.status(404).json({ error: "Document or revision not found" }); return; }
-    publishFileChange(type.slice(0, -1) as LiveFileModel, req.params.uid);
+    publishFileChange(type.slice(0, -1) as LiveFileModel, req.params.uid, (req as any).user.id);
     res.json({ success: true, revision_id: result.revisionId ? String(result.revisionId) : null, updated_at: result.updatedAt });
   } catch (err) {
     handleError(res, err, "Failed to restore version");

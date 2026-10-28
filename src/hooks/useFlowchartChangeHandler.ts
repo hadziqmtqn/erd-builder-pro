@@ -68,6 +68,11 @@ export function useFlowchartChangeHandler(params: UseFlowchartChangeHandlerParam
     const flowchartId = activeFlowchartId;
     const dataString = JSON.stringify({ nodes: nodesData, edges: edgesData });
 
+    // Opening a file replays its stored data here; saving it again would bump the version and tell other
+    // editors about a change nobody made (BUG-023).
+    const stored = flowchartsRef.current.find(f => String(f.id) === String(flowchartId) || (f.uid && String(f.uid) === String(flowchartId)));
+    if (stored?.data === dataString) return;
+
     // Skip if data hasn't actually changed (prevents re-render loop)
     setFlowcharts(prev => {
       const existing = prev.find(f => String(f.id) === String(flowchartId) || (f.uid && String(f.uid) === String(flowchartId)));

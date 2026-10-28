@@ -39,6 +39,9 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
   const rAFIdRef = useRef<number | null>(null);
   const fileDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const lastEmittedDataRef = useRef<string | null>(null);
+  // What another member would see changed. Panning or selecting alone is not saved, so it neither signals other
+  // editors nor bumps the version under their next save (BUG-023).
+  const lastContentKeyRef = useRef<string | null>(null);
   const processNewFilesRef = useRef<((files: any) => Promise<void>) | null>(null);
 
   // Store callbacks in refs to prevent dependency cycles
@@ -91,6 +94,10 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
     // Dedup: skip if data hasn't changed from last emitted
     if (data === lastEmittedDataRef.current && !wasSanitized) return;
     lastEmittedDataRef.current = data;
+
+    const contentKey = sceneContentKey(elements, files, appState);
+    if (contentKey === lastContentKeyRef.current && !wasSanitized) return;
+    lastContentKeyRef.current = contentKey;
 
     const isEmpty = !elements || elements.length === 0;
     const hadData = lastDataRef.current &&
@@ -244,12 +251,15 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
     }
   }, [drawing.id, drawing.data]);
 
-  // initialData only seeds the mount; a read-only viewer must also follow the owner's later saves (BUG-023).
+  // initialData only seeds the mount, so data that did not come from this canvas (another member's save shown to a
+  // viewer, or "Load latest") is pushed into the scene (BUG-023). Runs before the effect below resets lastDataRef.
   useEffect(() => {
-    if (!isReadOnly || !excalidrawAPI || !initialData) return;
+    if (!excalidrawAPI || !initialData || drawing.data === lastDataRef.current) return;
+    // The loaded scene echoes back through onChange; it is not a new edit to save.
+    lastContentKeyRef.current = sceneContentKey(initialData.elements, initialData.files, excalidrawAPI.getAppState());
     excalidrawAPI.addFiles(Object.values(initialData.files));
     excalidrawAPI.updateScene({ elements: initialData.elements });
-  }, [isReadOnly, excalidrawAPI, initialData]);
+  }, [excalidrawAPI, initialData]);
 
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
@@ -311,6 +321,8 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
 
     // Only report changes if the scene is ready and we're not currently processing files
     if (!isReady.current || isProcessingFiles.current) {
+      // Seed once from the mounted scene; later not-ready windows may hold edits that still need saving.
+      if (!isReady.current && lastContentKeyRef.current === null) lastContentKeyRef.current = sceneContentKey(elements, files, appState);
       return;
     }
 
@@ -387,4 +399,8 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
       </div>
     </div>
   );
+}
+
+function sceneContentKey(elements: readonly any[], files: any, appState: any): string {
+  return JSON.stringify([elements, Object.keys(files || {}).sort(), appState?.viewBackgroundColor ?? null]);
 }

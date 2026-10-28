@@ -208,6 +208,8 @@ const FlowchartCanvas = React.memo(({
     };
   }, [activeFlowchartId, activeFlowchart.data]); // ← re-run when data loads asynchronously
 
+  const activeFlowchartDataRef = React.useRef(activeFlowchart.data);
+  activeFlowchartDataRef.current = activeFlowchart.data;
   const handleFlowchartChangeRef = React.useRef(handleFlowchartChange);
   useEffect(() => {
     handleFlowchartChangeRef.current = handleFlowchartChange;
@@ -218,6 +220,8 @@ const FlowchartCanvas = React.memo(({
     if (initialLoadRef.current || isParsingFromDataRef.current || isDraggingRef.current || isEditingEdgeRef.current || isEditingNodeRef.current) {
       return;
     }
+    // The canvas settling on the data it just loaded is not an edit; saving it would signal other editors (BUG-023).
+    if (activeFlowchartDataRef.current === JSON.stringify({ nodes, edges })) return;
     handleFlowchartChangeRef.current(nodes, edges);
   }, [nodes, edges]);
 

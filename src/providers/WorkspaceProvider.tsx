@@ -25,7 +25,7 @@ import { useDrawings } from '../hooks/useDrawings';
 import { useFlowcharts } from '../hooks/useFlowcharts';
 import { useTrash } from '../hooks/useTrash';
 import { useConnectionStatus } from '../hooks/useConnectionStatus';
-import { useSyncService } from '../hooks/useSyncService';
+import { offerLatestVersion, useSyncService } from '../hooks/useSyncService';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useFileChanges } from '../hooks/useFileChanges';
@@ -550,11 +550,18 @@ export function WorkspaceProvider({
     return () => window.removeEventListener('document-conflict-resolved', reload);
   }, [refreshActiveDocument]);
 
-  // A read-only viewer has no local edits to lose, so the owner's saves replace the view as they arrive (BUG-023).
+  // A read-only viewer has no local edits to lose, so other people's saves replace the view as they arrive (BUG-023).
+  // An editor may be mid-edit, so they are offered the latest version instead of having it swapped under them.
   const liveRoute = ({ erd: 'diagrams', notes: 'notes', drawings: 'drawings', flowchart: 'flowcharts' } as Record<string, string>)[view];
   const liveUid = activeDocument?.uid ?? activeDocument?.id;
-  useFileChanges(!isPublicView && liveRoute && liveUid != null && isReadOnlyFile(activeDocument)
-    ? `/api/${liveRoute}/${encodeURIComponent(String(liveUid))}/events` : null, refreshActiveDocument);
+  useFileChanges(!isPublicView && liveRoute && liveUid != null
+    ? `/api/${liveRoute}/${encodeURIComponent(String(liveUid))}/events` : null, () => {
+    if (isReadOnlyFile(activeDocument)) { void refreshActiveDocument(); return; }
+    offerLatestVersion(view as DraftType, view === 'erd' ? activeDiagramId! : String(liveUid), {
+      title: 'Someone else saved this file',
+      description: 'Load the latest version to see their changes. Your unsaved edits are kept as a recovery copy.',
+    });
+  });
 
   // URL routing for /drawings/:uid
   useEffect(() => {

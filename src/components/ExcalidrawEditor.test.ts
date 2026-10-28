@@ -115,3 +115,15 @@ it('uploads an image added while the first upload is in flight', async () => {
   expect(saved.files.image.dataURL).toBe('/api/serve/first.png');
   expect(saved.files.second.dataURL).toBe('/api/serve/second.png');
 });
+
+it('saves content changes but not panning or selection alone', async () => {
+  vi.stubGlobal('window', { __TAURI_INTERNALS__: {} });
+  const { editor, onChange, files, elements, appState } = await setup();
+  const saves = onChange.mock.calls.length;
+  editor.onChange(elements, { ...appState, scrollX: 120, selectedElementIds: { shape: true } }, files);
+  await vi.advanceTimersByTimeAsync(501);
+  expect(onChange).toHaveBeenCalledTimes(saves);
+  editor.onChange([...elements, { id: 'box', type: 'rectangle' }], appState, files);
+  await vi.advanceTimersByTimeAsync(501);
+  expect(onChange).toHaveBeenCalledTimes(saves + 1);
+});

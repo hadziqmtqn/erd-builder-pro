@@ -24,7 +24,7 @@ describe("file change stream", () => {
     controller = new AbortController();
     const app = express();
     app.use((req, _res, next) => {
-      (req as any).user = { id: "viewer" };
+      (req as any).user = { id: req.get("x-user") ?? "viewer" };
       runWithTeamScope({ mode: "team", teamId: "team-1" }, next);
     });
     app.get("/notes/:uid/events", fileChangeStream("note"));
@@ -52,7 +52,16 @@ describe("file change stream", () => {
     expect(response.headers.get("content-type")).toBe("text/event-stream");
     expect(await next()).toContain(": ready");
     await fetch(`${base}/notes/${NOTE.uid}?fail=1`, { method: "PUT" });
-    await fetch(`${base}/notes/7`, { method: "PUT" });
+    await fetch(`${base}/notes/7`, { method: "PUT", headers: { "x-user": "editor" } });
+    expect(await next()).toBe("event: change\ndata: {}\n\n");
+    expect(mocks.noteFindFirst).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not signal the user's own save", async () => {
+    const { next } = await open();
+    await next();
+    await fetch(`${base}/notes/${NOTE.uid}`, { method: "PUT" });
+    await fetch(`${base}/notes/${NOTE.uid}`, { method: "PUT", headers: { "x-user": "editor" } });
     expect(await next()).toBe("event: change\ndata: {}\n\n");
     expect(mocks.noteFindFirst).toHaveBeenCalledTimes(2);
   });
@@ -68,7 +77,7 @@ describe("file change stream", () => {
     const { next } = await open();
     await next();
     mocks.canAccessTeam.mockResolvedValue(false);
-    await fetch(`${base}/notes/${NOTE.uid}`, { method: "PUT" });
+    await fetch(`${base}/notes/${NOTE.uid}`, { method: "PUT", headers: { "x-user": "editor" } });
     expect(await next()).toBe("");
   });
 });
