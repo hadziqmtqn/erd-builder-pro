@@ -186,6 +186,29 @@ describe.skipIf(!enabled)("COL-004 project roles in an isolated PostgreSQL schem
     expect(await inTeam(() => security.resolveNewFileProjectId(fixture.db, users.editor, project.id))).toBe(project.id);
   });
 
+  it("COL-007 lets a Manager, and only a Manager, restrict and restore a Staff creator", async () => {
+    const manager = await inTeam(() => access.listProjectAccess(project.id, users.manager));
+    const creatorRow = manager.ok && manager.data.members.find((member) => member.name === "creator");
+    expect(creatorRow).toMatchObject({ role: "owner", isCreator: true, canChange: true });
+    const own = await inTeam(() => access.listProjectAccess(project.id, users.creator));
+    expect(own.ok && own.data.members.find((member) => member.name === "creator")).toMatchObject({ canChange: false });
+    expect(own.ok && own.data.members.find((member) => member.name === "manager")).toMatchObject({ role: "manager", canChange: false });
+    expect(await inTeam(() => access.setProjectAccess(project.id, users.creator, users.creator, "viewer"))).toMatchObject({ ok: false, status: 400 });
+
+    const otherFile = await fixture.db.note.create({ data: { projectId: project.id, userId: users.editor, uid: id(), title: "Editor note", content: "<p>x</p>" } });
+    expect(await inTeam(() => access.setProjectAccess(project.id, users.manager, users.creator, "viewer"))).toMatchObject({ ok: true });
+    expect(await inTeam(() => roles.projectRoleFor(project.id, users.creator))).toBe("viewer");
+    // The restricted creator no longer manages access or edits other members' files in the Project.
+    expect(await inTeam(() => access.listProjectAccess(project.id, users.creator))).toMatchObject({ ok: false, status: 404 });
+    expect(await inTeam(() => notes.updateNote(otherFile.uid, users.creator, { content: "<p>blocked</p>" }))).toBeNull();
+    const audit = await fixture.db.teamAuditEvent.findFirst({ where: { action: "project_access_changed", actorId: users.manager } });
+    expect(JSON.parse(audit.metadata)).toEqual({ userId: users.creator, role: "viewer", previousRole: null });
+
+    expect(await inTeam(() => access.clearProjectAccess(project.id, users.manager, users.creator))).toMatchObject({ ok: true });
+    expect(await inTeam(() => roles.projectRoleFor(project.id, users.creator))).toBe("owner");
+    expect(await inTeam(() => notes.updateNote(otherFile.uid, users.creator, { content: "<p>restored</p>" }))).toMatchObject({ success: true });
+  });
+
   it("manages grants end to end: list, change, audit, remove, and cascade with the Project", async () => {
     const list = await inTeam(() => access.listProjectAccess(project.id, users.manager));
     expect(list.ok && Object.fromEntries(list.data.members.map((member) => [member.name, member.role]))).toEqual({
@@ -208,7 +231,6 @@ describe.skipIf(!enabled)("COL-004 project roles in an isolated PostgreSQL schem
     expect(await inTeam(() => access.listProjectAccess(otherProject.id, users.creator))).toMatchObject({ ok: false, status: 404 });
     expect(await inTeam(() => access.setProjectAccess(project.id, users.creator, users.outsider, "editor"))).toMatchObject({ ok: false, status: 404 });
     expect(await inTeam(() => access.setProjectAccess(project.id, users.creator, users.gone, "editor"))).toMatchObject({ ok: false, status: 404 });
-    expect(await inTeam(() => access.setProjectAccess(project.id, users.manager, users.creator, "viewer"))).toMatchObject({ ok: false, status: 400 });
     expect(await inTeam(() => access.setProjectAccess(project.id, users.creator, users.manager, "viewer"))).toMatchObject({ ok: false, status: 400 });
 
     await fixture.db.note.deleteMany({ where: { projectId: project.id } });

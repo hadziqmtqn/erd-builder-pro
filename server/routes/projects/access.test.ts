@@ -52,11 +52,11 @@ describe("Project access management (COL-004)", () => {
       ok: true,
       data: {
         members: [
-          { userId: "creator", name: "Creator", email: "c@example.test", teamRole: "staff", role: "owner", canChange: false },
-          { userId: "boss", name: "Boss", email: "b@example.test", teamRole: "manager", role: "manager", canChange: false },
-          { userId: "ed", name: "Ed", email: "e@example.test", teamRole: "staff", role: "editor", canChange: true },
-          { userId: "vi", name: "Vi", email: "v@example.test", teamRole: "staff", role: "viewer", canChange: true },
-          { userId: "new", name: "New", email: "n@example.test", teamRole: "staff", role: "commenter", canChange: true },
+          { userId: "creator", name: "Creator", email: "c@example.test", teamRole: "staff", role: "owner", isCreator: true, canChange: false },
+          { userId: "boss", name: "Boss", email: "b@example.test", teamRole: "manager", role: "manager", isCreator: false, canChange: false },
+          { userId: "ed", name: "Ed", email: "e@example.test", teamRole: "staff", role: "editor", isCreator: false, canChange: true },
+          { userId: "vi", name: "Vi", email: "v@example.test", teamRole: "staff", role: "viewer", isCreator: false, canChange: true },
+          { userId: "new", name: "New", email: "n@example.test", teamRole: "staff", role: "commenter", isCreator: false, canChange: true },
         ],
       },
     });

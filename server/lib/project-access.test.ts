@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("./prisma.js", () => ({ prisma: mocks }));
 vi.mock("./team-scope.js", () => ({ currentTeamScope: () => mocks.scope }));
 
-import { canCommentRole, canEditRole, canManageAccessRole, fileAccessRole, isForeignProjectMove, projectRoleFor, projectRolesFor } from "./project-access.js";
+import { canCommentRole, canEditRole, canManageAccessRole, effectiveRole, fileAccessRole, isForeignProjectMove, projectRoleFor, projectRolesFor } from "./project-access.js";
 
 function project(overrides: { userId?: string; manager?: boolean; grant?: string }) {
   return {
@@ -62,6 +62,16 @@ describe("Project role", () => {
     expect([canCommentRole("viewer"), canCommentRole(null)]).toEqual([false, false]);
     expect(["owner", "manager"].map((role) => canManageAccessRole(role as any))).toEqual([true, true]);
     expect(["editor", "commenter", "viewer", null].map((role) => canManageAccessRole(role as any))).toEqual([false, false, false, false]);
+  });
+});
+
+describe("Effective Project role (COL-007)", () => {
+  it("keeps the creator full until a Manager stores a role, and never limits a Manager", () => {
+    expect(effectiveRole(true, false, undefined)).toBe("owner");
+    expect(effectiveRole(true, false, "viewer")).toBe("viewer");
+    expect(effectiveRole(true, true, "viewer")).toBe("owner");
+    expect(effectiveRole(false, true, "viewer")).toBe("manager");
+    expect(effectiveRole(false, false, undefined)).toBe("commenter");
   });
 });
 

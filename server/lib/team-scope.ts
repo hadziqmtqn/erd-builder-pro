@@ -44,11 +44,14 @@ export function creatorFileIdentifierWhere(identifier: string, userId: string): 
   return { AND: [fileIdentifierWhere(identifier, userId), { userId }] };
 }
 
-/** Who keeps full access to a Team file whatever a Project grant says: its creator, the Project creator and Team Managers (COL-004). */
+/**
+ * Who keeps full access to a Team file whatever a Project grant says: its creator, Team Managers, and the Project
+ * creator until a Manager stores a role for them (COL-004, COL-007).
+ */
 function fullAccessWhere(userId: string): Record<string, unknown>[] {
   return [
     { userId },
-    { project: { userId } },
+    { project: { userId, accessGrants: { none: { userId } } } },
     { project: { team: { members: { some: { userId, role: "manager", status: "active" } } } } },
   ];
 }
