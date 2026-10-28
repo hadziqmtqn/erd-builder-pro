@@ -14,7 +14,7 @@ import { noteAnchorText } from '@/lib/noteAnchorMerge';
 import { toast } from 'sonner';
 import type { Node, Edge } from '@xyflow/react';
 import type { Entity } from '@/types';
-import { Sparkles, Database, PanelRightClose, Pencil, Eye, RefreshCw } from 'lucide-react';
+import { Sparkles, Database, PanelRightClose, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 // Components
@@ -78,7 +78,7 @@ import { closeRepositoryPreview, ERD_REPOSITORY_APPLIED_EVENT } from '@/lib/repo
 import { mergeDBMLCanvas } from '@/lib/dbml-canvas-merge';
 import { isRightPanelAvailable } from '@/lib/right-panel-availability';
 import { AIChatToggle } from '@/components/ai/AIChatToggle';
-import { isFileCreator, readOnlyNotice } from '@/lib/fileOwnership';
+import { isFileCreator } from '@/lib/fileOwnership';
 import { useSettledERDCanvas } from '@/contexts/ERDCanvasContext';
 import { getAppPageTitle } from '@/lib/app-page-title';
 
@@ -846,22 +846,6 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
           discussionPanel={session ? <span ref={setDiscussionTarget} className="contents" /> : discussionPanel}
         /></FileSessionContext.Provider>
 
-        {/* activeDocument keeps the last opened file on Team, Users and other non-file pages; the notice belongs to a file view only. */}
-        {!isPublicView && entityContext && !canEditActiveDocument && (
-          <div className="mx-4 mt-3 flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm" role="status">
-            <Eye className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-            <span className="min-w-0 flex-1 text-muted-foreground">
-              {readOnlyNotice(activeFileRole, activeDocument?.user?.name || activeDocument?.user?.email || 'another member')}
-            </span>
-            <Button type="button" variant="outline" size="sm" disabled={isRefreshing} onClick={refreshActiveDocument}>
-              <RefreshCw className={`size-3.5 ${isRefreshing ? 'animate-spin' : ''}`} aria-hidden="true" />
-              Refresh
-            </Button>
-            {!isGuest && (
-              <Button type="button" variant="outline" size="sm" onClick={handleDuplicate}>Duplicate to edit</Button>
-            )}
-          </div>
-        )}
         <div className="relative flex flex-1 flex-col gap-4 p-4 pt-4 min-h-0 overflow-hidden" style={{ isolation: 'isolate' } as React.CSSProperties}>
           {isTeamScopeRefreshing ? (
             <div className="flex flex-1 flex-col items-center justify-center rounded-xl border bg-muted/10" role="status" aria-live="polite">

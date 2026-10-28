@@ -12,6 +12,7 @@ import { paneKey, paneRequest, paneUrl, PANE_FLUSH_CHILDREN, PANE_REQUEST, valid
 import { flushPaneFile } from '@/lib/pane-save';
 import { NativeFileSession, type FileSession } from './NativeFileSession';
 import { ProjectFileTabs } from './ProjectFileTabs';
+import { ReadOnlyFileNotice } from './ReadOnlyFileNotice';
 import { Button } from './ui/button';
 import { AlertDialog, AlertDialogContent, AlertDialogBody, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter } from './ui/alert-dialog';
 
@@ -206,7 +207,7 @@ export function FileWorkspace({ children, root, mainAI, teamState, discussionTar
   return <FilePanesContext.Provider value={{ files: panes, focused, desktop, canSplit: Boolean(panes[0] ?? current), open, select, close }}>
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <ProjectFileTabs host currentView={selected.type} currentFile={selectedDocument} />
-      {!panes.length ? <div className="flex min-h-0 flex-1 flex-col overflow-hidden" {...inertWhileBusy}>{children}</div> : <div ref={host} className="flex min-h-0 flex-1 overflow-hidden" aria-label="Open files">
+      {!panes.length ? <div className="flex min-h-0 flex-1 flex-col overflow-hidden" {...inertWhileBusy}><ReadOnlyFileNotice />{children}</div> : <div ref={host} className="flex min-h-0 flex-1 overflow-hidden" aria-label="Open files">
         {panes.map((file, index) => {
           const key = paneKey(file);
           let sessionScope = scopes.current.get(key);

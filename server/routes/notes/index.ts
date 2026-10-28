@@ -2,6 +2,7 @@ import { Router } from "express";
 import { authenticate } from "../../lib/middleware.js";
 import { requireCloudCapability } from "../../lib/cloud-capability.js";
 import { validate, createNoteSchema } from "../../lib/validation.js";
+import { fileChangeStream, notifyFileChange } from "../../lib/file-live-sync.js";
 import * as ctrl from "./controller.js";
 
 const router = Router();
@@ -12,8 +13,9 @@ router.get("/", authenticate, cloudCapability, ctrl.list);
 router.post("/", authenticate, cloudCapability, validate(createNoteSchema), ctrl.create);
 router.get("/public/:uid", ctrl.getPublic);
 router.put("/:uid/share", authenticate, cloudCapability, ctrl.updateShare);
+router.get("/:uid/events", authenticate, cloudCapability, fileChangeStream("note"));
 router.get("/:uid", authenticate, cloudCapability, ctrl.get);
-router.put("/:uid", authenticate, cloudCapability, ctrl.update);
+router.put("/:uid", authenticate, cloudCapability, notifyFileChange("note"), ctrl.update);
 router.delete("/:uid", authenticate, cloudCapability, ctrl.remove);
 router.post("/:uid/restore", authenticate, cloudCapability, ctrl.restore);
 router.delete("/:uid/permanent", authenticate, cloudCapability, ctrl.permanentDelete);

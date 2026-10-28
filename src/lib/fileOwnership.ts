@@ -35,7 +35,7 @@ export function canCommentOnFile(item: any, userId?: string | null, isGuest = fa
 
 /** Describes why a file is read-only, for the notice above its content. Null when the user may edit it. */
 export function readOnlyNotice(role: FileAccessRole | null, ownerName: string): string | null {
-  if (role === 'viewer') return `View only · owned by ${ownerName}. You can read this file, but not comment on it or change it.`;
-  if (role === 'commenter' || role === null) return `Comment only · owned by ${ownerName}. Ask the creator or a Manager for Editor access to change this file.`;
+  if (role === 'viewer') return `View only · ${ownerName} owns this file. You can read it, but not comment or edit.`;
+  if (role === 'commenter' || role === null) return `Comment only · ${ownerName} owns this file. Ask them or a Manager for edit access.`;
   return null;
 }

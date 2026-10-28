@@ -16,8 +16,6 @@ interface ERDToolbarProps {
   addEntity: () => void;
   onImportSQL?: () => void;
   onAutoLayout?: () => void;
-  onRefresh?: () => void;
-  isRefreshingDocument?: boolean;
   setRightPanelMode: (mode: 'dbml' | 'repository') => void;
   handleSync: () => void;
   isSyncing: boolean;
@@ -29,7 +27,7 @@ interface ERDToolbarProps {
 }
 
 export function ERDToolbar({ nodes, isReadOnly, isProductionDb, addEntity, onImportSQL, onAutoLayout,
-  onRefresh, isRefreshingDocument, setRightPanelMode, handleSync, isSyncing, handleExportImage,
+  setRightPanelMode, handleSync, isSyncing, handleExportImage,
   undo, redo, canUndo, canRedo }: ERDToolbarProps) {
   const isMobile = useIsMobile();
   const action = (label: string, button: ReactElement<{ disabled?: boolean }>) => isMobile ? button : <Tooltip>
@@ -45,10 +43,6 @@ export function ERDToolbar({ nodes, isReadOnly, isProductionDb, addEntity, onImp
     <div role="group" aria-label="ERD tools" className={cn('flex gap-1.5 p-1.5 bg-background/95 backdrop-blur-md border border-border/50 rounded-2xl shadow-2xl pointer-events-auto no-scrollbar',
       isMobile ? 'items-center max-w-full overflow-x-auto' : 'flex-col items-center max-h-full overflow-y-auto')}>
       <JumpToNode nodes={nodes} label="Table" iconOnly={!isMobile} findShortcut={!isProductionDb} />
-      {onRefresh && action('Refresh to the latest version', <Button onClick={onRefresh} disabled={isRefreshingDocument} variant="outline"
-        size="icon-lg" className={isMobile ? 'border-border hover:bg-muted bg-muted/50 cursor-pointer' : undefined} aria-label="Refresh to the latest version" title={isMobile ? 'Refresh to the latest version' : undefined}>
-        <RefreshCw className={cn('size-3.5', isRefreshingDocument && 'animate-spin')} />
-      </Button>)}
       {!isReadOnly && <div className={cn('bg-border shrink-0', isMobile ? 'w-px h-6 mx-0.5' : 'h-px w-6 my-0.5')} />}
       {!isReadOnly && action('Add Table', <Button onClick={addEntity} size={isMobile ? 'sm' : 'icon-lg'} aria-label="Add Table"
         className={isMobile ? 'h-9 px-3 sm:px-4 font-bold shadow-lg shadow-primary/20 cursor-pointer' : undefined}>

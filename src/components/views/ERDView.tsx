@@ -116,8 +116,6 @@ interface ERDViewProps {
   onEdgeReconnect?: (edges: Edge[]) => void;
   comments?: ERDCommentsConfig;
   /** Refresh button next to Jump to Table, shown for view-only Team files (DATA-004). */
-  onRefresh?: () => void;
-  isRefreshingDocument?: boolean;
 }
 
 
@@ -165,8 +163,6 @@ const ERDViewComponent = ({
   dedupeEdgesByRelation,
   onEdgeReconnect,
   comments,
-  onRefresh,
-  isRefreshingDocument = false,
 }: ERDViewProps) => {
 
   const { registerContentHandler, setSelectionText, setActionContextData, setRightPanelMode } = useAIAction();
@@ -751,7 +747,6 @@ const ERDViewComponent = ({
       {!pendingDiff && <ERDToolbar
         nodes={nodes} isReadOnly={isReadOnly} isProductionDb={isProductionDb}
         addEntity={addEntity} onImportSQL={onImportSQL} onAutoLayout={onAutoLayout}
-        onRefresh={onRefresh} isRefreshingDocument={isRefreshingDocument}
         setRightPanelMode={setRightPanelMode} handleSync={handleSync} isSyncing={isSyncing}
         handleExportImage={handleExportImage} undo={undo} redo={redo} canUndo={canUndo} canRedo={canRedo}
       />}
@@ -873,7 +868,6 @@ export const ERDView = React.memo(ERDViewComponent, (prev, next) => {
     prev.isDbClient === next.isDbClient && prev.sourceConnectionId === next.sourceConnectionId &&
     prev.isActive === next.isActive &&
     prev.onAutoLayout === next.onAutoLayout && prev.onDatabaseSchemaApplied === next.onDatabaseSchemaApplied &&
-    prev.onRefresh === next.onRefresh && prev.isRefreshingDocument === next.isRefreshingDocument &&
     prev.comments?.projectId === next.comments?.projectId && prev.comments?.teamId === next.comments?.teamId && prev.comments?.fileId === next.comments?.fileId && prev.comments?.userId === next.comments?.userId &&
     sameViewport &&
     prev.selectedNodeId === next.selectedNodeId &&

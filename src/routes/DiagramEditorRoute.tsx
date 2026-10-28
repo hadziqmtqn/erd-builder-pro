@@ -206,8 +206,6 @@ export function DiagramEditorRoute() {
           handleExportSQL={handleWorkspaceExportSQL}
           handleExportImage={handleWorkspaceExportImage}
           isReadOnly={effectiveReadOnly}
-          onRefresh={!isPublicView && !isProductionDb && ctx.isReadOnlyFile(activeDiagram) ? ctx.refreshActiveDocument : undefined}
-          isRefreshingDocument={ctx.isRefreshing}
           isDbClient={isProductionDb}
           comments={comments}
           sourceConnectionId={sourceConnectionId}
