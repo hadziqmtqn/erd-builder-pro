@@ -10,6 +10,7 @@ import { CloudFeatureRoute } from '@/components/CloudFeatureRoute';
 import { paneKey, paneUrl, type PaneFile } from '@/lib/file-panes';
 import { flushPaneFile } from '@/lib/pane-save';
 import { FileSessionDiscussions } from './FileSessionDiscussions';
+import { ReadOnlyFileNotice } from './ReadOnlyFileNotice';
 
 const NoteEditorRoute = lazy(() => import('@/routes/NoteEditorRoute').then(m => ({ default: m.NoteEditorRoute })));
 const DiagramEditorRoute = lazy(() => import('@/routes/DiagramEditorRoute').then(m => ({ default: m.DiagramEditorRoute })));
@@ -38,6 +39,7 @@ function SessionPublisher({ file, scope, root, discussionTarget, onUpdate, teamS
   }, [file.previewSchema, workspace.isERDItemLoading, Boolean(workspace.activeDiagram), ai.applyContent]);
   return <WorkspaceContext.Provider value={workspace}>
     <FileSessionDiscussions file={file} active={scope.active.current} target={discussionTarget} teamId={(teamState as { activeTeamId?: string | null })?.activeTeamId} />
+    <ReadOnlyFileNotice />
     <Suspense fallback={<div role="status" className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Loading editor…</div>}><Outlet context={teamState} /></Suspense>
   </WorkspaceContext.Provider>;
 }

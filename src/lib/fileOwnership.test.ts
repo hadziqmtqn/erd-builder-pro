@@ -51,8 +51,8 @@ describe('file access role (COL-004)', () => {
   });
 
   it('words the notice by role and stays silent for those who can edit', () => {
-    expect(readOnlyNotice('viewer', 'Ana')).toContain('View only · owned by Ana');
-    expect(readOnlyNotice('commenter', 'Ana')).toContain('Comment only · owned by Ana');
+    expect(readOnlyNotice('viewer', 'Ana')).toContain('View only · Ana owns this file');
+    expect(readOnlyNotice('commenter', 'Ana')).toContain('Comment only · Ana owns this file');
     expect(readOnlyNotice(null, 'Ana')).toContain('Comment only');
     expect(readOnlyNotice('editor', 'Ana')).toBeNull();
     expect(readOnlyNotice('owner', 'Ana')).toBeNull();

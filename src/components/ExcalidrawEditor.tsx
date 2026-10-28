@@ -244,6 +244,13 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
     }
   }, [drawing.id, drawing.data]);
 
+  // initialData only seeds the mount; a read-only viewer must also follow the owner's later saves (BUG-023).
+  useEffect(() => {
+    if (!isReadOnly || !excalidrawAPI || !initialData) return;
+    excalidrawAPI.addFiles(Object.values(initialData.files));
+    excalidrawAPI.updateScene({ elements: initialData.elements });
+  }, [isReadOnly, excalidrawAPI, initialData]);
+
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
     
