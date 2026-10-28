@@ -14,3 +14,26 @@ export function normalizeFlowchartCanvas(nodes: Node<FlowchartNodeData>[], edges
   });
   return { nodes: normalizedNodes, edges: normalizedEdges };
 }
+
+/** Applies React Flow select changes to a list of selected ids, keeping the same array when nothing changed. */
+export function applySelectChanges(ids: string[], changes: { id: string; selected: boolean }[]): string[] {
+  const next = new Set(ids);
+  for (const change of changes) {
+    if (change.selected) next.add(change.id);
+    else next.delete(change.id);
+  }
+  return next.size === ids.length && ids.every(id => next.has(id)) ? ids : [...next];
+}
+
+/**
+ * Top-left position for a new symbol centred on `center` (canvas coordinates). Adding several without panning
+ * would stack them exactly, so each one steps down-right until its spot is free.
+ */
+export function newSymbolPosition(center: { x: number; y: number }, nodes: { position: { x: number; y: number } }[]) {
+  const position = { x: Math.round(center.x - 80), y: Math.round(center.y - 35) };
+  while (nodes.some(node => Math.abs(node.position.x - position.x) < 1 && Math.abs(node.position.y - position.y) < 1)) {
+    position.x += 24;
+    position.y += 24;
+  }
+  return position;
+}

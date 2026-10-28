@@ -40,7 +40,7 @@ export function compareFlowcharts(before: FlowchartCanvas, after: FlowchartCanva
     if (!old) { changes.push({ kind: 'Shape', status: 'Added', label: node.data.label, detail: node.data.shape }); continue; }
     unmatched.delete(old);
     matchedIds.set(node.id, old.id);
-    const fields = ['label', 'shape', 'color', 'section', 'code'] as const;
+    const fields = ['label', 'shape', 'color', 'section'] as const;
     const details = fields.filter(key => (old.data[key] ?? '') !== (node.data[key] ?? '')).map(key => `${key}: ${old.data[key] || '(empty)'} → ${node.data[key] || '(empty)'}`);
     if (details.length) changes.push({ kind: 'Shape', status: 'Changed', label: node.data.label, detail: details.join('; ') });
   }

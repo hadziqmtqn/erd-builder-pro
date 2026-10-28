@@ -1,6 +1,6 @@
-import React, { useState, memo, useMemo } from 'react';
+import React, { useState, memo, useMemo, createContext, useContext } from 'react';
 import { Handle, Position, NodeResizer } from '@xyflow/react';
-import { MessageSquare } from 'lucide-react';
+import { MessageSquare, Trash2 } from 'lucide-react';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { CommentMarker, OPEN_COMMENT_EVENT } from '@/components/diagram/ERDComments';
 import { DEFAULT_FLOWCHART_COLOR } from './flowchart/flowchartColors';
@@ -13,14 +13,17 @@ export interface FlowchartNodeData extends Record<string, unknown> {
   color: string;
   section?: string;
   groupId?: string;
-  code?: string;
   _commentsEnabled?: boolean;
   /** View-only file: no resize handles (DATA-004). */
   _readOnly?: boolean;
 }
 
+/** Actions the canvas offers from a symbol's context menu; absent on view-only canvases. */
+export const FlowchartNodeActions = createContext<{ requestDelete?: (id: string) => void }>({});
+
 const FlowchartNode = ({ data, id, selected }: { data: FlowchartNodeData, id: string, selected?: boolean }) => {
   const [isHovered, setIsHovered] = useState(false);
+  const { requestDelete } = useContext(FlowchartNodeActions);
   const displayColor = !data.color || data.color === DEFAULT_FLOWCHART_COLOR
     ? 'var(--flowchart-node-border)'
     : data.color;
@@ -231,21 +234,33 @@ const FlowchartNode = ({ data, id, selected }: { data: FlowchartNodeData, id: st
     </div>
   );
 
-  if (!data._commentsEnabled) return content;
+  if (!data._commentsEnabled && !requestDelete) return content;
 
   return (
     <ContextMenu>
       <ContextMenuTrigger className="contents">{content}</ContextMenuTrigger>
       <ContextMenuContent className="min-w-36" positionerClassName="z-[210]">
-        <ContextMenuItem onClick={(e) => {
-          // The menu is portaled, but React still bubbles the click to the node, which would open Symbol Properties.
-          e.preventDefault();
-          e.stopPropagation();
-          window.dispatchEvent(new CustomEvent(OPEN_COMMENT_EVENT, { detail: { type: "shape", id } }));
-        }}>
-          <MessageSquare aria-hidden="true" />
-          Comment
-        </ContextMenuItem>
+        {data._commentsEnabled && (
+          <ContextMenuItem onClick={(e) => {
+            // The menu is portaled, but React still bubbles the click to the node, which would open Symbol Properties.
+            e.preventDefault();
+            e.stopPropagation();
+            window.dispatchEvent(new CustomEvent(OPEN_COMMENT_EVENT, { detail: { type: "shape", id } }));
+          }}>
+            <MessageSquare aria-hidden="true" />
+            Comment
+          </ContextMenuItem>
+        )}
+        {requestDelete && (
+          <ContextMenuItem variant="destructive" onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            requestDelete(id);
+          }}>
+            <Trash2 aria-hidden="true" />
+            Delete
+          </ContextMenuItem>
+        )}
       </ContextMenuContent>
     </ContextMenu>
   );
