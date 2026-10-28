@@ -12,15 +12,18 @@ const HEARTBEAT_MS = 25_000;
 // The client reconnects through `authenticate`, so a revoked session stops receiving signals within this window.
 const MAX_STREAM_MS = 5 * 60_000;
 
-/** Signals that a file's content was saved. Only the identifier travels; viewers refetch through the normal GET. */
-export function publishFileChange(model: LiveFileModel, identifier: string): void {
-  changes.emit(model, String(identifier));
+/**
+ * Signals that a file's content was saved. Only the identifier travels; viewers refetch through the normal GET.
+ * The saving user is not signalled, so an editor is told only about other people's saves.
+ */
+export function publishFileChange(model: LiveFileModel, identifier: string, actorId: string): void {
+  changes.emit(model, String(identifier), String(actorId));
 }
 
 /** Route middleware for content writes: publishes once the response succeeded. */
 export function notifyFileChange(model: LiveFileModel) {
   return (req: Request, res: Response, next: NextFunction) => {
-    res.on("finish", () => { if (res.statusCode < 300) publishFileChange(model, req.params.uid); });
+    res.on("finish", () => { if (res.statusCode < 300) publishFileChange(model, req.params.uid, (req as any).user?.id); });
     next();
   };
 }
@@ -52,8 +55,8 @@ export function fileChangeStream(model: LiveFileModel) {
       changes.off(model, onChange);
       res.end();
     };
-    const onChange = (identifier: string) => {
-      if (!keys.has(identifier)) return;
+    const onChange = (identifier: string, actorId: string) => {
+      if (!keys.has(identifier) || actorId === String(user.id)) return;
       void inScope(readable).then(current => {
         if (closed) return;
         if (!current) close();

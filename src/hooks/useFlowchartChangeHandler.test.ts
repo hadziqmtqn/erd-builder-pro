@@ -30,3 +30,19 @@ it('saves an empty canvas through the existing debounce and sync path', async ()
   expect(sync).toHaveBeenCalledOnce();
   expect(broadcast).toHaveBeenCalledOnce();
 });
+
+it('does not save the stored data again when a file is opened', async () => {
+  vi.useFakeTimers();
+  const flowcharts = { current: [{ id: 1, uid: 'flow', title: 'Opened', data: '{"nodes":[],"edges":[]}' }] };
+  const saveFlowchart = vi.fn().mockResolvedValue(undefined);
+  const handler = useFlowchartChangeHandler({
+    activeFlowchartId: 'flow', isIncomingSyncRef: { current: false }, flowchartsRef: flowcharts,
+    lastLoadedFlowchartIdRef: { current: 'flow' }, lastSaveCallRef: { current: 0 },
+    setIsLocalSaving: vi.fn(), saveFlowchart, setFlowcharts: vi.fn(),
+    broadcastMessage: vi.fn(), triggerDebouncedSync: vi.fn(),
+    isRefreshing: false, isFlowchartItemLoading: false,
+  });
+  handler.handleFlowchartChange([], []);
+  await vi.advanceTimersByTimeAsync(1500);
+  expect(saveFlowchart).not.toHaveBeenCalled();
+});

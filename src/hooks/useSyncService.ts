@@ -305,10 +305,23 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
 
 /** Tell the user a save was refused and let them load the newer version; their local copy is kept as a recovery draft. */
 function announceConflict(type: DraftType, id: string | number, conflicts: Set<string>) {
-  toast.error('This file was changed by someone else', {
+  offerLatestVersion(type, id, {
+    title: 'This file was changed by someone else',
+    description: 'Your unsaved changes were not sent so nothing is overwritten.',
+  }, () => conflicts.delete(`${type}:${id}`));
+}
+
+/** Offers the server's latest version of an open file in place; any local draft is kept as a recovery copy first. */
+export function offerLatestVersion(
+  type: DraftType,
+  id: string | number,
+  message: { title: string; description: string },
+  onLoad?: () => void,
+) {
+  toast.error(message.title, {
     id: `conflict:${type}:${id}`,
     duration: Infinity,
-    description: 'Your unsaved changes were not sent so nothing is overwritten.',
+    description: message.description,
     action: {
       label: 'Load latest',
       onClick: async () => {
@@ -316,13 +329,12 @@ function announceConflict(type: DraftType, id: string | number, conflicts: Set<s
         if (draft) await localPersistence.saveDraft(type, `${id}:recovery`, draft.data, false);
         await localPersistence.deleteDraft(type, id);
         await clearCachedDiagramVersion(documentVersionKey(type, id));
-        conflicts.delete(`${type}:${id}`);
+        onLoad?.();
         window.dispatchEvent(new CustomEvent('document-conflict-resolved'));
       },
     },
   });
 }
-
 
 /**
  * A Note save refused with 409 may only be missing comment anchors that another member added. In that case copy them
