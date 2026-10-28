@@ -19,9 +19,10 @@ import {
 import '@xyflow/react/dist/style.css';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, Loader2, Undo2, Redo2, Move, LayoutGrid, Eraser } from 'lucide-react';
+import { Plus, Loader2, Undo2, Redo2, Move, LayoutGrid, Eraser, Trash2 } from 'lucide-react';
+import { ContextMenu, ContextMenuContent, ContextMenuItem } from '@/components/ui/context-menu';
 import ConfirmModal from '@/components/ConfirmModal';
-import { normalizeFlowchartCanvas } from '@/lib/flowchart-canvas';
+import { applySelectChanges, newSymbolPosition, normalizeFlowchartCanvas } from '@/lib/flowchart-canvas';
 import {
   Select,
   SelectContent,
@@ -33,7 +34,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useFlowchartHistoryShortcuts } from '@/hooks/useFlowchartHistoryShortcuts';
 
-import FlowchartNode, { FlowchartNodeData } from '../FlowchartNode';
+import FlowchartNode, { FlowchartNodeActions, FlowchartNodeData } from '../FlowchartNode';
 import { initialNodes, initialEdges } from '../flowchart/flowchartConstants';
 import { DEFAULT_FLOWCHART_COLOR } from '../flowchart/flowchartColors';
 import { Flowchart } from '@/types';
@@ -55,6 +56,9 @@ import { PrepareCommentAnchor, type CommentAnchor } from '@/components/diagram/E
 import { storedHasAnchor } from '@/lib/fileComments';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
+
+// Fitting never zooms past 100%, so a flowchart with a few symbols opens at normal size instead of 250%.
+const FIT_VIEW_MAX_ZOOM = 1;
 
 const nodeTypes = {
   custom: FlowchartNode,
@@ -97,6 +101,10 @@ const FlowchartCanvas = React.memo(({
   const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, zoom: 1 });
   const [isAddingNode, setIsAddingNode] = useState(false);
   const [isClearingCanvas, setIsClearingCanvas] = useState(false);
+  // Symbols marked with Shift+drag, kept apart from selectedNodeId because that one opens Symbol Properties.
+  const [boxSelectedIds, setBoxSelectedIds] = useState<string[]>([]);
+  const [selectionMenu, setSelectionMenu] = useState<{ x: number; y: number; ids: string[] } | null>(null);
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<string[] | null>(null);
   const [pendingPreview, setPendingPreview] = useState<FlowchartApplyResult | null>(null);
   const [exportPreview, setExportPreview] = useState<{ nodes: Node<FlowchartNodeData>[]; edges: Edge[]; filename: string } | null>(null);
   const [newNodeData, setNewNodeData] = useState<FlowchartNodeData>({
@@ -108,7 +116,8 @@ const FlowchartCanvas = React.memo(({
   const isParsingFromDataRef = React.useRef(false);
   const isDraggingRef = React.useRef(false);
   const pendingContentAppliedRef = React.useRef(false);
-  const { fitView } = useReactFlow();
+  const { fitView, screenToFlowPosition } = useReactFlow();
+  const canvasRef = React.useRef<HTMLDivElement>(null);
   const lastFlowchartIdRef = React.useRef(activeFlowchartId);
   const isEditingEdgeRef = React.useRef(false);
   const isEditingNodeRef = React.useRef(false);
@@ -124,7 +133,7 @@ const FlowchartCanvas = React.memo(({
     takeSnapshot(nodesRef.current, edgesRef.current);
     setNodes(repositions.nodes);
     setEdges(repositions.edges);
-    requestAnimationFrame(() => requestAnimationFrame(() => fitView({ padding: 0.15 })));
+    requestAnimationFrame(() => requestAnimationFrame(() => fitView({ padding: 0.15, maxZoom: FIT_VIEW_MAX_ZOOM })));
   }, [nodes, edges, setNodes, setEdges, takeSnapshot, fitView]);
   const handleUndo = useCallback(() => {
     const previous = undo(nodesRef.current, edgesRef.current);
@@ -154,7 +163,7 @@ const FlowchartCanvas = React.memo(({
 
   // ── Derived (guaranteed stable number of hooks) ──
   const showLoader = isLoading && (!activeFlowchart || !activeFlowchart.data);
-  useFlowchartHistoryShortcuts(!isReadOnly && !showLoader && !isAddingNode && !isClearingCanvas && !selectedNodeId && !selectedEdgeId && !pendingPreview && !exportPreview, handleUndo, handleRedo);
+  useFlowchartHistoryShortcuts(!isReadOnly && !showLoader && !isAddingNode && !isClearingCanvas && !pendingDeleteIds && !selectedNodeId && !selectedEdgeId && !pendingPreview && !exportPreview, handleUndo, handleRedo);
 
   // Initialize from db or use defaults
   // Depend on activeFlowchain.data instead of just id,
@@ -265,6 +274,12 @@ const FlowchartCanvas = React.memo(({
     [setEdges, takeSnapshot],
   );
 
+  const canvasCenter = () => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+    return screenToFlowPosition({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+  };
+
   const confirmAddSymbol = () => {
     takeSnapshot(nodesRef.current, edgesRef.current);
     const id = Math.random().toString(36).substring(2, 11);
@@ -276,7 +291,8 @@ const FlowchartCanvas = React.memo(({
     const newNode: Node<FlowchartNodeData> = {
       id,
       type: 'custom',
-      position: { x: window.innerWidth / 2 - 200, y: window.innerHeight / 2 - 100 },
+      // Centre of the visible canvas, so the symbol appears where the user is looking after panning or zooming.
+      position: newSymbolPosition(canvasCenter(), nodesRef.current),
       data,
     };
     setNodes((nds) => nds.concat(newNode));
@@ -326,14 +342,28 @@ const FlowchartCanvas = React.memo(({
     );
   };
 
-  const deleteNode = () => {
-    if (!selectedNodeId) return;
+  const deleteNodes = (targetIds: string[]) => {
+    if (targetIds.length === 0) return;
     takeSnapshot(nodesRef.current, edgesRef.current);
-    const targetIds = [selectedNodeId];
     setNodes((nds) => nds.filter(n => !targetIds.includes(n.id)));
     setEdges((eds) => eds.filter(e => !targetIds.includes(e.source) && !targetIds.includes(e.target)));
-    setSelectedNodeId(null);
+    setBoxSelectedIds((ids) => ids.filter(id => !targetIds.includes(id)));
+    if (selectedNodeId && targetIds.includes(selectedNodeId)) setSelectedNodeId(null);
   };
+
+  const deleteNode = () => {
+    if (selectedNodeId) deleteNodes([selectedNodeId]);
+  };
+
+  // A symbol inside a Shift+drag selection deletes the whole selection; any other symbol deletes only itself.
+  const boxSelectedIdsRef = React.useRef(boxSelectedIds);
+  boxSelectedIdsRef.current = boxSelectedIds;
+  const nodeActions = useMemo(() => isReadOnly || companionMode ? {} : {
+    requestDelete: (id: string) => {
+      const box = boxSelectedIdsRef.current;
+      setPendingDeleteIds(box.length > 1 && box.includes(id) ? box : [id]);
+    },
+  }, [isReadOnly, companionMode]);
 
   const deleteGroup = () => {
     const node = nodes.find(n => n.id === selectedNodeId);
@@ -570,7 +600,7 @@ const FlowchartCanvas = React.memo(({
     return nodes.map((n) => {
       const isSelected = n.id === selectedNodeId;
       const isGroupMember = selectedGroupNodeIds.has(n.id);
-      const selected = isSelected || isGroupMember;
+      const selected = isSelected || isGroupMember || boxSelectedIds.includes(n.id);
       // commentsEnabled is never set on a public link; a read-only Team viewer may still comment.
       const canComment = commentsEnabled && !companionMode;
 
@@ -578,10 +608,14 @@ const FlowchartCanvas = React.memo(({
         ? n
         : { ...n, selected, data: { ...n.data, _commentsEnabled: canComment, _readOnly: isReadOnly } };
     });
-  }, [companionMode, commentsEnabled, isReadOnly, nodes, selectedNodeId, selectedGroupNodeIds]);
+  }, [companionMode, commentsEnabled, isReadOnly, nodes, selectedNodeId, selectedGroupNodeIds, boxSelectedIds]);
 
   const handleNodesChange = useCallback(
     (changes: any[]) => {
+      const selectChanges = changes.filter((change: any) => change.type === 'select');
+      if (selectChanges.length > 0) {
+        setBoxSelectedIds((ids) => applySelectChanges(ids, selectChanges));
+      }
       const dataChanges = changes.filter((change: any) => change.type !== 'select');
       if (dataChanges.length === 0) return;
       onNodesChange(dataChanges);
@@ -710,7 +744,7 @@ const FlowchartCanvas = React.memo(({
           }
         
           // An already-open pane keeps its old viewport, which can hide the new symbols.
-        setTimeout(() => fitView({ padding: 0.2 }), 50);
+        setTimeout(() => fitView({ padding: 0.2, maxZoom: FIT_VIEW_MAX_ZOOM }), 50);
         toast.success('Applied generated architecture Flowchart to new canvas');
         }
       }
@@ -742,7 +776,7 @@ const FlowchartCanvas = React.memo(({
           }
         
           // An already-open pane keeps its old viewport, which can hide the new symbols.
-        setTimeout(() => fitView({ padding: 0.2 }), 50);
+        setTimeout(() => fitView({ padding: 0.2, maxZoom: FIT_VIEW_MAX_ZOOM }), 50);
         toast.success('Updated Flowchart with AI-generated content');
         }
       }
@@ -763,7 +797,7 @@ const FlowchartCanvas = React.memo(({
     setPendingPreview(null);
     pendingContentRef.current = null;
     clearParseCache();
-    requestAnimationFrame(() => requestAnimationFrame(() => fitView({ padding: 0.15 })));
+    requestAnimationFrame(() => requestAnimationFrame(() => fitView({ padding: 0.15, maxZoom: FIT_VIEW_MAX_ZOOM })));
   }, [setNodes, setEdges, takeSnapshot, fitView]);
 
   const memoizedEdges = useMemo(() => edges.map(e => {
@@ -858,7 +892,8 @@ const FlowchartCanvas = React.memo(({
         </div>
       )}
 
-      <div className="flex-1 w-full h-full relative">
+      <div ref={canvasRef} className="flex-1 w-full h-full relative">
+        <FlowchartNodeActions.Provider value={nodeActions}>
         <ReactFlow
           id={activeFlowchartId ? `flowchart-${activeFlowchartId}` : undefined}
           nodes={memoizedNodes}
@@ -875,8 +910,20 @@ const FlowchartCanvas = React.memo(({
           onEdgeClick={(e, edge) => { setSelectedNodeId(null); setSelectedEdgeId(edge.id); }}
           onEdgeMouseEnter={(e, edge) => setHoveredEdgeId(edge.id)}
           onEdgeMouseLeave={() => setHoveredEdgeId(null)}
-          onPaneClick={() => { setSelectedNodeId(null); setSelectedEdgeId(null); setSelectedGroup(null); }}
+          onPaneClick={() => { setSelectedNodeId(null); setSelectedEdgeId(null); setSelectedGroup(null); setBoxSelectedIds([]); }}
+          onSelectionContextMenu={(event, selection) => {
+            event.preventDefault();
+            if (!nodeActions.requestDelete || selection.length === 0) return;
+            setSelectionMenu({ x: event.clientX, y: event.clientY, ids: selection.map(node => node.id) });
+          }}
+          // Delete/Backspace on a selection goes through the same confirmation instead of removing symbols at once.
+          onBeforeDelete={async ({ nodes: doomed }) => {
+            if (doomed.length === 0) return true;
+            if (nodeActions.requestDelete) setPendingDeleteIds(doomed.map(node => node.id));
+            return false;
+          }}
           fitView
+          fitViewOptions={{ maxZoom: FIT_VIEW_MAX_ZOOM }}
           colorMode={resolvedTheme}
           onlyRenderVisibleElements={true}
           nodesDraggable={!isReadOnly}
@@ -886,9 +933,24 @@ const FlowchartCanvas = React.memo(({
           maxZoom={2.5}
           onMove={(e, v) => setViewport(v)}
         >
-          <Controls className="bg-background/95 border-border shadow-md" showInteractive={!isReadOnly} />
+          <Controls className="bg-background/95 border-border shadow-md" showInteractive={!isReadOnly} fitViewOptions={{ maxZoom: FIT_VIEW_MAX_ZOOM }} />
           <Background variant={BackgroundVariant.Lines} gap={50} size={1} color={bgColor} />
         </ReactFlow>
+        </FlowchartNodeActions.Provider>
+        <ContextMenu open={!!selectionMenu} onOpenChange={(open) => { if (!open) setSelectionMenu(null); }}>
+          {selectionMenu && (
+            <ContextMenuContent
+              className="min-w-36"
+              positionerClassName="z-[210]"
+              anchor={{ getBoundingClientRect: () => DOMRect.fromRect({ x: selectionMenu.x, y: selectionMenu.y, width: 0, height: 0 }) }}
+            >
+              <ContextMenuItem variant="destructive" onClick={() => { setPendingDeleteIds(selectionMenu.ids); setSelectionMenu(null); }}>
+                <Trash2 aria-hidden="true" />
+                Delete {selectionMenu.ids.length} {selectionMenu.ids.length === 1 ? 'symbol' : 'symbols'}
+              </ContextMenuItem>
+            </ContextMenuContent>
+          )}
+        </ContextMenu>
         {groupBounds && (
           <svg className="absolute inset-0 pointer-events-none" style={{ overflow: 'visible' }}>
             <g transform={`translate(${viewport.x}, ${viewport.y}) scale(${viewport.zoom})`}>
@@ -911,6 +973,16 @@ const FlowchartCanvas = React.memo(({
 
       {!isReadOnly && (
         <>
+          <ConfirmModal
+            isOpen={!!pendingDeleteIds}
+            title={pendingDeleteIds && pendingDeleteIds.length > 1 ? `Delete ${pendingDeleteIds.length} Symbols?` : 'Delete Symbol?'}
+            message={pendingDeleteIds && pendingDeleteIds.length > 1
+              ? 'Connectors attached to these symbols are removed too. You can restore them with Undo.'
+              : 'Connectors attached to this symbol are removed too. You can restore it with Undo.'}
+            confirmText="Delete"
+            onConfirm={() => { if (pendingDeleteIds) deleteNodes(pendingDeleteIds); setPendingDeleteIds(null); }}
+            onCancel={() => setPendingDeleteIds(null)}
+          />
           <ConfirmModal
             isOpen={isClearingCanvas}
             title="Clear Flowchart Canvas?"

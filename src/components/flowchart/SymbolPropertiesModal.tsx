@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Node } from '@xyflow/react';
 import { 
   Dialog, 
@@ -47,19 +46,6 @@ export function SymbolPropertiesModal({
   onValidateSection,
 }: SymbolPropertiesModalProps) {
   const isStart = selectedNode ? isStartNode(selectedNode) : false;
-  const getDefaultCode = () => {
-    if (!selectedNode) return '';
-    if (selectedNode.data.code) return selectedNode.data.code;
-    return selectedNode.data.shape === 'diamond'
-      ? "return context.amount > 100 ? 'Yes' : 'No';"
-      : "context.status = 'Approved';";
-  };
-  const [localCode, setLocalCode] = useState(getDefaultCode);
-
-  const handleCodeChange = (val: string) => {
-    setLocalCode(val);
-    onUpdateNodeData({ code: val });
-  };
 
   return (
     <Dialog open={!!selectedNodeId} onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -81,21 +67,6 @@ export function SymbolPropertiesModal({
                 placeholder="Enter symbol label"
                 className="bg-muted/50 border-border text-foreground"
               />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-xs font-bold text-zinc-300">Code Logic (JavaScript)</Label>
-              <textarea 
-                value={localCode}
-                onChange={(e) => handleCodeChange(e.target.value)}
-                placeholder={selectedNode.data.shape === 'diamond' 
-                  ? "e.g. return context.amount > 100 ? 'Yes' : 'No';" 
-                  : "e.g. context.status = 'Approved'; context.tries += 1;"}
-                className="w-full h-24 bg-muted border border-border rounded-md p-2 text-xs font-mono text-foreground placeholder:text-muted-foreground/50 resize-none focus:outline-none focus:border-ring"
-              />
-              <p className="text-[9px] text-muted-foreground/50 leading-normal">
-                Attached sandbox logic. For Decision diamonds, return the matching branch label (case-sensitive). Process symbols can mutate variables in the <code>context</code> object.
-              </p>
             </div>
 
             {isStart && (
