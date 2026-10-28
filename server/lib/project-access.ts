@@ -18,6 +18,16 @@ function grantedRole(role: string | undefined): GrantableRole {
   return role === "editor" || role === "viewer" ? role : "commenter";
 }
 
+/**
+ * A Manager keeps full access; a creator does too unless a Manager stored a role for them (COL-007);
+ * everyone else follows their grant, Commenter by default.
+ */
+export function effectiveRole(isCreator: boolean, isManager: boolean, grant: string | undefined): ProjectRole {
+  if (isCreator && (isManager || grant === undefined)) return "owner";
+  if (isManager) return "manager";
+  return grantedRole(grant);
+}
+
 /** The signed-in user's role on one Project of the active Team, or null when the Project is outside it. */
 export async function projectRoleFor(projectId: number | bigint, userId: string): Promise<ProjectRole | null> {
   const scope = currentTeamScope();
@@ -31,9 +41,7 @@ export async function projectRoleFor(projectId: number | bigint, userId: string)
     },
   });
   if (!project) return null;
-  if (project.userId === userId) return "owner";
-  if (project.team?.members?.[0]?.role === "manager") return "manager";
-  return grantedRole(project.accessGrants?.[0]?.role);
+  return effectiveRole(project.userId === userId, project.team?.members?.[0]?.role === "manager", project.accessGrants?.[0]?.role);
 }
 
 /** Roles for a page of Projects in one round trip; Personal Projects are always the user's own. */
@@ -54,7 +62,7 @@ export async function projectRolesFor(
   const granted = new Map<number, string>(grants.map((grant: { projectId: number; role: string }) => [grant.projectId, grant.role]));
   for (const project of projects) {
     const id = Number(project.id);
-    roles.set(id, project.userId === userId ? "owner" : member?.role === "manager" ? "manager" : grantedRole(granted.get(id)));
+    roles.set(id, effectiveRole(project.userId === userId, member?.role === "manager", granted.get(id)));
   }
   return roles;
 }

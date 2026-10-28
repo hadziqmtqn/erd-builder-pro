@@ -47,7 +47,7 @@ describe.each(updaters)("$name update authorization (COL-004)", ({ model, update
     await inTeam(() => update("member", {}));
     const where = JSON.stringify(model.findFirst.mock.calls[0][0].where);
     expect(where).toContain('{"userId":"member"}');
-    expect(where).toContain('{"project":{"userId":"member"}}');
+    expect(where).toContain('{"project":{"userId":"member","accessGrants":{"none":{"userId":"member"}}}}');
     expect(where).toContain('"role":"manager"');
     expect(where).toContain('"accessGrants":{"some":{"userId":"member","role":"editor"}}');
     expect(where).toContain('"project":{"teamId":"team-1"}');

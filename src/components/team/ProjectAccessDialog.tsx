@@ -6,7 +6,7 @@ import { Dialog, DialogBody, DialogContent, DialogDescription, DialogHeader, Dia
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type AccessRole = "owner" | "manager" | "editor" | "commenter" | "viewer";
-type AccessMember = { userId: string; name: string | null; email: string | null; teamRole: string; role: AccessRole; canChange: boolean };
+type AccessMember = { userId: string; name: string | null; email: string | null; teamRole: string; role: AccessRole; isCreator: boolean; canChange: boolean };
 
 export const ACCESS_ROLE_LABEL: Record<AccessRole, string> = {
   owner: "Creator",
@@ -17,9 +17,10 @@ export const ACCESS_ROLE_LABEL: Record<AccessRole, string> = {
 };
 
 const CHANGEABLE: ReadonlyArray<Exclude<AccessRole, "owner" | "manager">> = ["editor", "commenter", "viewer"];
-const ROLE_HELP: Record<(typeof CHANGEABLE)[number], string> = {
+const ROLE_HELP: Record<(typeof CHANGEABLE)[number] | "owner", string> = {
+  owner: "Full access as the Project creator.",
   editor: "Can change the files.",
-  commenter: "Can read and comment (default).",
+  commenter: "Can read and comment.",
   viewer: "Can read only.",
 };
 
@@ -33,6 +34,7 @@ export function normalizeAccessMember(raw: any): AccessMember {
     email: raw.email ?? null,
     teamRole: String(raw.team_role ?? raw.teamRole ?? "staff"),
     role: raw.role,
+    isCreator: (raw.is_creator ?? raw.isCreator) === true,
     canChange: (raw.can_change ?? raw.canChange) === true,
   };
 }
@@ -68,8 +70,8 @@ export function ProjectAccessDialog({ project, onOpenChange }: Props) {
     setSavingId(member.userId);
     try {
       const url = `/api/projects/${encodeURIComponent(String(projectId))}/access/${encodeURIComponent(member.userId)}`;
-      // Commenter is the default, so choosing it removes the explicit role instead of storing a copy of it.
-      const response = role === "commenter"
+      // Each default (Commenter, or Creator for the Project creator) removes the explicit role instead of storing a copy of it.
+      const response = role === (member.isCreator ? "owner" : "commenter")
         ? await apiFetch(url, { method: "DELETE" })
         : await apiFetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role }) });
       const body = await response.json().catch(() => ({}));
@@ -90,7 +92,7 @@ export function ProjectAccessDialog({ project, onOpenChange }: Props) {
         <DialogHeader>
           <DialogTitle>Project access</DialogTitle>
           <DialogDescription>
-            Choose what each Team member can do in {project?.name}. The creator and Team Managers always have full access.
+            Choose what each Team member can do in {project?.name}. Team Managers always have full access; only a Manager can limit the Project creator.
           </DialogDescription>
         </DialogHeader>
         <DialogBody>
@@ -101,6 +103,11 @@ export function ProjectAccessDialog({ project, onOpenChange }: Props) {
             </div>
           )}
           {members && members.length === 0 && <p className="text-sm text-muted-foreground">This Team has no other active members.</p>}
+          {members && members.length > 0 && !members.some((member) => member.canChange) && (
+            <p className="mb-3 text-sm text-muted-foreground">
+              Everyone here already has full access as the Project creator or a Team Manager, so there is no role to change. Roles apply to other Staff members of the Team.
+            </p>
+          )}
           {members && members.length > 0 && (
             <ul className="divide-y rounded-lg border" aria-label="Project members">
               {members.map((member) => (
@@ -116,11 +123,11 @@ export function ProjectAccessDialog({ project, onOpenChange }: Props) {
                       </SelectTrigger>
                       <SelectContent className="min-w-72">
                         <SelectGroup>
-                          {CHANGEABLE.map((role) => (
+                          {(member.isCreator ? (["owner", ...CHANGEABLE] as const) : CHANGEABLE).map((role) => (
                             <SelectItem key={role} value={role}>
                               <span className="flex flex-col">
                                 <span>{ACCESS_ROLE_LABEL[role]}</span>
-                                <span className="text-xs text-muted-foreground">{ROLE_HELP[role]}</span>
+                                <span className="text-xs text-muted-foreground">{ROLE_HELP[role]}{role === (member.isCreator ? "owner" : "commenter") ? " Default." : ""}</span>
                               </span>
                             </SelectItem>
                           ))}

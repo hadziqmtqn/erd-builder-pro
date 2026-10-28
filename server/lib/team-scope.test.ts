@@ -36,7 +36,7 @@ describe("Team scope", () => {
           {
             OR: [
               { userId: "user-1" },
-              { project: { userId: "user-1" } },
+              { project: { userId: "user-1", accessGrants: { none: { userId: "user-1" } } } },
               { project: { team: { members: { some: { userId: "user-1", role: "manager", status: "active" } } } } },
               { project: { accessGrants: { some: { userId: "user-1", role: "editor" } } } },
             ],
@@ -54,7 +54,7 @@ describe("Team scope", () => {
           {
             OR: [
               { userId: "user-1" },
-              { project: { userId: "user-1" } },
+              { project: { userId: "user-1", accessGrants: { none: { userId: "user-1" } } } },
               { project: { team: { members: { some: { userId: "user-1", role: "manager", status: "active" } } } } },
               { NOT: { project: { accessGrants: { some: { userId: "user-1", role: "viewer" } } } } },
             ],
