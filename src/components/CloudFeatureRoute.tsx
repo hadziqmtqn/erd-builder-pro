@@ -1,22 +1,12 @@
 import type { ReactNode } from 'react';
 import { CircleAlert } from 'lucide-react';
-import { useNavigate, useOutletContext, useParams } from 'react-router-dom';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import type { TeamsState } from '@/hooks/useTeams';
-import { TableRoute } from '@/routes/TableRoute';
 
 type Capability = 'erd_builder' | 'notes' | 'drawings' | 'flowcharts' | 'desktop_only';
-
-const TABLE_CAPABILITIES: Record<string, Capability> = {
-  erd: 'erd_builder',
-  notes: 'notes',
-  drawings: 'drawings',
-  flowchart: 'flowcharts',
-  flowcharts: 'flowcharts',
-  'db-client': 'desktop_only',
-};
 
 const LABELS: Record<Capability, string> = {
   erd_builder: 'ERD Builder',
@@ -74,11 +64,4 @@ export function CloudFeatureRoute({ capability, children }: { capability: Capabi
   if (allowed) return <>{children}</>;
 
   return <CloudFeatureUnavailable capability={capability} teamName={activeTeam?.name} ssoPortalUrl={user?.ssoPortalUrl ?? user?.sso_portal_url} />;
-}
-
-export function CloudTableRoute() {
-  const { feature } = useParams<{ feature: string }>();
-  const capability = feature ? TABLE_CAPABILITIES[feature] : undefined;
-
-  return capability ? <CloudFeatureRoute capability={capability}><TableRoute /></CloudFeatureRoute> : <TableRoute />;
 }

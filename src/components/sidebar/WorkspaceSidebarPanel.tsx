@@ -1,9 +1,8 @@
 import { useState } from "react"
-import { FolderClosed, MoreHorizontal, Pencil, Plus, Trash2, Users } from "lucide-react"
+import { FolderClosed, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, Users } from "lucide-react"
+import { useLocation, useNavigate } from "react-router-dom"
 
 import { MoveToTrashAlert } from "@/components/modals/MoveToTrashAlert"
-import { SponsorCarousel } from "@/components/SponsorCarousel"
-import { TeamSwitcher, type SwitcherTeam } from "@/components/team-switcher"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -24,73 +23,42 @@ import {
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
   SidebarGroup,
+  SidebarGroupAction,
   SidebarGroupContent,
   SidebarGroupLabel,
-  SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import { useProjectFilePage } from "@/hooks/useProjectFilePage"
 import { isFileCreator } from "@/lib/fileOwnership"
-import { SpotlightSearch } from "@/components/sidebar/SpotlightSearch"
+import { UNASSIGNED_PROJECT } from "@/lib/file-types"
 import { ProjectAccessDialog } from "@/components/team/ProjectAccessDialog"
 import type { Project } from "@/types"
 
 interface WorkspaceSidebarPanelProps {
   activeTeamId: string | null
-  globalSearchQuery: string
-  globalSearchResults: any[]
-  isGlobalSearchLoading: boolean
-  isOnline: boolean
   isProjectsLoading?: boolean
-  onGlobalSearchChange: (query: string) => void
-  onGlobalSearchResultSelect: (result: any) => void
-  onTeamAdd: () => void
-  onTeamManage: (team: SwitcherTeam) => void
-  onTeamSelect: (teamId: string | null) => void
-  onTeamsRefresh: () => void
   onProjectCreate: (name: string) => void
   onProjectDelete: (id: number | string) => void
   onProjectUpdate: (id: number | string, name: string) => void
-  onWorkspaceFilter: (uid: string | null) => void
   projects: Project[]
-  selectedWorkspaceUid: string | null
-  showDbClient: boolean
-  showSponsor: boolean
-  teams: SwitcherTeam[]
-  teamsAvailable: boolean
   user: any
 }
 
+/** Projects group of the single sidebar; a Project opens its file page (COL-008). */
 export function WorkspaceSidebarPanel({
   activeTeamId,
-  globalSearchQuery,
-  globalSearchResults,
-  isGlobalSearchLoading,
-  isOnline,
   isProjectsLoading,
-  onGlobalSearchChange,
-  onGlobalSearchResultSelect,
-  onTeamAdd,
-  onTeamManage,
-  onTeamSelect,
-  onTeamsRefresh,
   onProjectCreate,
   onProjectDelete,
   onProjectUpdate,
-  onWorkspaceFilter,
   projects,
-  selectedWorkspaceUid,
-  showDbClient,
-  showSponsor,
-  teams,
-  teamsAvailable,
   user,
 }: WorkspaceSidebarPanelProps) {
+  const location = useLocation()
+  const navigate = useNavigate()
   const [editingProject, setEditingProject] = useState<{ id: number | string; name: string } | null>(null)
   const [renameValue, setRenameValue] = useState("")
   const [deletingProject, setDeletingProject] = useState<{ id: number | string; name: string } | null>(null)
@@ -99,67 +67,32 @@ export function WorkspaceSidebarPanel({
   const [createName, setCreateName] = useState("")
 
   const activeProjects = projects.filter((project) => !project.is_deleted)
+  const openProjectKey = location.pathname.match(/^\/projects\/([^/]+)$/)?.[1]
+  const selectedWorkspaceUid = openProjectKey ? decodeURIComponent(openProjectKey) : null
+  // Recount when the page changes (not on tab, page or search changes) so the item disappears once the last file gets a Project.
+  const { total: unassignedTotal } = useProjectFilePage({ projectId: "null", type: "all", page: 1, perPage: 10 }, location.pathname)
+  const hasUnassignedFiles = unassignedTotal > 0
   const handleProjectClick = (uid: string | null | undefined, fallbackId?: number | string) => {
-    onWorkspaceFilter(uid ?? (fallbackId != null ? String(fallbackId) : null))
+    const key = uid ?? (fallbackId != null ? String(fallbackId) : null)
+    if (key) navigate(`/projects/${encodeURIComponent(key)}`)
   }
 
   return (
     <>
-      <Sidebar collapsible="none" className="min-w-0 flex-1">
-        <SidebarHeader className="gap-3.5 border-b border-sidebar-border px-2 py-4">
-          <div className="flex w-full items-center gap-2">
-            <div className="min-w-0 flex-1">
-              <TeamSwitcher
-                teams={teams}
-                activeTeamId={activeTeamId}
-                enabled={teamsAvailable || teams.length > 0}
-                canManageTeams={Boolean(user?.isSuperAdmin || user?.is_super_admin)}
-                onOpen={onTeamsRefresh}
-                onSelect={onTeamSelect}
-                onAdd={onTeamAdd}
-                onManage={onTeamManage}
-              />
-            </div>
-            <SpotlightSearch
-              query={globalSearchQuery}
-              results={globalSearchResults}
-              isLoading={isGlobalSearchLoading}
-              isOnline={isOnline}
-              showDbClient={showDbClient}
-              onQueryChange={onGlobalSearchChange}
-              onResultSelect={onGlobalSearchResultSelect}
-            />
-          </div>
-          <Button
-            type="button"
-            variant="secondary"
-            className="h-9 w-full justify-start gap-2"
-            onClick={() => {
-              setCreateName("")
-              setIsCreateOpen(true)
-            }}
-          >
-            <Plus className="size-4" />
-            New Project
-          </Button>
-        </SidebarHeader>
-
-        <SidebarContent>
-          <SidebarGroup className="px-2">
-            <SidebarGroupLabel>Projects</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    tooltip="All Projects"
-                    isActive={selectedWorkspaceUid === null || selectedWorkspaceUid === ""}
-                    onClick={() => handleProjectClick(null)}
-                  >
-                    <FolderClosed className="size-4 shrink-0" aria-hidden="true" />
-                    <span>All Projects</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-
+      <SidebarGroup>
+        <SidebarGroupLabel>Projects</SidebarGroupLabel>
+        <SidebarGroupAction
+          title="New Project"
+          aria-label="New Project"
+          onClick={() => {
+            setCreateName("")
+            setIsCreateOpen(true)
+          }}
+        >
+          <Plus />
+        </SidebarGroupAction>
+        <SidebarGroupContent>
+          <SidebarMenu>
                 {isProjectsLoading ? (
                   <div className="px-4 py-2 text-xs text-muted-foreground animate-pulse">
                     Loading projects...
@@ -173,10 +106,10 @@ export function WorkspaceSidebarPanel({
                     <SidebarMenuItem key={project.uid ?? project.id}>
                       <SidebarMenuButton
                         tooltip={project.name}
-                        isActive={selectedWorkspaceUid === project.uid || String(selectedWorkspaceUid ?? "") === String(project.id ?? "")}
+                        isActive={selectedWorkspaceUid === project.uid || selectedWorkspaceUid === String(project.id ?? "")}
                         onClick={() => handleProjectClick(project.uid, project.id)}
                       >
-                        <FolderClosed className="size-4 shrink-0" aria-hidden="true" />
+                        <FolderClosed aria-hidden="true" />
                         <span className="min-w-0 flex-1 truncate text-left">{project.name}</span>
                         <span className="shrink-0" onClick={(event) => event.stopPropagation()}>
                           <DropdownMenu>
@@ -226,17 +159,21 @@ export function WorkspaceSidebarPanel({
                     </SidebarMenuItem>
                   ))
                 )}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        </SidebarContent>
-
-        {showSponsor && (
-          <SidebarFooter className="shrink-0 border-t border-sidebar-border p-2">
-            <SponsorCarousel />
-          </SidebarFooter>
-        )}
-      </Sidebar>
+                {hasUnassignedFiles && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      tooltip="Unassigned"
+                      isActive={selectedWorkspaceUid === UNASSIGNED_PROJECT}
+                      onClick={() => handleProjectClick(UNASSIGNED_PROJECT)}
+                    >
+                      <FolderOpen aria-hidden="true" />
+                      <span>Unassigned</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
 
       <ProjectAccessDialog project={accessProject} onOpenChange={(open) => { if (!open) setAccessProject(null) }} />
 

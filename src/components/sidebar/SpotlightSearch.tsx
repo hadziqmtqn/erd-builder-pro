@@ -15,7 +15,7 @@ import {
   Dialog,
   DialogContent,
 } from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
+import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
 import { Input } from "@/components/ui/input"
 
 function getSearchShortcutLabel(): string {
@@ -83,18 +83,21 @@ export function SpotlightSearch({
 
   return (
     <>
-      <Button
-        type="button"
-        onClick={() => setIsOpen(true)}
-        disabled={!isOnline}
-        aria-label={`Search files (${shortcutLabel})`}
-        title={`Search files (${shortcutLabel})`}
-        variant="ghost"
-        size="icon"
-        className="size-8 shrink-0"
-      >
-        <Search className="size-4" aria-hidden="true" />
-      </Button>
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            onClick={() => setIsOpen(true)}
+            disabled={!isOnline}
+            aria-label={`Search files (${shortcutLabel})`}
+            tooltip={`Search (${shortcutLabel})`}
+            className="border border-sidebar-border bg-background text-muted-foreground shadow-xs"
+          >
+            <Search aria-hidden="true" />
+            <span className="flex-1">Search</span>
+            <kbd className="rounded border border-border/60 bg-muted/50 px-1.5 text-[10px] font-medium group-data-[collapsible=icon]:hidden">{shortcutLabel}</kbd>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
 
       <Dialog open={isOpen} onOpenChange={(open) => {
         setIsOpen(open)

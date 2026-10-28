@@ -24,7 +24,8 @@ import { NotFoundRoute } from './routes/NotFoundRoute';
 import { DashboardRoute } from './routes/DashboardRoute';
 import { OAuthConsent } from './components/OAuthConsent';
 import { ForcePasswordChange } from './components/ForcePasswordChange';
-import { CloudFeatureRoute, CloudTableRoute } from './components/CloudFeatureRoute';
+import { CloudFeatureRoute } from './components/CloudFeatureRoute';
+import { LegacyTableRedirect, ProjectFilesRoute } from './routes/ProjectFilesRoute';
 
 const NoteEditorRoute = lazy(() => import('./routes/NoteEditorRoute').then(module => ({ default: module.NoteEditorRoute })));
 const DiagramEditorRoute = lazy(() => import('./routes/DiagramEditorRoute').then(module => ({ default: module.DiagramEditorRoute })));
@@ -154,7 +155,8 @@ function AppContent() {
       <Routes>
         <Route element={<AppLayout />}>
           {/* Table views */}
-          <Route path="table/:feature" element={<CloudTableRoute />} />
+          <Route path="projects/:projectKey" element={<ProjectFilesRoute />} />
+          <Route path="table/:feature" element={<LegacyTableRedirect />} />
 
           {/* Document editors */}
           <Route path="notes/:id" element={<CloudFeatureRoute capability="notes">{lazyRoute(<NoteEditorRoute />)}</CloudFeatureRoute>} />

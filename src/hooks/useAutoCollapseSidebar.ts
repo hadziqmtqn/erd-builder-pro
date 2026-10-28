@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-/** Under this width the fixed 320px sidebar would leave the work area less than 700px wide. */
+/** Under this width the fixed sidebar would leave the work area too narrow. */
 const NARROW_WINDOW = '(max-width: 1023px)';
 
 /**

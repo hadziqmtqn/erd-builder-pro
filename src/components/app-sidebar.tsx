@@ -1,32 +1,37 @@
 import * as React from "react"
 import { useState } from "react"
-import {
-  ArrowUpRight,
-  Sparkles,
-} from "lucide-react"
+import { ExternalLink, Folder, LayoutDashboard, Library, Shield, UsersRound } from "lucide-react"
+import { useLocation, useNavigate } from "react-router-dom"
 
-import type { SwitcherTeam } from "@/components/team-switcher"
-import { PrimaryNavRail } from "@/components/sidebar/PrimaryNavRail"
+import { NavUser } from "@/components/nav-user"
+import { SponsorCarousel } from "@/components/SponsorCarousel"
+import { TeamSwitcher, type SwitcherTeam } from "@/components/team-switcher"
+import { SpotlightSearch } from "@/components/sidebar/SpotlightSearch"
 import { WorkspaceSidebarPanel } from "@/components/sidebar/WorkspaceSidebarPanel"
 import { AddTeamDialog } from "@/components/team/AddTeamDialog"
-import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
-import { Sidebar } from "@/components/ui/sidebar"
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogBody,
-  DialogFooter,
-  DialogClose,
-} from "@/components/ui/dialog"
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
+} from "@/components/ui/sidebar"
 import { isInstalledApp } from "@/lib/api"
 import type { Project, AppView } from "../types"
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   projects: Project[];
-  activeFeatureView: AppView | 'db-client' | null;
   globalSearchResults: any[];
   isGlobalSearchLoading: boolean;
   onGlobalSearchResultSelect: (result: any) => void;
@@ -35,8 +40,6 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onProjectUpdate: (id: number | string, name: string) => void;
   onProjectDelete: (id: number | string) => void;
   onLogout: () => void;
-  onWorkspaceFilter: (uid: string | null) => void;
-  selectedWorkspaceUid: string | null;
   globalSearchQuery: string;
   onGlobalSearchChange: (query: string) => void;
   isProjectsLoading?: boolean;
@@ -55,9 +58,9 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   ssoPortalUrl?: string | null;
 }
 
+/** The single app sidebar: workspace, search, Dashboard and Projects (COL-008). */
 export const AppSidebar = React.memo(({
   projects,
-  activeFeatureView,
   globalSearchResults,
   isGlobalSearchLoading,
   onGlobalSearchResultSelect,
@@ -66,8 +69,6 @@ export const AppSidebar = React.memo(({
   onProjectUpdate,
   onProjectDelete,
   onLogout,
-  onWorkspaceFilter,
-  selectedWorkspaceUid,
   globalSearchQuery,
   onGlobalSearchChange,
   isProjectsLoading,
@@ -86,82 +87,138 @@ export const AppSidebar = React.memo(({
   ssoPortalUrl,
   ...props
 }: AppSidebarProps) => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { isMobile } = useSidebar();
   const [isTeamCreateOpen, setIsTeamCreateOpen] = useState(false);
-  const [upgradeFeature, setUpgradeFeature] = useState<string | null>(null);
   const showDbClient = isInstalledApp();
   const isSelfHosted = !showDbClient && !user?.isSso && (user?.isSuperAdmin !== undefined || user?.is_super_admin !== undefined);
+  const canManageInstance = Boolean(user?.isSuperAdmin || user?.is_super_admin);
   const showSponsor = user?.isSso === true || showDbClient || (isSelfHosted && licenseRequired);
-  const activeTeam = teams.find((team) => team.id === activeTeamId) || null;
-  const cloudTeamCapabilities = user?.isSso && activeTeamId && teamsAvailable
-    ? activeTeam?.capabilities || {}
-    : null;
-  const isCloudFeatureLocked = (capability: string) => cloudTeamCapabilities !== null && cloudTeamCapabilities[capability] !== true;
 
-  const openCloudPricing = () => {
+  const openSaaS = () => {
     if (!ssoPortalUrl) return;
     try {
-      window.location.assign(new URL('/pricing#cloud-saas', ssoPortalUrl).toString());
+      window.location.assign(new URL("/dashboard", ssoPortalUrl).toString());
     } catch {
-      // Ignore malformed deployment configuration and keep the dialog open.
+      // Ignore malformed deployment configuration.
     }
-  };
-
-  const handleFeatureClick = (title: string, capability: string, onOpen: () => void) => {
-    if (isCloudFeatureLocked(capability)) {
-      setUpgradeFeature(title);
-      return;
-    }
-    onOpen();
   };
 
   return (
     <>
-      <Sidebar
-        collapsible="icon"
-        {...props}
-        className={cn("overflow-hidden *:data-[sidebar=sidebar]:flex-row", props.className)}
-      >
-        <div data-sidebar="sidebar" className="flex h-full min-h-0 w-full">
-          <PrimaryNavRail
-            activeFeatureView={activeFeatureView}
-            canManageInstance={Boolean(user?.isSuperAdmin || user?.is_super_admin)}
-            cloudFeatureLocked={isCloudFeatureLocked}
-            isOnline={isOnline}
-            isSelfHosted={isSelfHosted}
-            onFeatureClick={handleFeatureClick}
-            onLogout={onLogout}
-            onOpenFeedback={onOpenFeedback}
-            onViewChange={onViewChange}
-            ssoPortalUrl={ssoPortalUrl}
-            user={user}
-            showDbClient={showDbClient}
+      <Sidebar collapsible="icon" {...props}>
+        <SidebarHeader className="gap-2 border-b border-sidebar-border">
+          <TeamSwitcher
+            teams={teams}
+            activeTeamId={activeTeamId}
+            enabled={teamsAvailable || teams.length > 0}
+            canManageTeams={canManageInstance}
+            onOpen={onTeamsRefresh}
+            onSelect={onTeamSelect}
+            onAdd={() => setIsTeamCreateOpen(true)}
+            onManage={onTeamManage}
           />
+          <SpotlightSearch
+            query={globalSearchQuery}
+            results={globalSearchResults}
+            isLoading={isGlobalSearchLoading}
+            isOnline={isOnline}
+            showDbClient={showDbClient}
+            onQueryChange={onGlobalSearchChange}
+            onResultSelect={onGlobalSearchResultSelect}
+          />
+        </SidebarHeader>
+
+        <SidebarContent>
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton tooltip="Dashboard" isActive={location.pathname === "/"} onClick={() => navigate("/")}>
+                    <LayoutDashboard aria-hidden="true" />
+                    <span>Dashboard</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                {user?.isSso && ssoPortalUrl && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton tooltip="Manage account & billing" onClick={openSaaS}>
+                      <ExternalLink aria-hidden="true" />
+                      <span>Manage account & billing</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
+                {user?.isSso && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      tooltip="Library"
+                      isActive={location.pathname === "/library"}
+                      disabled={!isOnline}
+                      onClick={() => navigate("/library")}
+                    >
+                      <Library aria-hidden="true" />
+                      <span>Library</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
           <WorkspaceSidebarPanel
             activeTeamId={activeTeamId}
-            globalSearchQuery={globalSearchQuery}
-            globalSearchResults={globalSearchResults}
-            isGlobalSearchLoading={isGlobalSearchLoading}
-            isOnline={isOnline}
             isProjectsLoading={isProjectsLoading}
-            onGlobalSearchChange={onGlobalSearchChange}
-            onGlobalSearchResultSelect={onGlobalSearchResultSelect}
-            onTeamAdd={() => setIsTeamCreateOpen(true)}
-            onTeamManage={onTeamManage}
-            onTeamSelect={onTeamSelect}
-            onTeamsRefresh={onTeamsRefresh}
             onProjectCreate={onProjectCreate}
             onProjectDelete={onProjectDelete}
             onProjectUpdate={onProjectUpdate}
-            onWorkspaceFilter={onWorkspaceFilter}
             projects={projects}
-            selectedWorkspaceUid={selectedWorkspaceUid}
-            showDbClient={showDbClient}
-            showSponsor={showSponsor}
-            teams={teams}
-            teamsAvailable={teamsAvailable}
             user={user}
           />
-        </div>
+        </SidebarContent>
+
+        <SidebarFooter className="border-t border-sidebar-border">
+          {showSponsor && (
+            <div className="group-data-[collapsible=icon]:hidden">
+              <SponsorCarousel />
+            </div>
+          )}
+          {isSelfHosted && canManageInstance && (
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <SidebarMenuButton
+                        tooltip="Instance Administration"
+                        isActive={location.pathname === "/team-workspaces" || location.pathname === "/users"}
+                      >
+                        <Shield aria-hidden="true" />
+                        <span>Instance Administration</span>
+                      </SidebarMenuButton>
+                    }
+                  />
+                  <DropdownMenuContent side={isMobile ? "bottom" : "right"} align="end" sideOffset={8}>
+                    <DropdownMenuItem onClick={() => navigate("/team-workspaces")}>
+                      <Folder aria-hidden="true" />
+                      Team
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => navigate("/users")}>
+                      <UsersRound aria-hidden="true" />
+                      Users
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          )}
+          <NavUser
+            user={user}
+            onLogout={onLogout}
+            onViewChange={onViewChange}
+            isOnline={isOnline}
+            onOpenFeedback={onOpenFeedback}
+          />
+        </SidebarFooter>
       </Sidebar>
 
       <AddTeamDialog
@@ -170,38 +227,6 @@ export const AppSidebar = React.memo(({
         onCreate={onTeamCreate}
         onCreated={onTeamCreated}
       />
-
-      <Dialog open={upgradeFeature !== null} onOpenChange={(open) => { if (!open) setUpgradeFeature(null); }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <div className="flex items-center gap-2.5">
-              <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <Sparkles className="size-4" aria-hidden="true" />
-              </div>
-              <DialogTitle>Unlock {upgradeFeature}</DialogTitle>
-            </div>
-            <p className="text-sm leading-6 text-muted-foreground">
-              {upgradeFeature} is available with a paid Cloud plan. Upgrade to keep using this feature in your Team workspace.
-            </p>
-          </DialogHeader>
-          <DialogBody>
-            <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3.5 py-3">
-              <div>
-                <p className="text-sm font-medium text-foreground">Cloud workspace feature</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">Plans, limits, and checkout are managed in ERDBPro SaaS.</p>
-              </div>
-              <span className="rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-primary">PRO</span>
-            </div>
-          </DialogBody>
-          <DialogFooter>
-            <DialogClose render={<Button variant="outline" className="h-9" />}>Not now</DialogClose>
-            <Button className="h-9" onClick={openCloudPricing} disabled={!ssoPortalUrl}>
-              View Cloud plans
-              <ArrowUpRight className="size-4" />
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 });

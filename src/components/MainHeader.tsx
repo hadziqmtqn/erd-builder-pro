@@ -151,6 +151,8 @@ export const MainHeader = React.memo(({
                   </BreadcrumbItem>
                 );
               }
+              // The Project page shows its own title; no breadcrumb (COL-008).
+              if (path.startsWith('/projects/')) return null;
               if (path.startsWith('/table/')) {
                 const tableLabels: Record<string, string> = {
                   notes: 'Notes',

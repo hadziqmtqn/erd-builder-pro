@@ -65,7 +65,7 @@ export const resolveOwnedProjectId = async (
   return Number(project.id);
 };
 
-/** Team files require a Team project; Personal files may stay unassigned. */
+/** Every new or moved feature file needs a Project in every workspace (COL-008). */
 export const resolveNewFileProjectId = async (
   prisma: PrismaClient,
   userId: string,
@@ -80,7 +80,5 @@ export const resolveNewFileProjectId = async (
     return resolved;
   }
 
-  const scope = currentTeamScope();
-  if (scope?.mode === "team") throw new RequestError(400, "A Team project is required");
-  return null;
+  throw new RequestError(400, "A project is required");
 };

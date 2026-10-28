@@ -60,3 +60,14 @@ export function requireCloudCapability(capability: string) {
     next();
   };
 }
+
+/** Same rule as requireCloudCapability, for handlers that read several features at once. */
+export async function hasActiveCloudCapability(capability: string): Promise<boolean> {
+  const scope = currentTeamScope();
+  if (!isSsoAuthMode() || scope?.mode !== "team" || !scope.teamId) return true;
+  const team = await prisma?.team.findUnique({
+    where: { id: scope.teamId },
+    select: { status: true, cloudEntitlement: true },
+  });
+  return Boolean(team && team.status === "active" && hasCloudCapability(team.cloudEntitlement, team.status, capability));
+}
