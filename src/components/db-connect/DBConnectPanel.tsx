@@ -43,6 +43,8 @@ interface DBConnectPanelProps {
   onOpenChange: (open: boolean) => void;
   projects: any[];
   onImportComplete?: (diagramUid: string) => void;
+  /** Project preselected for a new DB Client, e.g. the open Project page. */
+  defaultProjectId?: string | null;
 }
 
 export function DBConnectPanel({
@@ -50,6 +52,7 @@ export function DBConnectPanel({
   onOpenChange,
   projects,
   onImportComplete,
+  defaultProjectId,
 }: DBConnectPanelProps) {
   const {
     accounts,
@@ -189,7 +192,7 @@ export function DBConnectPanel({
     setNewDbName('');
     setCreateDbOpen(false);
     setErdName('');
-    setSelectedProjectId('none');
+    setSelectedProjectId(defaultProjectId ?? 'none');
     const dbs = await listDatabases(acc.id);
     setAvailableDbs(dbs);
     setIsLoadingDbs(false);
@@ -238,12 +241,12 @@ export function DBConnectPanel({
 
   const handleStartImport = (cat: DbCatalog) => {
     setImportName(cat.label || cat.databaseName);
-    setSelectedProjectId('none');
+    setSelectedProjectId(defaultProjectId ?? 'none');
     setImportCat(cat);
   };
 
   const handleImport = async () => {
-    if (!importCat || !importName.trim()) return;
+    if (!importCat || !importName.trim() || selectedProjectId === 'none') return;
     setIsImporting(true);
     try {
       const targetProjectId = selectedProjectId === 'none' ? null : selectedProjectId;
@@ -283,14 +286,14 @@ export function DBConnectPanel({
             <div className="relative min-w-0 flex-1">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
-                className="h-10 pl-8 text-sm"
+                className="pl-8"
                 placeholder="Search accounts..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
               />
             </div>
             <div className="flex items-center gap-2">
-              <Button size="sm" className="h-10 w-full shrink-0 sm:w-auto" onClick={handleAdd}>
+              <Button size="lg" className="w-full shrink-0 sm:w-auto" onClick={handleAdd}>
                 <Plus className="h-3.5 w-3.5 mr-1" />
                 New DB Client
               </Button>
@@ -466,15 +469,15 @@ export function DBConnectPanel({
                     </Field>
                     <Field>
                       <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
-                        Workspace
+                        Project
                       </FieldLabel>
                       <SearchableSelect
                         value={selectedProjectId}
                         onChange={setSelectedProjectId}
-                        items={[{ id: 'none', name: 'Uncategorized' }, ...projects]}
-                        placeholder="Workspace (optional)"
-                        searchPlaceholder="Search workspace..."
-                        emptyMessage="No workspace found"
+                        items={projects}
+                        placeholder="Select project"
+                        searchPlaceholder="Search project..."
+                        emptyMessage="No project found"
                         getItemValue={(project) => String(project.id)}
                         getItemLabel={(project) => project.name}
                         filterItem={(project, q) => project.name.toLowerCase().includes(q.toLowerCase())}
@@ -491,7 +494,7 @@ export function DBConnectPanel({
             {availableDbs.length > 0 && (
               <AlertDialogAction
                 onClick={handleConfirmDatabase}
-                disabled={!selectedDbName || (dbPickMode === 'connect' && selectedDb?.isConnected) || (dbPickMode === 'import' && !erdName.trim()) || importingDbName !== null}
+                disabled={!selectedDbName || (dbPickMode === 'connect' && selectedDb?.isConnected) || (dbPickMode === 'import' && (!erdName.trim() || selectedProjectId === 'none')) || importingDbName !== null}
               >
                 {importingDbName ? (
                   <>
@@ -533,15 +536,15 @@ export function DBConnectPanel({
             </Field>
             <Field className="mt-3">
               <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
-                Workspace
+                Project
               </FieldLabel>
               <SearchableSelect
                 value={selectedProjectId}
                 onChange={setSelectedProjectId}
-                items={[{ id: 'none', name: 'Uncategorized' }, ...projects]}
-                placeholder="Workspace (optional)"
-                searchPlaceholder="Search workspace..."
-                emptyMessage="No workspace found"
+                items={projects}
+                placeholder="Select project"
+                searchPlaceholder="Search project..."
+                emptyMessage="No project found"
                 getItemValue={(project) => String(project.id)}
                 getItemLabel={(project) => project.name}
                 filterItem={(project, q) => project.name.toLowerCase().includes(q.toLowerCase())}
@@ -551,7 +554,7 @@ export function DBConnectPanel({
           </AlertDialogBody>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleImport} disabled={!importName.trim() || isImporting}>
+            <AlertDialogAction onClick={handleImport} disabled={!importName.trim() || selectedProjectId === 'none' || isImporting}>
               {isImporting ? (
                 <>
                   <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />

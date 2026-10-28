@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { useAuth } from '@/hooks/useAuth';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, isInstalledApp } from '@/lib/api';
 import { toast } from 'sonner';
 
 type AuthConfig = {
@@ -30,9 +30,6 @@ export function AccountTab() {
   const [newPassword, setNewPassword] = useState('');
   const [showPasswords, setShowPasswords] = useState(false);
 
-  // Dual detection: server primary + client fallback for tauri dev edge cases
-  const isTauriClient = typeof window !== 'undefined' &&
-    !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
 
   const [isSaving, setIsSaving] = useState(false);
 
@@ -42,8 +39,15 @@ export function AccountTab() {
       try {
         const res = await apiFetch('/api/auth-config');
         if (!res.ok) throw new Error('Failed to load auth config');
-        const data: AuthConfig = await res.json();
-        if (mounted) setConfig(data);
+        // The API answers in snake_case (server/index.ts), so `isDesktop` was never set and CLI showed Change Password.
+        const data = await res.json();
+        if (mounted) setConfig({
+          supabaseAuth: data.supabase_auth ?? data.supabaseAuth,
+          isDesktop: data.is_desktop ?? data.isDesktop,
+          isLocalPostgres: data.is_local_postgres ?? data.isLocalPostgres,
+          supportsPasswordUpdate: data.supports_password_update ?? data.supportsPasswordUpdate,
+          installMode: data.install_mode ?? data.installMode,
+        });
       } catch (err: any) {
         toast.error('Failed to load account settings: ' + err.message);
       } finally {
@@ -78,8 +82,8 @@ export function AccountTab() {
 
   const isReadOnly = config.supabaseAuth;
   // config.isDesktop may be false in tauri dev (frontend runs in regular browser
-  // without Tauri IPC). Dual detection: server config + client-side Tauri flags.
-  const isDesktop = config.isDesktop || isTauriClient;
+  // without Tauri IPC). Desktop and CLI both auto-login, so neither has a password to change.
+  const isDesktop = config.isDesktop || isInstalledApp();
   const supportsPasswordUpdate = !config.supabaseAuth && !isDesktop;
 
   // Web local auth mode (non-desktop): allow name, email changes freely.

@@ -1,7 +1,7 @@
 import { Request as ExpressRequest, Response as ExpressResponse } from "express";
 import { fetchSchema } from "../../lib/db-connectors/registry.js";
 import { prisma } from "../../lib/prisma.js";
-import { resolveOwnedProjectId } from "../../lib/security.js";
+import { resolveNewFileProjectId } from "../../lib/security.js";
 import { buildCatalogConnectionInfo } from "./middleware.js";
 import * as accountsService from "./accounts.service.js";
 import * as catalogsService from "./catalogs.service.js";
@@ -121,7 +121,7 @@ export async function importSchema(req: ExpressRequest, res: ExpressResponse) {
   try {
     const catalog = await catalogsService.findCatalogById(id, userId);
     if (!catalog) return res.status(404).json({ error: "Catalog not found" });
-    const projectId = await resolveOwnedProjectId(prisma as any, userId, project_id);
+    const projectId = await resolveNewFileProjectId(prisma as any, userId, project_id);
 
     // 1. Fetch schema from the database
     const tables = await fetchSchema(buildCatalogConnectionInfo(catalog));
@@ -165,6 +165,7 @@ export async function importSchema(req: ExpressRequest, res: ExpressResponse) {
       tableCount: tables.length,
     });
   } catch (err: any) {
+    if (err?.status === 400 || err?.status === 404) return res.status(err.status).json({ error: err.message });
     logger.error({ err }, "Error importing schema");
     res.status(500).json({ error: `Failed to import schema: ${err.message}` });
   }

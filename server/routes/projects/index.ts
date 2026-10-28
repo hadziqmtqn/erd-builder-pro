@@ -26,6 +26,7 @@ router.use(
 
 router.get("/", authenticate, ctrl.list);
 router.get("/selectable", authenticate, ctrl.selectable);
+router.get("/files", authenticate, ctrl.filePage);
 router.post("/", authenticate, ctrl.create);
 router.put("/:id", authenticate, ctrl.update);
 router.delete("/:id", authenticate, ctrl.remove);

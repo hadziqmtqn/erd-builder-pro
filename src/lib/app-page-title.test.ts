@@ -25,6 +25,11 @@ describe('getAppPageTitle', () => {
             .toBe('Engineering | ERD Builder Pro');
     });
 
+    it('uses the Project name on its file page', () => {
+        expect(getAppPageTitle({ ...activeDocument, pathname: '/projects/p-1', breadcrumbLabel: 'Payment Gateway' }))
+            .toBe('Payment Gateway | ERD Builder Pro');
+    });
+
     it('keeps the file name on document routes', () => {
         expect(getAppPageTitle({ ...activeDocument, pathname: '/diagrams/file-1' }))
             .toBe('Test ERD | ERD Builder Pro');

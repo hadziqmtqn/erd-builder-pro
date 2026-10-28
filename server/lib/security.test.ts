@@ -71,7 +71,7 @@ describe("resolveNewFileProjectId with Project roles (COL-004)", () => {
     vi.mocked(currentTeamScope).mockReturnValue({ mode: "team", teamId: "team-1" });
     prisma.project.findFirst.mockResolvedValueOnce(null);
     await expect(resolveNewFileProjectId(prisma, "member", 99)).rejects.toMatchObject({ status: 404 });
-    await expect(resolveNewFileProjectId(prisma, "member", null)).rejects.toMatchObject({ status: 400, message: "A Team project is required" });
+    await expect(resolveNewFileProjectId(prisma, "member", null)).rejects.toMatchObject({ status: 400, message: "A project is required" });
     await expect(resolveNewFileProjectId(prisma, "member", "abc")).rejects.toMatchObject({ status: 400, message: "Invalid project_id" });
   });
 
@@ -79,5 +79,14 @@ describe("resolveNewFileProjectId with Project roles (COL-004)", () => {
     vi.mocked(currentTeamScope).mockReturnValue({ mode: "personal", teamId: null });
     expect(await resolveNewFileProjectId(prisma, "member", 7)).toBe(7);
     expect(mocks.projectRole).not.toHaveBeenCalled();
+  });
+
+  it("requires a Project for Personal and Self-host files too (COL-008)", async () => {
+    for (const scope of [{ mode: "personal", teamId: null }, null]) {
+      vi.mocked(currentTeamScope).mockReturnValue(scope as any);
+      for (const empty of [null, undefined, "", "null"]) {
+        await expect(resolveNewFileProjectId(prisma, "member", empty)).rejects.toMatchObject({ status: 400, message: "A project is required" });
+      }
+    }
   });
 });

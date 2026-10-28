@@ -45,7 +45,7 @@ import {
 } from '@/components/ui/sidebar';
 
 import { useWorkspace } from '@/providers/WorkspaceProvider';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, isInstalledApp } from '@/lib/api';
 import { useTeams, type TeamSummary } from '@/hooks/useTeams';
 
 /** Replace parser-generated column UUID inside handle string with canvas column UUID.
@@ -81,6 +81,8 @@ import { AIChatToggle } from '@/components/ai/AIChatToggle';
 import { isFileCreator } from '@/lib/fileOwnership';
 import { useSettledERDCanvas } from '@/contexts/ERDCanvasContext';
 import { getAppPageTitle } from '@/lib/app-page-title';
+import { FILE_TYPES, cloudFeatureLock, openCloudPricing } from '@/lib/file-types';
+import { DBConnectPanel } from '@/components/db-connect/DBConnectPanel';
 
 // ── Inner component that uses AIAction context ──
 
@@ -235,7 +237,7 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
     duplicateName, setDuplicateName,
     itemToDelete, 
     createDialogOpen, setCreateDialogOpen,
-    createDialogView, 
+    createDialogView, setCreateDialogView,
     editDialogNote, setEditDialogNote,
     tableDeleteDoc, setTableDeleteDoc,
     executeDuplicate, confirmPermanentDelete,
@@ -254,6 +256,7 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
   const [isGlobalSearchLoading, setIsGlobalSearchLoading] = useState(false);
   const [selectableProjects, setSelectableProjects] = useState<any[]>([]);
   const isSuperAdmin = Boolean(user?.isSuperAdmin || user?.is_super_admin);
+  const ssoPortalUrl = user?.isSso ? (user.ssoPortalUrl ?? user.sso_portal_url) : null;
   const clearUnavailableTeamScope = useCallback(() => {
     setGlobalSearchQuery('');
     setGlobalSearchResults([]);
@@ -264,6 +267,11 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
     void refreshTeamScope();
   }, [flushPendingSaves, refreshTeamScope, setRightPanelMode]);
   const teamState = useTeams(isGuest, Boolean(user?.isSso), clearUnavailableTeamScope);
+  const [isDbConnectOpen, setIsDbConnectOpen] = useState(false);
+  const isCloudFeatureLocked = cloudFeatureLock(user, teamState.activeTeam, teamState.activeTeamId, teamState.isAvailable);
+  const createFileTypes = FILE_TYPES
+    .filter((type) => type.value !== 'db-client' || isInstalledApp())
+    .map((type) => ({ ...type, locked: type.value !== 'db-client' && isCloudFeatureLocked(type.capability) }));
   useEffect(() => {
     if (isGuest) {
       setSelectableProjects([]);
@@ -771,7 +779,6 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
 
       {!isPublicView && (
         <AppSidebar
-          activeFeatureView={isDbClientRoute ? 'db-client' : isFeatureRoute ? sidebarView : null}
           globalSearchResults={globalSearchResults}
           isGlobalSearchLoading={isGlobalSearchLoading}
           onGlobalSearchResultSelect={openGlobalSearchResult}
@@ -781,7 +788,6 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
           onProjectUpdate={handleSidebarProjectUpdate}
           onProjectDelete={handleSidebarProjectDelete}
           onLogout={handleLogout}
-          onWorkspaceFilter={handleWorkspaceFilter}
           selectedWorkspaceUid={selectedWorkspaceUid}
           globalSearchQuery={globalSearchQuery}
           onGlobalSearchChange={setGlobalSearchQuery}
@@ -905,7 +911,7 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
             newName={newName}
             setNewName={setNewName}
             projects={selectableProjects}
-            requireProject={Boolean(teamState.activeTeamId)}
+            requireProject
             selectedProjectId={renameProjectId}
             setSelectedProjectId={setRenameProjectId}
             updateDiagram={updateDiagram}
@@ -930,7 +936,7 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
             newName={newName}
             setNewName={setNewName}
             projects={selectableProjects}
-            requireProject={Boolean(teamState.activeTeamId)}
+            requireProject
             selectedProjectId={renameProjectId}
             setSelectedProjectId={setRenameProjectId}
             onProjectCreate={async (name) => {
@@ -943,6 +949,10 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
               }
               return project;
             }}
+            fileTypes={createFileTypes}
+            onViewChange={setCreateDialogView}
+            onViewPlans={() => openCloudPricing(ssoPortalUrl)}
+            onOpenDbConnections={() => setIsDbConnectOpen(true)}
             onCreate={(title, projectId) => {
               const viewCb = createDialogView;
               if (viewCb === 'notes') handleSidebarNoteCreate(title, projectId);
@@ -951,6 +961,16 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
               else if (viewCb === 'flowchart') handleSidebarFlowchartCreate(title, projectId);
             }}
             onRenameSuccess={undefined}
+          />
+        )}
+
+        {isInstalledApp() && (
+          <DBConnectPanel
+            open={isDbConnectOpen}
+            onOpenChange={setIsDbConnectOpen}
+            projects={projects}
+            defaultProjectId={projects.find((project: any) => project.uid === selectedWorkspaceUid)?.id?.toString() ?? null}
+            onImportComplete={(uid) => navigate(`/db-client/${uid}`)}
           />
         )}
 
@@ -1217,7 +1237,7 @@ export function AppLayout() {
       open={paired ? false : sidebar.open}
       onOpenChange={sidebar.onOpenChange}
       className="h-svh overflow-hidden"
-      style={{ "--sidebar-width": "320px" } as React.CSSProperties}
+      style={{ "--sidebar-width": "17rem" } as React.CSSProperties}
     >
       <AIActionProvider>
         <FileSessionShell paired={paired} onPairChange={setPaired} />

@@ -48,10 +48,17 @@ export function TeamSwitcher({
       size="lg"
       aria-label={`Switch workspace. Current workspace: ${workspaceName}`}
       title={`Workspace: ${workspaceName}`}
-      className="h-9 cursor-pointer px-2 transition-colors hover:bg-accent/50 active:bg-accent/70"
+      className="cursor-pointer transition-colors hover:bg-accent/50 active:bg-accent/70"
       onClick={enabled ? undefined : () => onSelect(null)}
     >
-      <span className="min-w-0 flex-1 truncate text-left font-medium">{workspaceName}</span>
+      <span className="flex size-8 shrink-0 items-center justify-center" aria-hidden="true">
+        <img src="/img/ERD-Builder-Pro-Light-1.svg" alt="" className="size-full dark:hidden" />
+        <img src="/img/ERD-Builder-Pro-Dark-1.svg" alt="" className="hidden size-full dark:block" />
+      </span>
+      <span className="grid min-w-0 flex-1 text-left leading-tight">
+        <span className="truncate font-semibold">ERD Builder Pro</span>
+        <span className="truncate text-xs text-muted-foreground">{workspaceName}</span>
+      </span>
       {enabled && <ChevronsUpDown className="ml-auto size-4 shrink-0" />}
     </SidebarMenuButton>
   );

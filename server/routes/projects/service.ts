@@ -8,6 +8,11 @@ import { isDesktopMode } from "../../lib/config.js";
 import { currentTeamScope, fileScopeWhere, projectScopeWhere } from "../../lib/team-scope.js";
 import { projectRolesFor } from "../../lib/project-access.js";
 import { deleteEntityRevisions } from "../../lib/entity-history.js";
+import { hasActiveCloudCapability } from "../../lib/cloud-capability.js";
+import * as notesService from "../notes/service.js";
+import * as diagramsService from "../diagrams/service.js";
+import * as flowchartsService from "../flowcharts/service.js";
+import * as drawingsService from "../drawings/service.js";
 
 // ── List ──
 
@@ -399,4 +404,75 @@ export async function listProjectFiles(projectId: number, userId: string, includ
   ];
 
   return { data: files.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) };
+}
+
+// ── Project file page (COL-008) ──
+
+export const PROJECT_FILE_TYPES = ["notes", "erd", "flowchart", "db-client", "drawings"] as const;
+export type ProjectFileType = typeof PROJECT_FILE_TYPES[number];
+const FILE_TYPE_CAPABILITY: Partial<Record<ProjectFileType, string>> = {
+  notes: "notes", erd: "erd_builder", flowchart: "flowcharts", drawings: "drawings",
+};
+
+/**
+ * One page of a Project's files for the Project page tabs, plus the per-type counts.
+ * Each type goes through its own list service, so per-user and Team visibility rules stay in one place.
+ * `projectId` is a numeric Project id, or "null" for files without a Project.
+ * shortcut: the All tab reads offset+limit rows of every type and merges them; move to one SQL UNION if Projects grow past a few thousand files.
+ */
+export async function listProjectFilePage(userId: string, params: {
+  projectId: string;
+  type: ProjectFileType | "all";
+  limit: number;
+  offset: number;
+  q?: string;
+  includeDbClient: boolean;
+}) {
+  if (!prisma) throw new Error("Database connection not available");
+  const { projectId, type, limit, offset, q } = params;
+  const isAll = type === "all";
+  const page = (fileType: ProjectFileType) =>
+    isAll ? { limit: offset + limit, offset: 0 } : fileType === type ? { limit, offset } : { limit: 1, offset: 0 };
+
+  const loaders: Record<ProjectFileType, () => Promise<{ data: any[]; total: number }>> = {
+    notes: () => notesService.listNotes(userId, { ...page("notes"), projectId, q }),
+    erd: () => diagramsService.listDiagrams(userId, { ...page("erd"), projectId, q, sourceType: "blank" }),
+    flowchart: () => flowchartsService.listFlowcharts(userId, { ...page("flowchart"), projectId, q }),
+    drawings: () => drawingsService.listDrawings(userId, { ...page("drawings"), projectId, q }),
+    "db-client": async () => {
+      if (!params.includeDbClient || !isDesktopMode()) return { data: [], total: 0 };
+      const where: any = { userId, isDeleted: false, projectId: projectId === "null" ? null : Number(projectId) };
+      if (q?.trim()) where.name = { contains: q.trim() };
+      const { limit: take, offset: skip } = page("db-client");
+      const [data, total] = await Promise.all([
+        (prisma as any).dbClient.findMany({
+          where, orderBy: { createdAt: "desc" }, skip, take,
+          select: { id: true, uid: true, name: true, projectId: true, userId: true, createdAt: true, updatedAt: true, project: { select: { id: true, uid: true, name: true } } },
+        }),
+        (prisma as any).dbClient.count({ where }),
+      ]);
+      return { data, total };
+    },
+  };
+
+  // A Cloud Team plan without a feature hides its files here too, like the feature's own list API (403).
+  const allowed = await Promise.all(PROJECT_FILE_TYPES.map(fileType => {
+    const capability = FILE_TYPE_CAPABILITY[fileType];
+    return capability ? hasActiveCloudCapability(capability) : true;
+  }));
+  const locked = PROJECT_FILE_TYPES.filter((_, index) => !allowed[index]);
+  const results = await Promise.all(PROJECT_FILE_TYPES.map((fileType, index) =>
+    allowed[index] ? loaders[fileType]() : Promise.resolve({ data: [] as any[], total: 0 })));
+  const counts = Object.fromEntries(PROJECT_FILE_TYPES.map((fileType, index) => [fileType, results[index].total])) as Record<ProjectFileType, number>;
+  const rows = PROJECT_FILE_TYPES.flatMap((fileType, index) =>
+    isAll || fileType === type ? results[index].data.map((file: any) => ({ ...file, type: fileType })) : []);
+
+  if (!isAll) return { data: rows, total: counts[type], counts, locked };
+  rows.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return {
+    data: rows.slice(offset, offset + limit),
+    total: Object.values(counts).reduce((sum, count) => sum + count, 0),
+    counts,
+    locked,
+  };
 }

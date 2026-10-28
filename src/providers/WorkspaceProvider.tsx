@@ -48,7 +48,6 @@ import { useNoteChangeHandler } from '../hooks/useNoteChangeHandler';
 import { useDrawingChangeHandler } from '../hooks/useDrawingChangeHandler';
 import { useFlowchartChangeHandler } from '../hooks/useFlowchartChangeHandler';
 import { useFocusSync } from '../hooks/useFocusSync';
-import { useTableViewPagination } from '../hooks/useTableViewPagination';
 import { useDocumentActions } from '../hooks/useDocumentActions';
 import { useAppMetadata } from '../hooks/useAppMetadata';
 import { useFileOperations } from '../hooks/useFileOperations';
@@ -121,6 +120,9 @@ export function WorkspaceProvider({
 
   // ── Derived view from URL ──
   const view = useMemo(() => deriveViewFromPath(location.pathname), [location.pathname]);
+  // The open Project page (`/projects/:key`) is the Project new files default to (COL-008).
+  const projectKey = location.pathname.match(/^\/projects\/([^/]+)$/)?.[1];
+  const selectedWorkspaceUid = projectKey ? decodeURIComponent(projectKey) : null;
   const [sidebarViewState, setSidebarViewState] = useState<AppView>(() => {
     const saved = localStorage.getItem('erd-builder-last-sidebar-view') as AppView;
     return saved || 'notes';
@@ -626,7 +628,7 @@ export function WorkspaceProvider({
 
   const { handleOpenEditDocument, handleOpenCreateDocument } = useDocumentActions({
     view, notes, diagrams, drawings, flowcharts, projects,
-    selectedWorkspaceUid: tableSearchParams.get('workspace'),
+    selectedWorkspaceUid,
     setEditDialogNote, setNewName, setRenameProjectId,
     setIsRenameDialogOpen, setCreateDialogOpen, setCreateDialogView,
   });
@@ -860,16 +862,6 @@ export function WorkspaceProvider({
   const [pendingErdDiffTrigger, setPendingErdDiffTrigger] = useState(0);
   const triggerPendingErdDiff = useCallback(() => setPendingErdDiffTrigger(k => k + 1), []);
   const [tableLoadingState, setTableLoadingState] = useState<'idle' | 'loading'>('idle');
-  useTableViewPagination({
-    view, pathname: location.pathname, hasActiveItem, isAuthenticated, isPublicView,
-    selectedWorkspaceUid: tableSearchParams.get('workspace'),
-    tableSearchParams, projects,
-    fileSearchQuery: debouncedFileSearchQuery,
-    fetchNotes, fetchDiagrams, fetchFlowcharts, fetchDrawings,
-    tableRefreshKey,
-    tableLoadingState,
-    setTableLoadingState,
-  });
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -1165,7 +1157,7 @@ export function WorkspaceProvider({
     fileSearchQuery, setFileSearchQuery,
     fileSearchRef,
 
-    selectedWorkspaceUid: tableSearchParams.get('workspace'),
+    selectedWorkspaceUid,
     handleWorkspaceFilter,
 
     activeDocument, activeNote, activeDiagram, activeDrawing, activeFlowchart,
