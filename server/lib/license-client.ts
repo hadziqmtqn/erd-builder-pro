@@ -21,6 +21,13 @@ const OFFICIAL_LICENSE_PUBLIC_KEY_ID = "production-1";
 const OFFICIAL_LICENSE_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEABi1Uek1UFOesLWNtuyL8T7+nZzbWIoBhNeRaQ/6w4Wk=
 -----END PUBLIC KEY-----`;
+const OFFICIAL_LICENSE_ISSUERS = ["https://erdbuilderpro.com", "https://www.erdbuilderpro.com"];
+// Staging SaaS key and issuer, trusted only with ERDBPRO_LICENSE_ENVIRONMENT=staging (SH-006).
+const STAGING_LICENSE_PUBLIC_KEY_ID = "staging-1";
+const STAGING_LICENSE_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAH1SUpOxBwWSrgqoR0DPR1F94Z4rIJLb6qxWJMrj4dNI=
+-----END PUBLIC KEY-----`;
+const STAGING_LICENSE_ISSUERS = ["https://staging-saas.erdbuilderpro.com"];
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const UUID_CANONICAL = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CAPABILITY_KEY = /^[a-z][a-z0-9_]*$/;
@@ -299,6 +306,28 @@ function claimAudience(value: unknown): boolean {
     : Array.isArray(value) && value.some((audience) => typeof audience === "string" && AUDIENCES.has(audience));
 }
 
+type LicenseTrust = { publicKey?: string; keyId?: string; issuers: string[]; environment: "production" | "staging" | null };
+
+/**
+ * Which SaaS may sign this install's entitlements (SH-006). Keys and issuers are bundled, never read from .env,
+ * so a changed .env cannot trust a self-made key; only tests inject an ephemeral key.
+ */
+function licenseTrust(): LicenseTrust {
+  if (process.env.ERDBPRO_LICENSE_ENVIRONMENT?.trim() === "staging") {
+    return { publicKey: STAGING_LICENSE_PUBLIC_KEY, keyId: STAGING_LICENSE_PUBLIC_KEY_ID, issuers: STAGING_LICENSE_ISSUERS, environment: "staging" };
+  }
+  if (process.env.NODE_ENV !== "test") {
+    return { publicKey: OFFICIAL_LICENSE_PUBLIC_KEY, keyId: OFFICIAL_LICENSE_PUBLIC_KEY_ID, issuers: OFFICIAL_LICENSE_ISSUERS, environment: "production" };
+  }
+  const issuer = process.env.ERDBPRO_LICENSE_ISSUER?.trim();
+  return {
+    publicKey: process.env.ERDBPRO_LICENSE_PUBLIC_KEY?.trim().replace(/\\n/g, "\n") || OFFICIAL_LICENSE_PUBLIC_KEY,
+    keyId: process.env.ERDBPRO_LICENSE_PUBLIC_KEY_ID?.trim() || OFFICIAL_LICENSE_PUBLIC_KEY_ID,
+    issuers: issuer ? [issuer] : [],
+    environment: null,
+  };
+}
+
 export function verifySignedEntitlement(
   signedEntitlement: string,
   expectedInstallationId: string,
@@ -317,16 +346,8 @@ export function verifySignedEntitlement(
     throw new LicenseClientError("LICENSE_SIGNATURE_INVALID", 502);
   }
 
-  // Test fixtures may inject an ephemeral key. Runtime builds always use the
-  // bundled official key, so a production .env cannot trust a fake issuer.
-  const publicKey = process.env.NODE_ENV === "test"
-    ? process.env.ERDBPRO_LICENSE_PUBLIC_KEY?.trim().replace(/\\n/g, "\n") || OFFICIAL_LICENSE_PUBLIC_KEY
-    : OFFICIAL_LICENSE_PUBLIC_KEY;
-  const issuer = process.env.ERDBPRO_LICENSE_ISSUER?.trim();
-  const keyId = process.env.NODE_ENV === "test"
-    ? process.env.ERDBPRO_LICENSE_PUBLIC_KEY_ID?.trim() || OFFICIAL_LICENSE_PUBLIC_KEY_ID
-    : OFFICIAL_LICENSE_PUBLIC_KEY_ID;
-  if (!publicKey || !issuer) throw new LicenseClientError("LICENSE_VERIFICATION_NOT_CONFIGURED", 503);
+  const { publicKey, keyId, issuers, environment } = licenseTrust();
+  if (!publicKey || !keyId || issuers.length === 0) throw new LicenseClientError("LICENSE_VERIFICATION_NOT_CONFIGURED", 503);
   if (header?.alg !== "EdDSA" || header?.kid !== keyId) {
     throw new LicenseClientError("LICENSE_SIGNATURE_INVALID", 502);
   }
@@ -348,7 +369,9 @@ export function verifySignedEntitlement(
   const maxMembers = limits?.max_members;
   const maxTeams = limits?.max_teams;
   if (
-    claims?.iss !== issuer ||
+    !issuers.includes(claims?.iss) ||
+    // A staging install refuses production entitlements and an official install anything else (SH-006).
+    (environment !== null && claims?.env !== environment) ||
     !claimAudience(claims?.aud) ||
     claims?.product_type !== PRODUCT_TYPE ||
     claims?.client_type !== CLIENT_TYPE ||

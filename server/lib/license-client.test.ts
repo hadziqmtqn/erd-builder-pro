@@ -343,6 +343,20 @@ describe("self-host license entitlement verification", () => {
     }
   });
 
+  it("trusts only the bundled staging key when the install opts into staging", () => {
+    const installationId = "018f3f7e-1c33-43f2-a4e4-19b55e61d3fa";
+    const keyPair = generateKeyPairSync("ed25519");
+    const header = encode({ alg: "EdDSA", typ: "JWT", kid: "staging-1" });
+    const claims = encode({ iss: "https://staging-saas.erdbuilderpro.com", env: "staging" });
+    const signature = sign(null, Buffer.from(`${header}.${claims}`), keyPair.privateKey).toString("base64url");
+    signedEntitlement(installationId, ["team_files"], "erd-self-host", undefined, undefined, {}, keyPair);
+    vi.stubEnv("ERDBPRO_LICENSE_ENVIRONMENT", "staging");
+
+    // A self-made key with the staging key ID fails even though .env names that key.
+    expect(() => verifySignedEntitlement(`${header}.${claims}.${signature}`, installationId))
+      .toThrowError(expect.objectContaining({ code: "LICENSE_SIGNATURE_INVALID" }));
+  });
+
   it("keeps a signed instance lease available only during offline grace", () => {
     useTemporaryDirectory();
     process.env.ERDBPRO_LICENSE_STATE_FILE = path.join(temporaryDirectory, "license-state.json");
