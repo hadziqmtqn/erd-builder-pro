@@ -166,7 +166,7 @@
     "@types/node": "^22.19.19",
     "@types/prismjs": "^1.26.6",
     "@types/turndown": "^5.0.6",
-    "@vitejs/plugin-react": "^5.0.4",
+    "@vitejs/plugin-react": "^6.1.2",
     "autoprefixer": "^10.4.21",
     "concurrently": "^10.0.6",
     "esbuild": "^0.28.2",
