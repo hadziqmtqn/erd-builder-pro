@@ -176,6 +176,7 @@ export const APISettingsTab: React.FC<APISettingsTabProps> = ({
               {provider.code === 'openai' && <Lock className="w-3.5 h-3.5" />}
               {provider.code === 'gemini' && <Zap className="w-3.5 h-3.5" />}
               {provider.code === 'openai_compatible' && <Globe className="w-3.5 h-3.5" />}
+              {provider.code === 'anthropic' && <Bot className="w-3.5 h-3.5" />}
               {provider.name}
               {configs[provider.code]?.is_enabled && (
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="Active" />
@@ -192,6 +193,7 @@ export const APISettingsTab: React.FC<APISettingsTabProps> = ({
               {selectedProvider.code === 'openai' && <Lock className="w-6 h-6 text-purple-500" />}
               {selectedProvider.code === 'gemini' && <Zap className="w-6 h-6 text-purple-500" />}
               {selectedProvider.code === 'openai_compatible' && <Globe className="w-6 h-6 text-purple-500" />}
+              {selectedProvider.code === 'anthropic' && <Bot className="w-6 h-6 text-purple-500" />}
               <div>
                 <h2 className="text-base font-semibold">{selectedProvider.name}</h2>
                 <p className="text-xs text-muted-foreground">Credentials, endpoint, and default model.</p>
@@ -208,6 +210,7 @@ export const APISettingsTab: React.FC<APISettingsTabProps> = ({
                   openai: 'https://api.openai.com/v1',
                   gemini: 'https://generativelanguage.googleapis.com/v1beta',
                   openai_compatible: 'https://api.your-provider.com/v1',
+                  anthropic: 'https://api.anthropic.com/v1',
                 }[selectedProvider.code] || 'https://api.openai.com/v1'}
                 value={selectedProvider.base_url || ''} 
                 onChange={(e) => onUpdateProvider(selectedProvider.code, { base_url: e.target.value })}

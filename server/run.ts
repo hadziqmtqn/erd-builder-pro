@@ -19,6 +19,21 @@ import { missingStaticAsset } from "./lib/missing-static-asset.js";
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const isProd = process.env.NODE_ENV === "production";
 
+/** Adds the Anthropic provider and its models once, including on installs seeded before it existed. */
+async function ensureAnthropicProvider(): Promise<void> {
+  const db = prisma as any;
+  if (await db.aiProvider.findUnique({ where: { code: "anthropic" } })) return;
+  const anthropic = await db.aiProvider.create({
+    data: { name: "Anthropic (Claude)", code: "anthropic", baseUrl: "https://api.anthropic.com/v1", isActive: true },
+  });
+  await db.aiModel.createMany({
+    data: [
+      { providerId: anthropic.id, modelIdentifier: "claude-haiku-5-5", displayName: "Claude Haiku 5.5", contextWindow: 200000, isActive: true },
+      { providerId: anthropic.id, modelIdentifier: "claude-sonnet-5-5", displayName: "Claude Sonnet 5.5", contextWindow: 200000, isActive: true },
+    ],
+  });
+}
+
 /**
  * Seed default AI providers, models, and system prompts for fresh desktop installs.
  * Mirror of prisma/seed.sqlite.ts but runs inline in the startup fallback path.
@@ -29,7 +44,10 @@ async function seedAIProviders(): Promise<void> {
   try {
     // Check if any providers exist already
     const existing = await prisma.aiProvider.count();
-    if (existing > 0) return;
+    if (existing > 0) {
+      await ensureAnthropicProvider();
+      return;
+    }
 
     logger.info("Seeding default AI providers, models, and system prompts");
 
@@ -77,6 +95,8 @@ async function seedAIProviders(): Promise<void> {
         ],
       });
     }
+
+    await ensureAnthropicProvider();
 
     // ── Default system prompt ──
     const defaultSystemPrompt = `You are an AI assistant for ERD Builder Pro — an integrated workspace combining Database ERD diagrams, Flowcharts, and Markdown Notes.

@@ -87,6 +87,7 @@ export const ProviderConfigCard: React.FC<ProviderConfigCardProps> = ({
                 openai: 'https://api.openai.com/v1',
                 gemini: 'https://generativelanguage.googleapis.com/v1beta',
                 openai_compatible: 'https://api.your-provider.com/v1',
+                anthropic: 'https://api.anthropic.com/v1',
               }[provider.code] || 'https://api.openai.com/v1'}
               value={provider.base_url || ''} 
               onChange={(e) => onUpdateProvider(provider.code, { base_url: e.target.value })}

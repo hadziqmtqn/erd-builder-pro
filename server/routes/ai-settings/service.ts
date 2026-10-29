@@ -335,6 +335,7 @@ export async function initializeDefaults() {
     { name: "OpenAI", code: "openai", baseUrl: "https://api.openai.com/v1", isActive: true },
     { name: "Google Gemini", code: "gemini", baseUrl: null, isActive: true },
     { name: "OpenAI Compatible", code: "openai_compatible", baseUrl: "https://ai.paas.id", isActive: true },
+    { name: "Anthropic (Claude)", code: "anthropic", baseUrl: "https://api.anthropic.com/v1", isActive: true },
   ];
 
   for (const provider of defaultProviders) {
@@ -364,6 +365,11 @@ export async function initializeDefaults() {
     } else if (p.code === "openai_compatible") {
       modelsToInsert.push(
         { providerId: p.id, modelIdentifier: "deepseek-v4-flash", displayName: "DeepSeek V4 Flash", isActive: true }
+      );
+    } else if (p.code === "anthropic") {
+      modelsToInsert.push(
+        { providerId: p.id, modelIdentifier: "claude-haiku-5-5", displayName: "Claude Haiku 5.5", isActive: true },
+        { providerId: p.id, modelIdentifier: "claude-sonnet-5-5", displayName: "Claude Sonnet 5.5", isActive: true }
       );
     }
   });
@@ -432,7 +438,8 @@ export async function testConnection(
     providerCode === "gemini" ? "gemini-1.5-flash" : "gpt-4o-mini"
   );
 
-  if (providerCode === "openai" || providerCode === "openai_compatible") {
+  // Anthropic is reached through its OpenAI-compatible endpoint.
+  if (providerCode === "openai" || providerCode === "openai_compatible" || providerCode === "anthropic") {
     const baseUrl = await safeAiBaseUrl(provider?.baseUrl ?? undefined, "https://api.openai.com/v1");
 
     const response = await fetch(`${baseUrl}/chat/completions`, {
