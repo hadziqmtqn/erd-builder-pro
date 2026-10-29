@@ -54,6 +54,7 @@ async function main() {
     { name: 'OpenAI', code: 'openai', baseUrl: 'https://api.openai.com/v1' },
     { name: 'Google Gemini', code: 'gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta' },
     { name: 'OpenAI Compatible', code: 'openai_compatible', baseUrl: 'https://ai.paas.id' },
+    { name: 'Anthropic (Claude)', code: 'anthropic', baseUrl: 'https://api.anthropic.com/v1' },
   ];
 
   for (const p of providerDefs) {
@@ -68,7 +69,7 @@ async function main() {
       },
     });
   }
-  console.log('  ✓ AI Providers: OpenAI, Gemini, OpenAI Compatible');
+  console.log('  ✓ AI Providers: OpenAI, Gemini, OpenAI Compatible, Anthropic');
 
   // ── AI Models (idempotent — only seed if provider has no models) ──
   // Uses findFirst instead of deleteMany+createMany to avoid wiping
@@ -76,6 +77,7 @@ async function main() {
   const openai = await prisma.aiProvider.findUnique({ where: { code: 'openai' } });
   const gemini = await prisma.aiProvider.findUnique({ where: { code: 'gemini' } });
   const openaiCompat = await prisma.aiProvider.findUnique({ where: { code: 'openai_compatible' } });
+  const anthropic = await prisma.aiProvider.findUnique({ where: { code: 'anthropic' } });
 
   if (openai) {
     const existing = await prisma.aiModel.findFirst({ where: { providerId: openai.id } });
@@ -119,6 +121,21 @@ async function main() {
       console.log('  ✓ OpenAI Compatible models: DeepSeek V4 Flash');
     } else {
       console.log('  - OpenAI Compatible models already exist, skipping');
+    }
+  }
+
+  if (anthropic) {
+    const existing = await prisma.aiModel.findFirst({ where: { providerId: anthropic.id } });
+    if (!existing) {
+      await prisma.aiModel.createMany({
+        data: [
+          { providerId: anthropic.id, modelIdentifier: 'claude-haiku-5-5', displayName: 'Claude Haiku 5.5', contextWindow: 200000, isActive: true },
+          { providerId: anthropic.id, modelIdentifier: 'claude-sonnet-5-5', displayName: 'Claude Sonnet 5.5', contextWindow: 200000, isActive: true },
+        ],
+      });
+      console.log('  ✓ Anthropic models: Claude Haiku 5.5, Claude Sonnet 5.5');
+    } else {
+      console.log('  - Anthropic models already exist, skipping');
     }
   }
 
