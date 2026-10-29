@@ -43,6 +43,11 @@ interface GitHubRelease {
   prerelease: boolean;
 }
 
+/** GitHub's generated notes start with an HTML comment; it is not meant to be shown. */
+export function stripHtmlComments(body: string | null): string {
+  return (body ?? '').replace(/<!--[\s\S]*?-->/g, '').trim();
+}
+
 function parseTotalPages(linkHeader: string | null): number {
   if (!linkHeader) return 1;
   const lastMatch = linkHeader.match(/page=(\d+)>;\s*rel="last"/);
@@ -71,8 +76,8 @@ export function ChangelogView() {
         `https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=${ITEMS_PER_PAGE}&page=${page}`
       );
       if (!response.ok) throw new Error('Failed to fetch releases');
-      const data = await response.json();
-      setReleases(data);
+      const data: GitHubRelease[] = await response.json();
+      setReleases(data.map(release => ({ ...release, body: stripHtmlComments(release.body) })));
       setTotalPages(parseTotalPages(response.headers.get('Link')));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
