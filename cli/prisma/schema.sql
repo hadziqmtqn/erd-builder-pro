@@ -6,13 +6,14 @@ CREATE TABLE "users" (
     "password" TEXT NOT NULL,
     "is_super_admin" BOOLEAN,
     "must_change_password" BOOLEAN NOT NULL DEFAULT false,
+    "login_failed_attempts" INTEGER NOT NULL DEFAULT 0,
+    "login_locked_until" DATETIME,
     "sso_subject" TEXT,
     "sso_email" TEXT,
+    "cloud_personal_entitlement" TEXT,
     "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-
-CREATE UNIQUE INDEX "users_sso_subject_key" ON "users"("sso_subject");
 
 -- CreateTable
 CREATE TABLE "sessions" (
@@ -31,13 +32,10 @@ CREATE TABLE "teams" (
     "name" TEXT NOT NULL,
     "type" TEXT NOT NULL DEFAULT 'team',
     "created_by" TEXT,
+    "sso_organization_id" TEXT,
     "status" TEXT NOT NULL DEFAULT 'active',
-    "license_id" TEXT,
-    "license_code_last_four" TEXT,
-    "license_status" TEXT NOT NULL DEFAULT 'active',
-    "license_expires_at" DATETIME,
-    "max_members" INTEGER,
-    "binding_generation" INTEGER DEFAULT 0,
+    "cloud_entitlement" TEXT,
+    "provisioning_signature" TEXT,
     "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "teams_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION
@@ -51,6 +49,7 @@ CREATE TABLE "team_members" (
     "role" TEXT NOT NULL DEFAULT 'staff',
     "status" TEXT NOT NULL DEFAULT 'active',
     "joined_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "provisioning_signature" TEXT,
     CONSTRAINT "team_members_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "teams" ("id") ON DELETE CASCADE ON UPDATE NO ACTION,
     CONSTRAINT "team_members_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
 );
@@ -65,23 +64,6 @@ CREATE TABLE "team_invitations" (
     "accepted_at" DATETIME,
     "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "team_invitations_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "teams" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
-);
-
--- CreateTable
-CREATE TABLE "team_license_entitlements" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "team_id" TEXT NOT NULL,
-    "activation_id" TEXT NOT NULL,
-    "license_id" TEXT NOT NULL,
-    "installation_id" TEXT NOT NULL,
-    "encrypted_client_token" TEXT NOT NULL,
-    "signed_entitlement" TEXT NOT NULL,
-    "expires_at" DATETIME NOT NULL,
-    "grace_until" DATETIME,
-    "status" TEXT NOT NULL,
-    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "team_license_entitlements_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "teams" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
 );
 
 -- CreateTable
@@ -113,6 +95,46 @@ CREATE TABLE "projects" (
     "_version" INTEGER DEFAULT 0,
     CONSTRAINT "projects_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION,
     CONSTRAINT "projects_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "teams" ("id") ON DELETE SET NULL ON UPDATE NO ACTION
+);
+
+-- CreateTable
+CREATE TABLE "project_access_grants" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "project_id" INTEGER NOT NULL,
+    "user_id" TEXT NOT NULL,
+    "role" TEXT NOT NULL,
+    "granted_by" TEXT,
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "project_access_grants_project_id_fkey" FOREIGN KEY ("project_id") REFERENCES "projects" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
+);
+
+-- CreateTable
+CREATE TABLE "storage_objects" (
+    "key" TEXT NOT NULL PRIMARY KEY,
+    "scope_type" TEXT NOT NULL,
+    "scope_id" TEXT NOT NULL,
+    "uploaded_by" TEXT,
+    "feature" TEXT NOT NULL,
+    "document_uid" TEXT,
+    "mime_type" TEXT NOT NULL,
+    "bytes" INTEGER NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'pending',
+    "unreferenced_since" DATETIME,
+    "deleted_at" DATETIME,
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- CreateTable
+CREATE TABLE "storage_usage" (
+    "scope_type" TEXT NOT NULL,
+    "scope_id" TEXT NOT NULL,
+    "document_bytes" BIGINT NOT NULL DEFAULT 0,
+    "revision_bytes" BIGINT NOT NULL DEFAULT 0,
+    "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY ("scope_type", "scope_id")
 );
 
 -- CreateTable
@@ -471,6 +493,126 @@ CREATE TABLE "user_ai_rules" (
 );
 
 -- CreateTable
+CREATE TABLE "cloud_ai_runtime_configs" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "revision" INTEGER NOT NULL,
+    "ciphertext" TEXT NOT NULL,
+    "iv" TEXT NOT NULL,
+    "auth_tag" TEXT NOT NULL,
+    "enabled" BOOLEAN NOT NULL DEFAULT true,
+    "expires_at" TEXT,
+    "received_at" TEXT NOT NULL,
+    "updated_at" TEXT NOT NULL,
+    "last_error_code" TEXT
+);
+
+-- CreateTable
+CREATE TABLE "cloud_ai_usage_periods" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "team_id" TEXT NOT NULL,
+    "period_start" TEXT NOT NULL,
+    "period_end" TEXT,
+    "limit_credits" INTEGER NOT NULL,
+    "consumed_credits" INTEGER NOT NULL DEFAULT 0,
+    "reserved_credits" INTEGER NOT NULL DEFAULT 0,
+    "entitlement_revision" TEXT NOT NULL,
+    "created_at" TEXT NOT NULL,
+    "updated_at" TEXT NOT NULL
+);
+
+-- CreateTable
+CREATE TABLE "cloud_ai_usage_requests" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "request_id" TEXT NOT NULL,
+    "team_id" TEXT NOT NULL,
+    "period_id" TEXT NOT NULL,
+    "user_id" TEXT NOT NULL,
+    "credits" INTEGER NOT NULL DEFAULT 1,
+    "state" TEXT NOT NULL,
+    "provider_code" TEXT,
+    "model_identifier" TEXT,
+    "error_code" TEXT,
+    "created_at" TEXT NOT NULL,
+    "updated_at" TEXT NOT NULL
+);
+
+-- CreateTable
+CREATE TABLE "discussion_threads" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "project_id" INTEGER,
+    "team_id" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'open',
+    "created_by" TEXT NOT NULL,
+    "resolved_by" TEXT,
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- CreateTable
+CREATE TABLE "discussion_contexts" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "thread_id" TEXT NOT NULL,
+    "feature_type" TEXT NOT NULL,
+    "file_id" TEXT NOT NULL,
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- CreateTable
+CREATE TABLE "discussion_messages" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "thread_id" TEXT NOT NULL,
+    "author_id" TEXT NOT NULL,
+    "author_name" TEXT NOT NULL,
+    "body" TEXT NOT NULL,
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- CreateTable
+CREATE TABLE "discussion_reads" (
+    "thread_id" TEXT NOT NULL,
+    "user_id" TEXT NOT NULL,
+    "last_read_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY ("thread_id", "user_id")
+);
+
+-- CreateTable
+CREATE TABLE "comment_threads" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "project_id" INTEGER NOT NULL,
+    "team_id" TEXT NOT NULL,
+    "feature_type" TEXT NOT NULL,
+    "file_id" TEXT NOT NULL,
+    "anchor_type" TEXT NOT NULL,
+    "anchor_id" TEXT NOT NULL,
+    "anchor_label" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'open',
+    "created_by" TEXT NOT NULL,
+    "resolved_by" TEXT,
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- CreateTable
+CREATE TABLE "comment_messages" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "thread_id" TEXT NOT NULL,
+    "author_id" TEXT NOT NULL,
+    "author_name" TEXT NOT NULL,
+    "body" TEXT NOT NULL,
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- CreateTable
+CREATE TABLE "comment_reads" (
+    "thread_id" TEXT NOT NULL,
+    "user_id" TEXT NOT NULL,
+    "last_read_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY ("thread_id", "user_id")
+);
+
+-- CreateTable
 CREATE TABLE "user_preferences" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "user_id" TEXT NOT NULL,
@@ -520,16 +662,16 @@ CREATE TABLE "db_catalogs" (
 CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "users_sso_subject_key" ON "users"("sso_subject");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "sessions_token_key" ON "sessions"("token");
 
 -- CreateIndex
 CREATE INDEX "sessions_token_idx" ON "sessions"("token");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "teams_license_id_key" ON "teams"("license_id");
-
--- CreateIndex
-CREATE INDEX "idx_teams_license_status" ON "teams"("license_status");
+CREATE UNIQUE INDEX "teams_sso_organization_id_key" ON "teams"("sso_organization_id");
 
 -- CreateIndex
 CREATE INDEX "idx_team_members_user_status" ON "team_members"("user_id", "status");
@@ -545,15 +687,6 @@ CREATE INDEX "idx_team_invitations_team_expires" ON "team_invitations"("team_id"
 
 -- CreateIndex
 CREATE INDEX "idx_team_invitations_email_accepted" ON "team_invitations"("email", "accepted_at");
-
--- CreateIndex
-CREATE UNIQUE INDEX "team_license_entitlements_activation_id_key" ON "team_license_entitlements"("activation_id");
-
--- CreateIndex
-CREATE INDEX "idx_team_license_entitlements_team_status" ON "team_license_entitlements"("team_id", "status");
-
--- CreateIndex
-CREATE INDEX "idx_team_license_entitlements_license" ON "team_license_entitlements"("license_id");
 
 -- CreateIndex
 CREATE INDEX "idx_team_audit_events_team_created" ON "team_audit_events"("team_id", "created_at");
@@ -572,6 +705,21 @@ CREATE INDEX "idx_projects_team_deleted" ON "projects"("team_id", "is_deleted");
 
 -- CreateIndex
 CREATE INDEX "idx_projects_updated_at" ON "projects"("updated_at");
+
+-- CreateIndex
+CREATE INDEX "idx_project_access_grants_user" ON "project_access_grants"("user_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "project_access_grants_project_user_key" ON "project_access_grants"("project_id", "user_id");
+
+-- CreateIndex
+CREATE INDEX "idx_storage_objects_scope" ON "storage_objects"("scope_type", "scope_id", "status");
+
+-- CreateIndex
+CREATE INDEX "idx_storage_objects_sweep" ON "storage_objects"("status", "unreferenced_since");
+
+-- CreateIndex
+CREATE INDEX "idx_storage_objects_document" ON "storage_objects"("document_uid");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "diagrams_uid_key" ON "diagrams"("uid");
@@ -689,6 +837,39 @@ CREATE UNIQUE INDEX "ai_chat_messages_session_id_client_message_id_key" ON "ai_c
 
 -- CreateIndex
 CREATE UNIQUE INDEX "user_ai_rules_user_id_view_type_key" ON "user_ai_rules"("user_id", "view_type");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "cloud_ai_usage_period_team_start" ON "cloud_ai_usage_periods"("team_id", "period_start");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "cloud_ai_usage_requests_request_id_key" ON "cloud_ai_usage_requests"("request_id");
+
+-- CreateIndex
+CREATE INDEX "cloud_ai_usage_requests_team_created" ON "cloud_ai_usage_requests"("team_id", "created_at");
+
+-- CreateIndex
+CREATE INDEX "discussion_threads_project_updated" ON "discussion_threads"("team_id", "project_id", "updated_at" DESC);
+
+-- CreateIndex
+CREATE INDEX "discussion_contexts_thread" ON "discussion_contexts"("thread_id");
+
+-- CreateIndex
+CREATE INDEX "discussion_contexts_file" ON "discussion_contexts"("feature_type", "file_id");
+
+-- CreateIndex
+CREATE INDEX "discussion_messages_thread_created" ON "discussion_messages"("thread_id", "created_at");
+
+-- CreateIndex
+CREATE INDEX "discussion_reads_user_thread" ON "discussion_reads"("user_id", "thread_id");
+
+-- CreateIndex
+CREATE INDEX "comment_threads_file_updated" ON "comment_threads"("team_id", "project_id", "feature_type", "file_id", "updated_at" DESC);
+
+-- CreateIndex
+CREATE INDEX "comment_messages_thread_created" ON "comment_messages"("thread_id", "created_at");
+
+-- CreateIndex
+CREATE INDEX "comment_reads_user_thread" ON "comment_reads"("user_id", "thread_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "user_preferences_user_id_key" ON "user_preferences"("user_id");
