@@ -2,8 +2,12 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { checkRepositorySchema } from './schema-check';
+import { loadDbmlCore } from '../../src/lib/dbml-core.js';
+
+// The parser is ~15 MB; loading it in parallel test workers can exceed the 10 s hook default.
+beforeAll(() => loadDbmlCore(), 60_000);
 
 describe('repository schema check', () => {
   it('validates one source and requires an explicit choice for multiple sources', async () => {
@@ -20,5 +24,5 @@ describe('repository schema check', () => {
     writeFileSync(path.join(root, 'other.dbml'), 'Table posts {\n  id integer [pk]\n}\n');
     await expect(checkRepositorySchema({ repositoryPath: root })).rejects.toThrow('Multiple schema sources found');
     await expect(checkRepositorySchema({ repositoryPath: root, sourceId: 'dbml:other.dbml' })).resolves.toMatchObject({ tables: 1 });
-  });
+  }, 30_000); // git subprocesses and DBML parsing exceed 5 s under parallel CI load
 });
