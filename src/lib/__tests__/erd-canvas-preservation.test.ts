@@ -1,9 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { dbmlToERD } from '../dbml-converter';
 import { mergeDBMLCanvas } from '../dbml-canvas-merge';
 import { readPendingERDCanvas } from '../erd-draft-canvas';
 import { hasViewportChanged } from '../erd-viewport';
 import { canvasFingerprint } from '@/components/diagram/dbml-editor-utils';
+import { loadDbmlCore } from '@/lib/dbml-core';
+
+// The parser is ~15 MB; loading it in parallel test workers can exceed the 10 s hook default.
+beforeAll(() => loadDbmlCore(), 60_000);
 
 describe('ERD canvas preservation', () => {
   const original = () => ({

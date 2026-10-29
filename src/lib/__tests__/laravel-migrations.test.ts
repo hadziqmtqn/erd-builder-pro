@@ -1,6 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { laravelMigrationsToDBML } from '../laravel-migrations';
 import { parseRepositorySchema } from '../repository-schema';
+import { loadDbmlCore } from '@/lib/dbml-core';
+
+// The parser is ~15 MB; loading it in parallel test workers can exceed the 10 s hook default.
+beforeAll(() => loadDbmlCore(), 60_000);
 
 describe('Laravel repository migrations', () => {
   const files = [

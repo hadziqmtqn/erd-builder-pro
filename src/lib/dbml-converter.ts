@@ -1,4 +1,4 @@
-import { Parser, ModelExporter } from '@dbml/core';
+import { dbmlCore } from '@/lib/dbml-core';
 import type { Node, Edge } from '@xyflow/react';
 import type { Entity } from '@/types';
 import { COLUMN_TYPES } from '@/lib/utils';
@@ -522,6 +522,7 @@ export function dbmlToERD(dbmlText: string): { nodes: Node<Entity>[]; edges: Edg
   let parseError: string | null = null;
   let sql: string;
   let normalizedModel: any = null;
+  const { Parser, ModelExporter } = dbmlCore();
   try {
     const db = Parser.parse(normalizedDBML, 'dbml');
     normalizedModel = db.normalize();

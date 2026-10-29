@@ -26,10 +26,12 @@ import { OAuthConsent } from './components/OAuthConsent';
 import { ForcePasswordChange } from './components/ForcePasswordChange';
 import { CloudFeatureRoute } from './components/CloudFeatureRoute';
 import { LegacyTableRedirect, ProjectFilesRoute } from './routes/ProjectFilesRoute';
+import { loadDbmlCore } from './lib/dbml-core';
 
 const NoteEditorRoute = lazy(() => import('./routes/NoteEditorRoute').then(module => ({ default: module.NoteEditorRoute })));
-const DiagramEditorRoute = lazy(() => import('./routes/DiagramEditorRoute').then(module => ({ default: module.DiagramEditorRoute })));
-const DbClientEditorRoute = lazy(() => import('./routes/DbClientEditorRoute').then(module => ({ default: module.DbClientEditorRoute })));
+// ERD editors parse DBML synchronously, so their chunk waits for the lazily loaded parser (BUG-032).
+const DiagramEditorRoute = lazy(() => Promise.all([import('./routes/DiagramEditorRoute'), loadDbmlCore()]).then(([module]) => ({ default: module.DiagramEditorRoute })));
+const DbClientEditorRoute = lazy(() => Promise.all([import('./routes/DbClientEditorRoute'), loadDbmlCore()]).then(([module]) => ({ default: module.DbClientEditorRoute })));
 const DrawingEditorRoute = lazy(() => import('./routes/DrawingEditorRoute').then(module => ({ default: module.DrawingEditorRoute })));
 const FlowchartEditorRoute = lazy(() => import('./routes/FlowchartEditorRoute').then(module => ({ default: module.FlowchartEditorRoute })));
 const TeamManagementRoute = lazy(() => import('./routes/TeamManagementRoute').then(module => ({ default: module.TeamManagementRoute })));

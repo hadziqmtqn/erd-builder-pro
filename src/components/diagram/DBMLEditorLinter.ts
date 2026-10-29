@@ -1,4 +1,3 @@
-import { Parser } from '@dbml/core';
 import { linter, type Diagnostic } from '@codemirror/lint';
 import { COLUMN_TYPES } from '@/lib/utils';
 import {
@@ -11,11 +10,12 @@ import {
   readDBMLEnumNames,
 } from '@/lib/dbml-utils';
 import { normalizeDBMLIndexSyntax, removeEmptyDBMLIndexes } from '@/lib/dbml-converter';
+import { loadDbmlCore } from '@/lib/dbml-core';
 
 const VALID_TYPES = new Set(COLUMN_TYPES.map(type => type.toUpperCase()));
 
 export function createDBMLLinter() {
-  return linter(view => {
+  return linter(async view => {
     const doc = view.state.doc;
     const text = doc.toString();
     const diagnostics: Diagnostic[] = [];
@@ -25,7 +25,7 @@ export function createDBMLLinter() {
     addTypeDiagnostics(lines, doc, enumNames, diagnostics);
     addRelationshipDiagnostics(lines, doc, diagnostics);
     addEnumDiagnostics(text, lines, doc, diagnostics);
-    addParserDiagnostics(text, lines, doc, diagnostics);
+    await addParserDiagnostics(text, lines, doc, diagnostics);
 
     return diagnostics;
   }, { delay: 500 });
@@ -146,7 +146,7 @@ function addEnumDiagnostics(
   }
 }
 
-function addParserDiagnostics(
+async function addParserDiagnostics(
   text: string,
   lines: string[],
   doc: { line: (line: number) => { from: number } },
@@ -159,6 +159,7 @@ function addParserDiagnostics(
   }
   if (depth !== 0 || !/\bTable\b/i.test(text)) return;
 
+  const { Parser } = await loadDbmlCore();
   try {
     Parser.parse(normalizeDBMLIndexSyntax(removeEmptyDBMLIndexes(text)), 'dbml');
   } catch (error: any) {

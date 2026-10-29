@@ -52,6 +52,7 @@ import { FileMentionMenu, FileMentionMenuRef, FileMentionOption } from './editor
 import { useNavigate } from 'react-router-dom';
 import { localPersistence } from '@/lib/localPersistence';
 import { applyToErdContent } from '@/components/ai/actions/erdActions';
+import { loadDbmlCore } from '@/lib/dbml-core';
 import { previewFlowchartContent } from '@/components/ai/actions/flowchartActions';
 import { edgeToRelationship } from '@/lib/diagram-payload';
 import { NestedTaskList } from '../lib/tiptap/nested-task-list';
@@ -539,6 +540,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
 
   const persistGeneratedErd = React.useCallback(async (file: any, schema: string) => {
     try {
+      await loadDbmlCore();
       const result = applyToErdContent([], [], 'erd-generate-sql', schema);
       if (!result) throw new Error('Invalid DBML or SQL schema');
       const entities = result.nodes.map(node => ({ ...node.data, x: node.position.x, y: node.position.y }));

@@ -1,8 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { extractDBML, extractFlowchartJSON, extractSchemaContent, hasDBMLContent, hasFlowchartJSON, replyPaneTarget } from '../chatUtils';
 import { applyToErdContent } from '../actions/erdActions';
 import { previewFlowchartContent } from '../actions/flowchartActions';
 import { DEFAULT_FLOWCHART_COLOR } from '@/components/flowchart/flowchartColors';
+import { loadDbmlCore } from '@/lib/dbml-core';
+
+// The parser is ~15 MB; loading it in parallel test workers can exceed the 10 s hook default.
+beforeAll(() => loadDbmlCore(), 60_000);
 
 const dbml = `Table users {
   id bigint [pk]

@@ -10,6 +10,7 @@ import { Check, Copy, Download, FileCode } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Entity } from '@/types';
 import { dbmlToERD, erdToDBML } from '@/lib/dbml-converter';
+import { useDbmlCoreReady } from '@/lib/dbml-core';
 import {
   generateGoravelMigration,
   generateGoravelModel,
@@ -82,7 +83,9 @@ export default function TableCodePanel({ entity, mode, onUpdateEntity }: TableCo
   const currentCategory = CATEGORIES.find(category => category.id === activeCategory) ?? CATEGORIES[0];
   const currentCode = FORMAT_GENERATORS[activeFormat](entity);
   const currentLanguage = FORMAT_LANGUAGES[activeFormat] || 'sql';
+  const isDbmlReady = useDbmlCoreReady();
   const dbmlValidation = React.useMemo(() => {
+    if (!isDbmlReady) return { entity: null, error: 'Loading the DBML parser…' };
     if (!dbmlValue.trim()) return { entity: null, error: 'DBML cannot be empty.' };
     try {
       const parsed = dbmlToERD(dbmlValue);
@@ -93,7 +96,7 @@ export default function TableCodePanel({ entity, mode, onUpdateEntity }: TableCo
     } catch (error) {
       return { entity: null, error: error instanceof Error ? error.message : 'Invalid DBML.' };
     }
-  }, [dbmlValue, entity]);
+  }, [dbmlValue, entity, isDbmlReady]);
 
   const extensions = React.useMemo(() => {
     if (mode === 'dbml') return [sqlLang()];

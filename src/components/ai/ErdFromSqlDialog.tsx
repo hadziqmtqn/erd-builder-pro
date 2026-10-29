@@ -3,6 +3,7 @@ import { Loader2, Database, Plus, AlertTriangle } from 'lucide-react';
 import type { Node, Edge } from '@xyflow/react';
 import { parseSQLToERD } from '@/lib/sqlParser';
 import { dbmlToERD } from '@/lib/dbml-converter';
+import { useDbmlCoreReady } from '@/lib/dbml-core';
 import { apiFetch } from '@/lib/api';
 import { toast } from 'sonner';
 import { Entity } from '@/types';
@@ -65,15 +66,17 @@ export function ErdFromSqlDialog({
     return 'sql';
   }, [normalizedSchema]);
 
+  const isDbmlReady = useDbmlCoreReady(schemaKind === 'dbml');
+
   // ── Memoized parsed schema ──
   const erdParsed = useMemo(() => {
-    if (!normalizedSchema) return null;
+    if (!normalizedSchema || (schemaKind === 'dbml' && !isDbmlReady)) return null;
     try {
       return schemaKind === 'dbml' ? dbmlToERD(normalizedSchema) : parseSQLToERD(normalizedSchema);
     } catch {
       return null;
     }
-  }, [normalizedSchema, schemaKind]);
+  }, [normalizedSchema, schemaKind, isDbmlReady]);
 
   // ── Memoized diff lines ──
   const erdDiff = useMemo(() => {
