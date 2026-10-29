@@ -1,4 +1,5 @@
 import { Database, DatabaseZap, FileText, Network, PenTool, type LucideIcon } from 'lucide-react';
+import { toast } from 'sonner';
 
 export type FileTypeKey = 'notes' | 'erd' | 'flowchart' | 'db-client' | 'drawings';
 
@@ -37,6 +38,21 @@ export function openCloudPricing(ssoPortalUrl?: string | null) {
   } catch {
     // Ignore malformed deployment configuration.
   }
+}
+
+// Set by AppLayout so data hooks without the user can still link quota errors to pricing.
+let cloudPricingPortalUrl: string | null = null;
+export function setCloudPricingPortal(ssoPortalUrl?: string | null) {
+  cloudPricingPortalUrl = ssoPortalUrl ?? null;
+}
+
+/** A refused create; file and storage quota errors (CLD-010) get a "View Cloud plans" action (BUG-029). */
+export function toastCreateError(error: { error?: string; code?: string } | null, fallback: string) {
+  const isQuota = typeof error?.code === 'string' && error.code.endsWith('_QUOTA_EXCEEDED');
+  const portal = cloudPricingPortalUrl;
+  toast.error(error?.error || fallback, isQuota && portal
+    ? { action: { label: 'View Cloud plans', onClick: () => openCloudPricing(portal) } }
+    : undefined);
 }
 
 /** `?workspace=` value of the virtual Project that lists files without a Project. */

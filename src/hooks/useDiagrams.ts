@@ -7,6 +7,7 @@ import { edgeToRelationship } from '../lib/diagram-payload';
 import { apiFetch } from '../lib/api';
 import { getCachedDiagramVersion } from '../lib/diagramVersioning';
 import { applyDBMLMetadata, dbmlToERD, erdToDBML } from '../lib/dbml-converter';
+import { toastCreateError } from '../lib/file-types';
 
 function normalizeDiagramRecord(diagram: any): Diagram {
   if (!diagram) return diagram;
@@ -241,7 +242,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
         return newDiagram;
       } else {
         const error = await res.json().catch(() => null);
-        toast.error(error?.error || 'Failed to create diagram');
+        toastCreateError(error, 'Failed to create diagram');
       }
     } catch (err) {
       console.error('Error creating diagram:', err);

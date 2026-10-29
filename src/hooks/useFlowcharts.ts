@@ -4,6 +4,7 @@ import { Flowchart, DraftType } from '../types';
 import { localPersistence } from '../lib/localPersistence';
 import { apiFetch } from '../lib/api';
 import { initialNodes, initialEdges } from '../components/flowchart/flowchartConstants';
+import { toastCreateError } from '../lib/file-types';
 
 export function useFlowcharts(isGuest: boolean = false) {
   const [flowcharts, setFlowcharts] = useState<Flowchart[]>([]);
@@ -161,7 +162,7 @@ export function useFlowcharts(isGuest: boolean = false) {
       }
       // Quota refusals (file or storage limits) carry a message the user can act on (CLD-010).
       const error = await res.json().catch(() => null);
-      toast.error(error?.error || 'Failed to create flowchart');
+      toastCreateError(error, 'Failed to create flowchart');
     } catch (err) {}
     return null;
   };

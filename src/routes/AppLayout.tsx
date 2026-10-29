@@ -81,7 +81,7 @@ import { AIChatToggle } from '@/components/ai/AIChatToggle';
 import { isFileCreator } from '@/lib/fileOwnership';
 import { useSettledERDCanvas } from '@/contexts/ERDCanvasContext';
 import { getAppPageTitle } from '@/lib/app-page-title';
-import { FILE_TYPES, cloudFeatureLock, openCloudPricing } from '@/lib/file-types';
+import { FILE_TYPES, cloudFeatureLock, openCloudPricing, setCloudPricingPortal } from '@/lib/file-types';
 import { DBConnectPanel } from '@/components/db-connect/DBConnectPanel';
 
 // ── Inner component that uses AIAction context ──
@@ -257,6 +257,7 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
   const [selectableProjects, setSelectableProjects] = useState<any[]>([]);
   const isSuperAdmin = Boolean(user?.isSuperAdmin || user?.is_super_admin);
   const ssoPortalUrl = user?.isSso ? (user.ssoPortalUrl ?? user.sso_portal_url) : null;
+  useEffect(() => { setCloudPricingPortal(ssoPortalUrl); }, [ssoPortalUrl]);
   const clearUnavailableTeamScope = useCallback(() => {
     setGlobalSearchQuery('');
     setGlobalSearchResults([]);
@@ -955,10 +956,11 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
             onOpenDbConnections={() => setIsDbConnectOpen(true)}
             onCreate={(title, projectId) => {
               const viewCb = createDialogView;
-              if (viewCb === 'notes') handleSidebarNoteCreate(title, projectId);
-              else if (viewCb === 'erd') handleSidebarDiagramCreate(title, projectId);
-              else if (viewCb === 'drawings') handleSidebarDrawingCreate(title, projectId);
-              else if (viewCb === 'flowchart') handleSidebarFlowchartCreate(title, projectId);
+              if (viewCb === 'notes') return handleSidebarNoteCreate(title, projectId);
+              if (viewCb === 'erd') return handleSidebarDiagramCreate(title, projectId);
+              if (viewCb === 'drawings') return handleSidebarDrawingCreate(title, projectId);
+              if (viewCb === 'flowchart') return handleSidebarFlowchartCreate(title, projectId);
+              return null;
             }}
             onRenameSuccess={undefined}
           />

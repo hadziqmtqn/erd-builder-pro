@@ -92,3 +92,28 @@ describe('SH-002 Edit dialog creator-only moves', () => {
     expect(create).toHaveBeenCalledWith('QA', '6');
   });
 });
+
+describe('BUG-028/029 New file dialog', () => {
+  const createProps = () => ({ ...props(), mode: 'create' as const, activeDocument: null, requireProject: true });
+  const createButton = async (p: ReturnType<typeof createProps>) =>
+    elements(await RenameDocumentDialog(p)).find(e => e.type === Button && e.props.children === 'Create');
+
+  it('keeps the dialog open when the create is refused', async () => {
+    const p = { ...createProps(), onCreate: vi.fn().mockResolvedValue(null) };
+    await (await createButton(p))?.props.onClick();
+    expect(p.onCreate).toHaveBeenCalledWith('QA', '6');
+    expect(p.onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it('closes the dialog after a created file', async () => {
+    const p = { ...createProps(), onCreate: vi.fn().mockResolvedValue({ uid: 'new' }) };
+    await (await createButton(p))?.props.onClick();
+    expect(p.onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('says why Create is disabled without a Project', async () => {
+    const tree = elements(await RenameDocumentDialog({ ...createProps(), selectedProjectId: 'none' }));
+    expect(tree.find(e => e.type === Button && e.props.children === 'Create')?.props.disabled).toBe(true);
+    expect(tree.some(e => e.props.id === 'document-project-hint')).toBe(true);
+  });
+});

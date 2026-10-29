@@ -462,7 +462,7 @@ export function DashboardRoute() {
                   <>
                     <div className="hidden grid-cols-[minmax(0,1fr)_minmax(7rem,0.7fr)_auto_auto] gap-2.5 border-b border-border/50 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground sm:grid">
                       <span>File</span>
-                      <span>Workspace</span>
+                      <span>Project</span>
                       <span>Updated</span>
                       <span aria-hidden="true" />
                     </div>
@@ -496,7 +496,7 @@ export function DashboardRoute() {
                 <div className="mb-2">
                   <h2 className="flex items-center gap-2 text-sm font-semibold">
                     <FolderKanban className="size-4 text-muted-foreground" />
-                    Workspaces
+                    Projects
                   </h2>
                   <p className="mt-0.5 text-xs text-muted-foreground">Your projects at a glance.</p>
                 </div>
