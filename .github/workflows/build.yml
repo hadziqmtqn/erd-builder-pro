@@ -34,6 +34,11 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      # npm ci compiles better-sqlite3 13 from source; npm 10's node-gyp 11 does not
+      # recognise Visual Studio 2026 on windows-latest. npm 11 bundles node-gyp 12.
+      - name: Install npm 11
+        run: npm install --global npm@11.20.0
+
       - name: Install npm dependencies
         run: npm ci
 
