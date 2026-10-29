@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { applyNodeChanges, type Node } from '@xyflow/react';
 import type { Entity } from '@/types';
 import { autoLayoutERD } from '../autoLayoutERD';
@@ -7,6 +7,10 @@ import { alignErdHandles, constrainDbClientChanges, constrainTableChanges, separ
 import { dbmlToERD } from '../dbml-converter';
 import { parseSQLToERD } from '../sqlParser';
 import { edgeRoutingObstacles, routeErdEdge, segmentBlocked } from '../erd-routing';
+import { loadDbmlCore } from '@/lib/dbml-core';
+
+// The parser is ~15 MB; loading it in parallel test workers can exceed the 10 s hook default.
+beforeAll(() => loadDbmlCore(), 60_000);
 
 const node = (id: string, x = 0, y = 0, width = 220, height = 150): Node<Entity> => ({
   id, position: { x, y }, measured: { width, height },

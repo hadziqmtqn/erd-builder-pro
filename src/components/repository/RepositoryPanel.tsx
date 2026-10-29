@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { SearchableSelect } from '@/components/SearchableSelect';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { alignRepositorySchema, parseRepositorySchema, type RepositorySourceKind } from '@/lib/repository-schema';
+import { loadDbmlCore } from '@/lib/dbml-core';
 import { closeRepositoryPreview, showRepositoryPreview } from '@/lib/repository-preview';
 
 type Source = { id: string; kind: RepositorySourceKind; label: string; path: string; file_count: number };
@@ -131,7 +132,10 @@ export function RepositoryPanel({ diagramUid, nodes, edges, onClose }: Props) {
 
   const read = async (ref: string) => {
     if (!inspection || !sourceId) throw new Error('Select a schema source first');
-    const snapshot = await postJson('/api/repositories/read', { repository_path: inspection.root, ref, source_id: sourceId });
+    const [snapshot] = await Promise.all([
+      postJson('/api/repositories/read', { repository_path: inspection.root, ref, source_id: sourceId }),
+      loadDbmlCore(),
+    ]);
     const parsed = parseRepositorySchema(snapshot.source.kind, snapshot.files);
     if (!parsed.nodes.length) throw new Error('No tables could be parsed from this schema source');
     return { ...snapshot, ...parsed };

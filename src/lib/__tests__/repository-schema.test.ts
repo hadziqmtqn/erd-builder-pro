@@ -1,7 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import type { Edge, Node } from '@xyflow/react';
 import type { Entity } from '@/types';
 import { alignRepositorySchema, parseRepositorySchema } from '../repository-schema';
+import { loadDbmlCore } from '@/lib/dbml-core';
+
+// The parser is ~15 MB; loading it in parallel test workers can exceed the 10 s hook default.
+beforeAll(() => loadDbmlCore(), 60_000);
 
 describe('repository schema identity', () => {
   it('keeps canvas IDs, positions, and connector sides for matching schema objects', () => {

@@ -31,6 +31,7 @@ import { autoLayoutERD } from '@/lib/autoLayoutERD';
 import { readSavedViewport } from '@/lib/erd-viewport';
 import { erdToDBML } from '@/lib/dbml-converter';
 import { applyToErdContent } from '@/components/ai/actions/erdActions';
+import { loadDbmlCore } from '@/lib/dbml-core';
 import { computeSchemaDiff, type DiffResult } from '@/lib/schema-diff';
 import { mergeSchemaChanges } from '@/lib/schema-merge';
 import { SchemaDiffOverlay } from '@/components/diagram/SchemaDiffOverlay';
@@ -122,29 +123,34 @@ function DiagramCanvas({ document, previewSchema, previewKey }: {
 
   useEffect(() => {
     if (!previewSchema || !previewKey) return;
-    try {
-      const proposal = applyToErdContent(nodesRef.current, edgesRef.current, 'erd-generate-sql', previewSchema);
-      if (!proposal) throw new Error();
-      const result = computeSchemaDiff(nodesRef.current, edgesRef.current, proposal.nodes, proposal.edges);
-      if (result.changes.length === 0) {
-        setPendingDiff(null);
-        toast.success('No schema changes found');
-        return;
+    let cancelled = false;
+    void loadDbmlCore().catch(() => null).then(() => {
+      if (cancelled) return;
+      try {
+        const proposal = applyToErdContent(nodesRef.current, edgesRef.current, 'erd-generate-sql', previewSchema);
+        if (!proposal) throw new Error();
+        const result = computeSchemaDiff(nodesRef.current, edgesRef.current, proposal.nodes, proposal.edges);
+        if (result.changes.length === 0) {
+          setPendingDiff(null);
+          toast.success('No schema changes found');
+          return;
+        }
+        setSelectedNodeId(null);
+        setSelectedEdgeId(null);
+        setApprovedChangeIds(result.changes.map(change => change.id));
+        setShowChecklist(false);
+        setPendingDiff({
+          originalNodes: nodesRef.current,
+          originalEdges: edgesRef.current,
+          proposedNodes: proposal.nodes,
+          proposedEdges: proposal.edges,
+          result,
+        });
+      } catch {
+        toast.error('Could not parse the schema for diff');
       }
-      setSelectedNodeId(null);
-      setSelectedEdgeId(null);
-      setApprovedChangeIds(result.changes.map(change => change.id));
-      setShowChecklist(false);
-      setPendingDiff({
-        originalNodes: nodesRef.current,
-        originalEdges: edgesRef.current,
-        proposedNodes: proposal.nodes,
-        proposedEdges: proposal.edges,
-        result,
-      });
-    } catch {
-      toast.error('Could not parse the schema for diff');
-    }
+    });
+    return () => { cancelled = true; };
   }, [previewKey, previewSchema]);
 
   const mergeDiff = useCallback(() => {

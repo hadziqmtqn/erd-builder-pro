@@ -7,6 +7,7 @@ import { edgeToRelationship } from '../lib/diagram-payload';
 import { apiFetch } from '../lib/api';
 import { getCachedDiagramVersion } from '../lib/diagramVersioning';
 import { applyDBMLMetadata, dbmlToERD, erdToDBML } from '../lib/dbml-converter';
+import { isDbmlCoreLoaded, loadDbmlCore } from '../lib/dbml-core';
 import { toastCreateError } from '../lib/file-types';
 
 function normalizeDiagramRecord(diagram: any): Diagram {
@@ -437,6 +438,8 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     const { expectedVersion: passedVersion, dbmlSource } = options || {};
     
     try {
+      // DBML metadata must not be dropped by a save that runs before the parser loaded (BUG-032).
+      if (!isDbmlCoreLoaded()) await loadDbmlCore();
       // Check if this is a production DB diagram
       const currentDiagram = diagramsRef.current.find(d => String(d.id) === String(activeDiagramId) || String(d.uid) === String(activeDiagramId));
       const diagramRecord = currentDiagram as any;

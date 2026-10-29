@@ -1,6 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { applyDBMLMetadata, dbmlToERD, erdToDBML, findMatchingCanvasEdge, normalizeDBMLIndexSyntax, removeEmptyDBMLIndexes } from '../dbml-converter';
 import { dedupeDBMLEnumBlocks, normalizeDBMLTypeName, parseDBMLColumn, parseDBMLRef } from '../dbml-utils';
+import { loadDbmlCore } from '@/lib/dbml-core';
+
+// The parser is ~15 MB; loading it in parallel test workers can exceed the 10 s hook default.
+beforeAll(() => loadDbmlCore(), 60_000);
 
 describe('dbmlToERD', () => {
   it('normalizes DBML type modifiers for editor validation', () => {

@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Copy, Check, Download, Trash2, Table, FileCode, Database, FileText } from 'lucide-react';
 import { Entity } from '@/types';
 import { dbmlToERD, erdToDBML } from '@/lib/dbml-converter';
+import { useDbmlCoreReady } from '@/lib/dbml-core';
 import {
   generateMySQL,
   generatePostgreSQL,
@@ -171,7 +172,9 @@ export const TableDialog = ({
   const currentCode = entity ? generateFn(entity) : '';
   const currentLanguage = FORMAT_LANGUAGES[activeTab] || 'sql';
 
+  const isDbmlReady = useDbmlCoreReady();
   const dbmlValidation = React.useMemo(() => {
+    if (!isDbmlReady) return { entity: null, error: 'Loading the DBML parser…' };
     if (!entity) return { entity: null, error: 'No table selected.' };
     if (!dbmlValue.trim()) return { entity: null, error: 'DBML cannot be empty.' };
     try {
@@ -187,7 +190,7 @@ export const TableDialog = ({
     } catch (error) {
       return { entity: null, error: error instanceof Error ? error.message : 'Invalid DBML.' };
     }
-  }, [dbmlValue, entity]);
+  }, [dbmlValue, entity, isDbmlReady]);
   const hasDbmlChanges = dbmlValue !== generatedDbml;
 
   const codeMirrorExtensions = React.useMemo(() => {
