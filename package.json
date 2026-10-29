@@ -98,7 +98,7 @@
     "@uiw/react-codemirror": "^4.25.9",
     "@whatwg-node/server": "^0.11.0",
     "@xyflow/react": "^12.10.2",
-    "better-sqlite3": "^12.11.1",
+    "better-sqlite3": "^13.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cookie-parser": "^1.4.7",
@@ -203,6 +203,9 @@
     "shadcn": {
       "postcss-selector-parser": "^7.1.6"
     },
-    "ws": "^8.21.0"
+    "ws": "^8.21.0",
+    "@prisma/adapter-better-sqlite3": {
+      "better-sqlite3": "$better-sqlite3"
+    }
   }
 }
