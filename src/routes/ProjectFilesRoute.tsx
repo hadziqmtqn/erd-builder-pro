@@ -222,7 +222,7 @@ export function ProjectFilesRoute() {
               />
             </div>
             <div className="flex items-center gap-2">
-              {isInstalledApp() && (
+              {isInstalledApp() && !isUnassigned && (
                 <Button variant="outline" size="sm" onClick={() => setIsDbPanelOpen(true)}>
                   <DatabaseZap className="size-4" aria-hidden="true" />
                   <span className="hidden sm:inline">Database connections</span>
@@ -412,7 +412,7 @@ export function ProjectFilesRoute() {
         onAfterDelete={() => { setDeleting(null); reload(); }}
       />
 
-      {isInstalledApp() && (
+      {isInstalledApp() && !isUnassigned && (
         <DBConnectPanel
           open={isDbPanelOpen}
           onOpenChange={setIsDbPanelOpen}
