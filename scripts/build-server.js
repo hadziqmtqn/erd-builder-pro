@@ -177,6 +177,19 @@ async function main() {
           // Skip all other DB engines and source maps
           return false;
         }
+        // better-sqlite3 13 ships every platform's prebuild and loads it before build/.
+        // Foreign ELF files (arm64, musl) make linuxdeploy fail, and src/deps/build are
+        // compile leftovers. macOS keeps both archs for the universal app.
+        if (pkgName === "better-sqlite3") {
+          const rel = srcPath.slice(src.length + 1).split(/[\\/]/);
+          if (["src", "deps", "build"].includes(rel[0])) return false;
+          if (rel[0] === "prebuilds" && rel[1]) {
+            const target = rel[1].replace(/\.node$/, "");
+            return process.platform === "darwin"
+              ? target.startsWith("darwin-")
+              : target === `${process.platform}-${process.arch}`;
+          }
+        }
         return true;
       },
     });
