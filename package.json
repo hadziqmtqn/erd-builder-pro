@@ -64,12 +64,12 @@
     "@react-pdf/renderer": "^4.5.1",
     "@supabase/supabase-js": "^2.101.0",
     "@tailwindcss/typography": "^0.5.19",
-    "@tauri-apps/api": "^2.11.0",
+    "@tauri-apps/api": "^2.12.4",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-opener": "^2.5.4",
     "@tauri-apps/plugin-os": "^2.3.2",
     "@tauri-apps/plugin-process": "^2.3.1",
-    "@tauri-apps/plugin-updater": "~2.12.0",
+    "@tauri-apps/plugin-updater": "~2.14.1",
     "@tauri-apps/plugin-window-state": "^2.4.1",
     "@tiptap/core": "^3.31.4",
     "@tiptap/extension-bubble-menu": "^3.31.4",
@@ -152,7 +152,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.14",
-    "@tauri-apps/cli": "^2.11.2",
+    "@tauri-apps/cli": "^2.12.4",
     "@types/better-sqlite3": "^7.6.13",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
@@ -206,6 +206,7 @@
     "ws": "^8.21.0",
     "@prisma/adapter-better-sqlite3": {
       "better-sqlite3": "$better-sqlite3"
-    }
+    },
+    "@hono/node-server": "^2.1.5"
   }
 }
