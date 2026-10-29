@@ -41,8 +41,8 @@ function ensureDataDir() {
 
 function checkNodeVersion() {
   const major = parseInt(process.versions.node.split('.')[0], 10);
-  if (major < 18) {
-    console.error('❌ ERD Builder Pro requires Node.js 18+.');
+  if (major < 22) {
+    console.error('❌ ERD Builder Pro requires Node.js 22+.');
     console.error(`   Current: ${process.versions.node}`);
     process.exit(1);
   }

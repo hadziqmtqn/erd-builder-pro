@@ -6,7 +6,7 @@
 npx erdbpro
 ```
 
-No config. No setup. No Docker required. Just Node.js 18+.
+No config. No setup. No Docker required. Just Node.js 22+.
 
 ---
 
@@ -169,7 +169,7 @@ All features identical to the desktop app:
 
 ## Requirements
 
-- **Node.js 18+** (22 LTS recommended)
+- **Node.js 22+** (22 LTS or newer)
 - macOS, Linux, or Windows
 
 ---
