@@ -45,8 +45,8 @@ interface RenameDocumentDialogProps {
   canMoveProject?: boolean;
   selectedProjectId: string;
   setSelectedProjectId: (id: string) => void;
-  /** For create mode — called with (title, projectId) when user confirms */
-  onCreate?: (title: string, projectId: string | null) => void;
+  /** For create mode — called with (title, projectId); the dialog stays open when it resolves to nothing. */
+  onCreate?: (title: string, projectId: string | null) => unknown;
   /** For create mode — creates a project and returns it for selection. */
   onProjectCreate?: (name: string) => Promise<{ id: number | string } | null>;
   /** For edit mode */
@@ -111,6 +111,7 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
   const [isAddingProject, setIsAddingProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleOpenChange = (open: boolean) => {
     if (!open) {
@@ -149,11 +150,16 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
   }, [isOpen]);
 
   const handleSave = async () => {
-    if (isAddingProject || isCreatingProject || !newName.trim() || isProjectMissing || isLockedType || isDbClientCreate) return;
+    if (isAddingProject || isCreatingProject || isSubmitting || !newName.trim() || isProjectMissing || isLockedType || isDbClientCreate) return;
 
     if (isCreate) {
-      onCreate?.(newName.trim(), selectedProjectId === 'none' ? null : selectedProjectId);
-      handleOpenChange(false);
+      // Keep the dialog and the typed name when creation is refused, e.g. by a file quota (BUG-029).
+      setIsSubmitting(true);
+      try {
+        if (await onCreate?.(newName.trim(), selectedProjectId === 'none' ? null : selectedProjectId)) handleOpenChange(false);
+      } finally {
+        setIsSubmitting(false);
+      }
       return;
     }
 
@@ -300,7 +306,12 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
                   onValueChange={(value) => value !== null && setSelectedProjectId(value)}
                   disabled={(!isCreate && !canMoveProject) || isAddingProject || isCreatingProject}
                 >
-                  <SelectTrigger id="document-project-select" className="min-w-0 flex-1">
+                  <SelectTrigger
+                    id="document-project-select"
+                    className="min-w-0 flex-1"
+                    aria-required={requireProject}
+                    aria-describedby={isCreate && isProjectMissing ? 'document-project-hint' : undefined}
+                  >
                     <SelectValue>
                       {selectedProjectId === "none" ? (requireProject ? "Select Project" : "No project") : projects.find(p => p.id.toString() === selectedProjectId)?.name || "Select Project"}
                     </SelectValue>
@@ -333,6 +344,11 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
                   </Button>
                 )}
               </div>
+              {isCreate && isProjectMissing && !isAddingProject && (
+                <p id="document-project-hint" className="mt-1.5 px-1 text-xs text-muted-foreground">
+                  Every file needs a project. Choose one, or add one with +.
+                </p>
+              )}
               {isCreate && isAddingProject && (
                 <div id="new-project-field" className="mt-3 space-y-2">
                   <FieldLabel htmlFor="new-project-name" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
@@ -376,11 +392,11 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
           </DialogClose>
           {!isLockedType && !isDbClientCreate && (
             <Button
-              disabled={isAddingProject || isCreatingProject || !newName.trim() || isProjectMissing}
+              disabled={isAddingProject || isCreatingProject || isSubmitting || !newName.trim() || isProjectMissing}
               onClick={handleSave}
               className="h-9 px-6"
             >
-              {isCreate ? 'Create' : 'Save Changes'}
+              {isCreate ? (isSubmitting ? 'Creating…' : 'Create') : 'Save Changes'}
             </Button>
           )}
         </DialogFooter>

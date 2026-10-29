@@ -35,10 +35,14 @@ const FILE_ROUTES: Record<FileTypeKey, string> = {
   drawings: '/drawings',
 };
 
+// Same wording as the Dashboard's create buttons.
+const CREATE_LABELS: Record<FileTypeKey, string> = {
+  notes: 'New Note', erd: 'New ERD Builder', flowchart: 'New Flowchart', 'db-client': 'New DB Client', drawings: 'New Drawing',
+};
+
 const COLUMNS: ColumnDef[] = [
-  { id: 'name', label: 'Name', defaultVisible: true, hideable: false, width: 'w-[26%]' },
+  { id: 'name', label: 'Name', defaultVisible: true, hideable: false, width: 'w-[40%]' },
   { id: 'type', label: 'Type', defaultVisible: true, hideable: true, width: 'w-[12%]' },
-  { id: 'workspace', label: 'Workspace', defaultVisible: true, hideable: true, width: 'w-[14%]' },
   { id: 'creator', label: 'Creator', defaultVisible: true, hideable: true, width: 'w-[12%]' },
   { id: 'updated', label: 'Updated', defaultVisible: false, hideable: true, width: 'w-[13%]' },
   { id: 'status', label: 'Status', defaultVisible: true, hideable: true, width: 'w-[8%]' },
@@ -258,6 +262,14 @@ export function ProjectFilesRoute() {
                     <TableRow>
                       <TableCell colSpan={cols.length} className="h-32 text-center text-muted-foreground">
                         {isLoading ? 'Loading…' : q ? 'No files match your search.' : 'No files here yet.'}
+                        {!isLoading && !q && !isUnassigned && (
+                          <div className="mt-3">
+                            <Button size="sm" variant="outline" onClick={() => handleOpenCreateDocument(createType)}>
+                              <Plus className="size-4" aria-hidden="true" />
+                              {type === 'all' ? 'New file' : CREATE_LABELS[type]}
+                            </Button>
+                          </div>
+                        )}
                       </TableCell>
                     </TableRow>
                   ) : data.map((row) => {
@@ -277,12 +289,6 @@ export function ProjectFilesRoute() {
                                     <TypeIcon className="size-4" aria-hidden="true" />
                                     {fileType.label}
                                   </span>
-                                </TableCell>
-                              );
-                            case 'workspace':
-                              return (
-                                <TableCell key="workspace">
-                                  <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs">{row.project?.name || 'Unassigned'}</span>
                                 </TableCell>
                               );
                             case 'creator':

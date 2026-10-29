@@ -85,7 +85,7 @@ export function TeamSwitcher({
             sideOffset={6}
           >
             <DropdownMenuGroup>
-              <DropdownMenuLabel className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/80">Team</DropdownMenuLabel>
+              <DropdownMenuLabel className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/80">Workspace</DropdownMenuLabel>
               <DropdownMenuItem
                 onClick={() => onSelect(null)}
                 className={`cursor-pointer gap-2 px-2.5 py-2 transition-colors hover:bg-brand/10 hover:text-foreground focus:bg-brand/10 focus:text-foreground focus:[&>svg]:text-brand ${!activeTeamId ? "bg-brand/10 text-foreground [&>svg]:text-brand" : ""}`}

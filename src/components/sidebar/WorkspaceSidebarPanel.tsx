@@ -3,6 +3,7 @@ import { FolderClosed, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, Users }
 import { useLocation, useNavigate } from "react-router-dom"
 
 import { MoveToTrashAlert } from "@/components/modals/MoveToTrashAlert"
+import { useWorkspace } from "@/providers/WorkspaceProvider"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -69,6 +70,10 @@ export function WorkspaceSidebarPanel({
   const activeProjects = projects.filter((project) => !project.is_deleted)
   const openProjectKey = location.pathname.match(/^\/projects\/([^/]+)$/)?.[1]
   const selectedWorkspaceUid = openProjectKey ? decodeURIComponent(openProjectKey) : null
+  // An open file keeps its Project highlighted (BUG-030).
+  const { activeDocument } = useWorkspace()
+  const isFileOpen = /^\/(notes|diagrams|drawings|flowcharts|db-client)\/[^/]+$/.test(location.pathname)
+  const openFileProjectId = isFileOpen ? activeDocument?.project_id ?? activeDocument?.projectId ?? null : null
   // Recount when the page changes (not on tab, page or search changes) so the item disappears once the last file gets a Project.
   const { total: unassignedTotal } = useProjectFilePage({ projectId: "null", type: "all", page: 1, perPage: 10 }, location.pathname)
   const hasUnassignedFiles = unassignedTotal > 0
@@ -106,7 +111,7 @@ export function WorkspaceSidebarPanel({
                     <SidebarMenuItem key={project.uid ?? project.id}>
                       <SidebarMenuButton
                         tooltip={project.name}
-                        isActive={selectedWorkspaceUid === project.uid || selectedWorkspaceUid === String(project.id ?? "")}
+                        isActive={selectedWorkspaceUid === project.uid || selectedWorkspaceUid === String(project.id ?? "") || (openFileProjectId != null && String(openFileProjectId) === String(project.id))}
                         onClick={() => handleProjectClick(project.uid, project.id)}
                       >
                         <FolderClosed aria-hidden="true" />

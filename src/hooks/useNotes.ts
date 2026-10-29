@@ -4,6 +4,7 @@ import { Note, DraftType } from '../types';
 import { localPersistence } from '../lib/localPersistence';
 import { saveTitleCache, saveContentCache } from '../utils/titleCache';
 import { apiFetch } from '../lib/api';
+import { toastCreateError } from '../lib/file-types';
 
 export function useNotes(isGuest: boolean = false) {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -174,7 +175,7 @@ export function useNotes(isGuest: boolean = false) {
       }
       // Quota refusals (file or storage limits) carry a message the user can act on (CLD-010).
       const error = await res.json().catch(() => null);
-      toast.error(error?.error || 'Failed to create note');
+      toastCreateError(error, 'Failed to create note');
     } catch (err) {
       console.error('Error creating note:', err);
     }
