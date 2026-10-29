@@ -1,5 +1,6 @@
 import { inspectRepository, readRepositorySource, RepositoryError } from './repository-git.js';
 import { parseRepositorySchema } from '../../src/lib/repository-schema.js';
+import { loadDbmlCore } from '../../src/lib/dbml-core.js';
 
 export type SchemaCheckOptions = {
   repositoryPath: string;
@@ -19,7 +20,7 @@ export async function checkRepositorySchema({ repositoryPath, ref = 'WORKTREE', 
     throw new RepositoryError(sourceId ? `Schema source not found: ${sourceId}` : `Multiple schema sources found; choose one with --source: ${available}`);
   }
 
-  const snapshot = await readRepositorySource(inspection.root, ref, source.id);
+  const [snapshot] = await Promise.all([readRepositorySource(inspection.root, ref, source.id), loadDbmlCore()]);
   const parsed = parseRepositorySchema(source.kind, snapshot.files);
   if (!parsed.nodes.length) throw new RepositoryError('Schema source did not produce any tables');
 

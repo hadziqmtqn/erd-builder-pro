@@ -24,7 +24,7 @@ describe('repository Git schema reader', () => {
     const old = await readRepositorySource(root, firstCommit, 'dbml:schema.dbml');
     expect(old.files[0].content).not.toContain('email');
     expect(execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()).toBe(firstCommit);
-  });
+  }, 30_000); // git subprocesses exceed 5 s under parallel CI load
 
   it('groups SQL migration directories', () => {
     expect(discoverRepositorySources(['prisma/migrations/001/migration.sql', 'prisma/migrations/002/migration.sql'])).toContainEqual(expect.objectContaining({ id: 'sql:prisma/migrations', fileCount: 2 }));

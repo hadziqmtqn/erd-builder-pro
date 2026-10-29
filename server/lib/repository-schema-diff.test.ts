@@ -2,8 +2,12 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { diffRepositorySchema } from './repository-schema-diff';
+import { loadDbmlCore } from '../../src/lib/dbml-core.js';
+
+// The parser is ~15 MB; loading it in parallel test workers can exceed the 10 s hook default.
+beforeAll(() => loadDbmlCore(), 60_000);
 
 describe('repository schema diff', () => {
   it('compares two commits without changing the checked-out ref', async () => {
@@ -24,5 +28,5 @@ describe('repository schema diff', () => {
     expect(result.summary).toMatchObject({ added: 1, deleted: 1 });
     expect(result.destructive).toContainEqual({ kind: 'column', state: 'deleted', label: 'users.email' });
     expect(execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()).toBe(head);
-  });
+  }, 30_000); // git subprocesses and DBML parsing exceed 5 s under parallel CI load
 });

@@ -1,5 +1,6 @@
 import { computeSchemaDiff } from '../../src/lib/schema-diff.js';
 import { parseRepositorySchema } from '../../src/lib/repository-schema.js';
+import { loadDbmlCore } from '../../src/lib/dbml-core.js';
 import { inspectRepository, readRepositorySource, RepositoryError, type RepositorySource } from './repository-git.js';
 
 export type RepositorySchemaDiffOptions = {
@@ -29,6 +30,7 @@ export async function diffRepositorySchema({ repositoryPath, baseRef, headRef, s
   const [baseSnapshot, headSnapshot] = await Promise.all([
     readRepositorySource(baseInspection.root, baseRef, source.id),
     readRepositorySource(headInspection.root, headRef, source.id),
+    loadDbmlCore(),
   ]);
   const base = parseRepositorySchema(source.kind, baseSnapshot.files);
   const head = parseRepositorySchema(source.kind, headSnapshot.files);
