@@ -23,7 +23,7 @@
     "postinstall": "cp -r node_modules/better-sqlite3 dist-server/node_modules/ 2>/dev/null || true"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "keywords": [
     "erd",
