@@ -66,7 +66,8 @@ jobs:
       - name: Build Tauri app (Linux/Windows)
         if: matrix.platform != 'macos'
         shell: bash
-        run: npx tauri build
+        # Linux ships AppImage and deb only; Tauri 2.12 rejects "-rc.N" versions for rpm.
+        run: npx tauri build ${{ matrix.platform == 'linux' && '--bundles appimage,deb' || '' }}
         env:
           NODE_OPTIONS: '--max-old-space-size=4096'
           CARGO_NET_RETRY: '5'
