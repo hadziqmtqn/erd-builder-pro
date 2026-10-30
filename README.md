@@ -99,7 +99,13 @@ npm run lint
 
 ## License
 
-This repository uses the [PolyForm Noncommercial License 1.0.0](./LICENSE). It does not grant commercial-use rights, including internal use by for-profit organizations. Contact the licensor for separate permission before commercial use.
+This repository uses the [Elastic License 2.0](./LICENSE) (ELv2). The licensor is PT Bekenweb Karya Digital.
+
+- You may use, deploy, and modify ERD Builder Pro for yourself or inside your organization, including for-profit organizations.
+- You may not provide it to third parties as a hosted or managed service, circumvent or remove the license key functionality, or remove licensing notices.
+- Teams on Self-host require a Self-host Commercial license key; the license key, not this file, sets Team and member capacity.
+
+Releases published before this change remain under the PolyForm Noncommercial License 1.0.0.
 
 ## Sponsors
 
