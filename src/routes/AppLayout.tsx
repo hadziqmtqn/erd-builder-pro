@@ -218,7 +218,7 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
     fetchTrash,
     triggerTableRefresh,
     setTableLoadingState,
-    setIsSettingsOpen,
+    setIsSettingsOpen, setSettingsTab,
     selectedNodeId, setSelectedNodeId, selectedEdgeId, setSelectedEdgeId,
     selectedEntity, deleteEntity, deleteEdge,
     updateDiagram, updateNote, updateDrawing, updateFlowchart,
@@ -805,6 +805,7 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
           onTeamManage={handleTeamManage}
           onTeamCreate={handleTeamCreate}
           onTeamCreated={handleTeamCreated}
+          onOpenLicenseSettings={() => { setSettingsTab('license'); setIsSettingsOpen(true); }}
           ssoPortalUrl={user?.isSso ? (user.ssoPortalUrl ?? user.sso_portal_url) : null}
         />
       )}

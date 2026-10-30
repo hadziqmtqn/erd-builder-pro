@@ -13,16 +13,21 @@ import {
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 
+const LICENSE_CODES = ["INSTANCE_LICENSE_REQUIRED", "LICENSE_SYNC_REQUIRED", "TEAM_LIMIT_REACHED"];
+
 export function AddTeamDialog({
   open,
   onOpenChange,
   onCreate,
   onCreated,
+  onLicenseIssue,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreate: (input: { name: string }) => Promise<unknown>;
   onCreated?: (team: any) => void;
+  /** The server refused for a license reason; the caller shows the license dialog instead (SH-007). */
+  onLicenseIssue?: (code: string) => void;
 }) {
   const [name, setName] = useState("");
   const [error, setError] = useState("");
@@ -45,6 +50,11 @@ export function AddTeamDialog({
       onOpenChange(false);
       onCreated?.(team);
     } catch (cause: any) {
+      if (onLicenseIssue && LICENSE_CODES.includes(cause?.code)) {
+        onOpenChange(false);
+        onLicenseIssue(cause.code);
+        return;
+      }
       setError(cause?.message || "Team could not be created.");
     } finally {
       setIsSubmitting(false);
