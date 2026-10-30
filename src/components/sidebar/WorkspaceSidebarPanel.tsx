@@ -103,7 +103,7 @@ export function WorkspaceSidebarPanel({
                     Loading projects...
                   </div>
                 ) : activeProjects.length === 0 ? (
-                  <div className="px-4 py-2 text-xs text-muted-foreground">
+                  <div className="px-4 py-2 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
                     No projects yet
                   </div>
                 ) : (
