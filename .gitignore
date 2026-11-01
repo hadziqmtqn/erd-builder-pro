@@ -30,3 +30,4 @@ cli/menubar/ERDBProTray.app/
 
 data.db-shm
 data.db-wal
+.claude/settings.local.json
