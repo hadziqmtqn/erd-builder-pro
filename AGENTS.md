@@ -132,6 +132,12 @@ CSS variables from shadcn (`var(--popover)`, `var(--popover-foreground)`) used i
 - Merge panel: approve/reject per table. `handleApplyMerge` explicitly calls `saveDiagram` + `triggerDebouncedSync` after merge.
 - `isDiffMode` flag blocks all editing (double-click, dropdown, delete) during diff review.
 
+### Properties Panel (Tables / Relationships)
+- `ERDPropertiesTabs` wraps the Properties panel. The Relationships tab edits with `RelationshipPropertiesPanel` and the same handlers as `RelationshipPropertiesModal`, but keeps its own edit state: setting `selectedEdgeId` opens the modal.
+- Relationship rows put the FK side first using the `is_pk` rule from `onConnect` (`src/lib/erd-relationship-list.ts`). Canvas-drawn edges are not normalized, so `edge.source` can be the PK.
+- **Moving the canvas from the right panel**: the panel sits outside each file pane's `ReactFlowProvider`, so `useReactFlow()` there moves the wrong canvas in split view. Dispatch `requestERDCanvasFocus()` (`erd-canvas-focus` event); `useERDCanvasFocus` in the focused pane's `ERDView` zooms, selects the edge via `addSelectedEdges` (no `onEdgeClick`, so no modal), and blinks the table with a DOM class scoped to the pane's `canvasRef`.
+- Table jump: zoom that fits the table and its neighbours (0.5–1.2), centred on the table, one 400 ms glide; `prefers-reduced-motion` moves instantly and shows a steady highlight.
+
 ## Flowchart Architecture
 
 ### Section/Group Feature
@@ -210,6 +216,8 @@ Local web development uses `npm run dev:pg:local` and `npm run test:pg`. `DB_VAR
 | Login second round-trip | Login page stays visible after success | Use `handleLogin(userData)` synchronous — no `checkAuth()` call |
 | Edge reconnect preserves old edge | Edge snaps back to original | Use atomic `reconnectEdge()` from `@xyflow/system`, not filter + connect |
 | Base-UI select focus-out close | Column type dropdown closes mid-typing | `eventDetails.cancel()` on `'focus-out'` reason |
+| Right panel `fitView` in split view | Jump from Properties moves nothing or the other pane | `requestERDCanvasFocus()` event, handled by `useERDCanvasFocus` inside the pane |
+| Selected ERD edge hidden | Orange line stays under overlapping lines | `elevateEdgesOnSelect` is off; `styleErdEdges` raises `edge.selected` (hover stays above) |
 
 ## Notable Conventions
 
