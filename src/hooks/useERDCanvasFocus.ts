@@ -25,7 +25,7 @@ const centerOf = (node: Node) => ({
 /** Handles Properties panel requests to show a table or relationship on this pane's canvas. */
 export function useERDCanvasFocus(canvasRef: RefObject<HTMLDivElement | null>, isActive: boolean) {
   const editorActive = useEditorActive();
-  const { fitView, getNodes, getEdges, getNodesBounds, setCenter } = useReactFlow();
+  const { getNodes, getEdges, getNodesBounds, setCenter, setViewport } = useReactFlow();
   const store = useStoreApi();
   const flashTimer = useRef<number | undefined>(undefined);
   // Refs keep the listener attached while tables are dragged; ERDView re-renders on every frame then.
@@ -64,12 +64,15 @@ export function useERDCanvasFocus(canvasRef: RefObject<HTMLDivElement | null>, i
 
       const edge = getEdges().find(item => item.id === request.id);
       if (!edge) return;
+      // Not fitView: it waits for a nodes update, and ERDView drops the empty one it queues.
+      const { width, height } = store.getState();
+      const bounds = getNodesBounds([edge.source, edge.target]);
+      const viewport = getViewportForBounds(bounds, width, height, ERD_FOCUS_MIN_ZOOM, ERD_FOCUS_MAX_ZOOM, PADDING);
+      await setViewport(viewport, { duration: moveDuration() });
+      // Select only after the move: the re-render it causes makes ERDView reapply initialViewport
+      // (the live viewportRef), which would snap a running animation back to its first frame.
       // Same selection a click on the line makes, without onEdgeClick, so the relationship modal stays closed.
       store.getState().addSelectedEdges([edge.id]);
-      await fitView({
-        nodes: [{ id: edge.source }, { id: edge.target }],
-        padding: PADDING, minZoom: ERD_FOCUS_MIN_ZOOM, maxZoom: ERD_FOCUS_MAX_ZOOM, duration: moveDuration(),
-      });
     };
 
     window.addEventListener(ERD_CANVAS_FOCUS_EVENT, onFocus);
@@ -77,5 +80,5 @@ export function useERDCanvasFocus(canvasRef: RefObject<HTMLDivElement | null>, i
       window.removeEventListener(ERD_CANVAS_FOCUS_EVENT, onFocus);
       window.clearTimeout(flashTimer.current);
     };
-  }, [canvasRef, fitView, getNodes, getEdges, getNodesBounds, setCenter, store]);
+  }, [canvasRef, getNodes, getEdges, getNodesBounds, setCenter, setViewport, store]);
 }

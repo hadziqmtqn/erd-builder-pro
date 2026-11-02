@@ -217,6 +217,7 @@ Local web development uses `npm run dev:pg:local` and `npm run test:pg`. `DB_VAR
 | Edge reconnect preserves old edge | Edge snaps back to original | Use atomic `reconnectEdge()` from `@xyflow/system`, not filter + connect |
 | Base-UI select focus-out close | Column type dropdown closes mid-typing | `eventDetails.cancel()` on `'focus-out'` reason |
 | Right panel `fitView` in split view | Jump from Properties moves nothing or the other pane | `requestERDCanvasFocus()` event, handled by `useERDCanvasFocus` inside the pane |
+| `fitView()` does nothing on the ERD canvas | Canvas stays put until some other node change | React Flow 12 queues `fitView` behind a no-op nodes update that `ERDView` drops; use `getViewportForBounds` + `setViewport`/`setCenter` |
 | Selected ERD edge hidden | Orange line stays under overlapping lines | `elevateEdgesOnSelect` is off; `styleErdEdges` raises `edge.selected` (hover stays above) |
 
 ## Notable Conventions
