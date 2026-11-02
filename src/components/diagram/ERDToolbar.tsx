@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import type { Node } from '@xyflow/react';
-import { Plus, Upload, Undo2, Redo2, LayoutGrid, RefreshCw, Database, Download, FolderGit2 } from 'lucide-react';
+import { Plus, Upload, Undo2, Redo2, LayoutGrid, RefreshCw, Database, Download, FolderGit2, Pencil } from 'lucide-react';
 import type { Entity } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -16,7 +16,7 @@ interface ERDToolbarProps {
   addEntity: () => void;
   onImportSQL?: () => void;
   onAutoLayout?: () => void;
-  setRightPanelMode: (mode: 'dbml' | 'repository') => void;
+  setRightPanelMode: (mode: 'dbml' | 'repository' | 'properties') => void;
   handleSync: () => void;
   isSyncing: boolean;
   handleExportImage: () => void;
@@ -53,6 +53,9 @@ export function ERDToolbar({ nodes, isReadOnly, isProductionDb, addEntity, onImp
       </Button>)}
       {!isProductionDb && !isReadOnly && action('DBML', <Button onClick={() => setRightPanelMode('dbml')} variant="outline" size={isMobile ? 'sm' : 'icon-lg'} aria-label="DBML" className={isMobile ? mobileButton : undefined}>
         <Database className={iconClass} />{label('DBML')}
+      </Button>)}
+      {!isProductionDb && !isReadOnly && action('Open Properties', <Button onClick={() => setRightPanelMode('properties')} variant="outline" size={isMobile ? 'sm' : 'icon-lg'} aria-label="Open Properties" className={isMobile ? mobileButton : undefined}>
+        <Pencil className={iconClass} />{label('Properties')}
       </Button>)}
       {!isReadOnly && !isProductionDb && isInstalledApp() && action('Repository', <Button onClick={() => setRightPanelMode('repository')} variant="outline" size={isMobile ? 'sm' : 'icon-lg'} aria-label="Repository" className={isMobile ? mobileButton : undefined}>
         <FolderGit2 className={iconClass} />{label('Repository')}

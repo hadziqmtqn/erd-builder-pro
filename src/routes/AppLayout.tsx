@@ -69,6 +69,7 @@ import { RightChatSidebar } from '@/components/ai/RightChatSidebar';
 import { AIChatPanel } from '@/components/ai/AIChatPanel';
 import { DBMLEditorPanel } from '@/components/diagram/DBMLEditorPanel';
 import { ERDTableListPanel } from '@/components/diagram/ERDTableListPanel';
+import { ERDPropertiesTabs } from '@/components/diagram/ERDPropertiesTabs';
 import PropertiesPanel from '@/components/PropertiesPanel';
 import { VersionHistoryPanel, type HistoryEntityType } from '@/components/history/VersionHistoryPanel';
 import { RepositoryPanel } from '@/components/repository/RepositoryPanel';
@@ -1167,30 +1168,38 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
                   />
                 )}
                 {rightPanelMode === 'properties' && !activeDiagramIsProductionDb && (
-                  propertiesEntity ? (
-                    <PropertiesPanel
-                      key={propertiesEntity.id}
-                      selectedEntity={propertiesEntity}
-                      onUpdateEntity={handleEntityUpdate}
-                      onBackToTables={() => {
-                        setSelectedNodeId(null);
-                        setPropertiesEntityId(null);
-                      }}
-                      onDeleteEntity={(id) => {
-                        deleteEntity(id);
-                        setSelectedNodeId(null);
-                        setRightPanelMode('closed');
-                      }}
-                    />
-                  ) : (
-                    <ERDTableListPanel
-                      nodes={nodes}
-                      onEdit={(id) => {
-                        setPropertiesEntityId(id);
-                        setSelectedNodeId(id);
-                      }}
-                    />
-                  )
+                  <ERDPropertiesTabs
+                    nodes={nodes}
+                    edges={edges}
+                    focusedTableId={propertiesEntity?.id ?? null}
+                    onUpdateEdge={handleEdgeUpdate2}
+                    onFlipEdge={handleEdgeFlip2}
+                    onDeleteEdge={deleteEdge}
+                    tables={propertiesEntity ? (
+                      <PropertiesPanel
+                        key={propertiesEntity.id}
+                        selectedEntity={propertiesEntity}
+                        onUpdateEntity={handleEntityUpdate}
+                        onBackToTables={() => {
+                          setSelectedNodeId(null);
+                          setPropertiesEntityId(null);
+                        }}
+                        onDeleteEntity={(id) => {
+                          deleteEntity(id);
+                          setSelectedNodeId(null);
+                          setRightPanelMode('closed');
+                        }}
+                      />
+                    ) : (
+                      <ERDTableListPanel
+                        nodes={nodes}
+                        onEdit={(id) => {
+                          setPropertiesEntityId(id);
+                          setSelectedNodeId(id);
+                        }}
+                      />
+                    )}
+                  />
                 )}
               </div>
             </div>}
