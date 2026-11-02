@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import { type Node, useReactFlow } from '@xyflow/react';
+import type { Node } from '@xyflow/react';
 import { MapPin, Pencil, Search } from 'lucide-react';
 import type { Entity } from '@/types';
+import { requestERDCanvasFocus } from '@/lib/erd-canvas-focus';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -13,13 +14,10 @@ export function filterERDTables(nodes: Node<Entity>[], search: string) {
 }
 
 export function ERDTableListPanel({ nodes, onEdit }: { nodes: Node<Entity>[]; onEdit: (id: string) => void }) {
-  const { fitView } = useReactFlow();
   const [search, setSearch] = useState('');
   const tables = useMemo(() => filterERDTables(nodes, search), [nodes, search]);
 
-  const jumpToTable = (id: string) => {
-    void fitView({ nodes: [{ id }], duration: 0, padding: 1.5, minZoom: 1.2, maxZoom: 1.2 });
-  };
+  const jumpToTable = (id: string) => requestERDCanvasFocus({ type: 'table', id });
   const editTable = (id: string) => { jumpToTable(id); onEdit(id); };
 
   return (

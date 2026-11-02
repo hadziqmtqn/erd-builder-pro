@@ -39,6 +39,7 @@ import { EyeOff, Monitor } from 'lucide-react';
 import { buildErdIndexes, erdColumnKey, erdSourceColumnKey } from '@/lib/erd-indexes';
 import { canvasLayout, dbSchemaToCanvas, keepsDbRelation } from '@/lib/db-client-schema';
 import { useDatabaseSchemaSync } from '@/hooks/useDatabaseSchemaSync';
+import { useERDCanvasFocus } from '@/hooks/useERDCanvasFocus';
 import { setSchemaCache } from '@/hooks/useDataViewerHelpers';
 import { styleErdEdges } from '@/lib/erd-edge-style';
 import { ERD_HISTORY_PREVIEW_EVENT, type ErdHistoryPreview } from '@/lib/history-diagram';
@@ -191,6 +192,7 @@ const ERDViewComponent = ({
     getBoundingClientRect: () => new DOMRect(edgeContextMenu.x, edgeContextMenu.y, 0, 0),
   } : null, [edgeContextMenu]);
   const canvasRef = React.useRef<HTMLDivElement>(null);
+  useERDCanvasFocus(canvasRef, isActive);
   const lowDetailRef = React.useRef(false);
 
   const handleEdgeContextMenuLocal = useCallback((event: React.MouseEvent, edge: Edge) => {
