@@ -293,6 +293,26 @@
   marker-end: none !important;
 }
 
+/* A table jumped to from the Properties panel blinks blue (useERDCanvasFocus). */
+@keyframes erd-node-flash {
+  50% {
+    border-color: rgb(59 130 246);
+    box-shadow: 0 0 0 4px rgb(59 130 246 / 0.45);
+  }
+}
+
+.react-flow__node.erd-node-flash .erd-node-container {
+  animation: erd-node-flash 0.5s ease-in-out 3;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .react-flow__node.erd-node-flash .erd-node-container {
+    animation: none;
+    border-color: rgb(59 130 246) !important;
+    box-shadow: 0 0 0 4px rgb(59 130 246 / 0.45);
+  }
+}
+
 @keyframes edge_dash_draw {
   from {
     stroke-dashoffset: 20;

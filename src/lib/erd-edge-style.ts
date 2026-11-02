@@ -2,8 +2,10 @@ import { MarkerType, type Edge } from '@xyflow/react';
 
 export function styleErdEdges(edges: Edge[], selectedNodeIds: string[] = [], hoveredEdgeId: string | null = null): Edge[] {
   const hasSelection = selectedNodeIds.length > 0;
-  // React Flow raises selected edges by 1000; hover must remain above them.
-  const hoverLayer = hoveredEdgeId ? Math.max(0, ...edges.map(edge => edge.zIndex ?? 0)) + 1001 : 0;
+  // elevateEdgesOnSelect is off, so raise the selected relationship here; hover stays above it.
+  const topLayer = Math.max(0, ...edges.map(edge => edge.zIndex ?? 0));
+  const selectedLayer = topLayer + 1000;
+  const hoverLayer = topLayer + 1001;
 
   return edges.map(edge => {
     const isConnectedToSelected = hasSelection && selectedNodeIds.some(
@@ -19,6 +21,7 @@ export function styleErdEdges(edges: Edge[], selectedNodeIds: string[] = [], hov
 
     return {
       ...edge,
+      ...(edge.selected ? { zIndex: selectedLayer } : {}),
       ...(edge.id === hoveredEdgeId ? { zIndex: hoverLayer } : {}),
       type: 'smoothstep' as const,
       style: {

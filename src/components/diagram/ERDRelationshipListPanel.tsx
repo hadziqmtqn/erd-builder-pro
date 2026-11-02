@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link2, Pencil, Search } from 'lucide-react';
 import { filterERDRelationships, type ERDRelationshipRow } from '@/lib/erd-relationship-list';
+import { requestERDCanvasFocus } from '@/lib/erd-canvas-focus';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,14 +30,14 @@ export function ERDRelationshipListPanel({ rows, onEdit }: { rows: ERDRelationsh
           const label = relationshipLabel(row);
           return (
             <div key={row.id} className="group flex items-center gap-1 rounded-md border border-transparent px-1 hover:border-border hover:bg-muted/50">
-              <div className="flex min-w-0 flex-1 items-start gap-2 px-2 py-2.5">
+              <button type="button" onClick={() => requestERDCanvasFocus({ type: 'relationship', id: row.id })} className="flex min-w-0 flex-1 items-start gap-2 px-2 py-2.5 text-left" title={`Show ${label}`}>
                 <Link2 className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-mono text-xs font-medium" title={label}>{label}</p>
-                  {row.constraintName && <p className="truncate text-[11px] text-muted-foreground" title={row.constraintName}>{row.constraintName}</p>}
-                </div>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-mono text-xs font-medium">{label}</span>
+                  {row.constraintName && <span className="block truncate text-[11px] text-muted-foreground">{row.constraintName}</span>}
+                </span>
                 <Badge variant="outline" className="shrink-0 font-mono text-[10px]">{row.type}</Badge>
-              </div>
+              </button>
               <Button type="button" variant="ghost" size="icon-sm" onClick={() => onEdit(row.id)} title={`Edit ${label}`} aria-label={`Edit relationship ${label}`}>
                 <Pencil className="size-3.5" />
               </Button>
