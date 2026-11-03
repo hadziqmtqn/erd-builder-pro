@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { assertNoCommentDraft, assertNoPendingReview, flushChildPanes, PANE_FLUSH_CHILDREN, paneKey, paneRequest, paneUrl, validPaneFile, type PaneFile } from '../file-panes';
+import { assertNoCommentDraft, assertNoPendingReview, flushChildPanes, focusesPane, PANE_FLUSH_CHILDREN, paneKey, paneRequest, paneUrl, validPaneFile, type PaneFile } from '../file-panes';
 
 const note: PaneFile = { type: 'notes', uid: 'a', title: 'Notes', projectId: '1' };
 const erd: PaneFile = { ...note, type: 'erd', uid: 'b', title: 'Schema' };
@@ -57,5 +57,18 @@ describe('COL-006 file panes', () => {
     const idle = { querySelectorAll: () => [] } as unknown as ParentNode;
     expect(() => assertNoPendingReview(reviewing)).toThrow('pending AI changes');
     expect(() => assertNoPendingReview(idle)).not.toThrow();
+  });
+});
+
+describe('BUG-041 pane close button', () => {
+  // Fake elements: `closest` matches when the target is the close button or sits inside it.
+  const element = (insideClose: boolean) => ({ closest: (selector: string) => selector === '[data-pane-close]' && insideClose ? {} : null }) as unknown as EventTarget;
+  it('does not focus the pane it is about to close', () => {
+    expect(focusesPane(element(true))).toBe(false);
+  });
+  it('still focuses the pane on any other press or focus', () => {
+    expect(focusesPane(element(false))).toBe(true);
+    expect(focusesPane(null)).toBe(true);
+    expect(focusesPane({} as EventTarget)).toBe(true); // a text node or window has no closest()
   });
 });

@@ -8,7 +8,7 @@ import type { WorkspaceContextValue } from '@/providers/WorkspaceContext';
 import type { AIActionContextValue } from '@/contexts/AIActionContext';
 import type { FileSessionScope } from '@/contexts/FileSessionContext';
 import { FilePanesContext } from '@/contexts/FilePanesContext';
-import { paneKey, paneRequest, paneUrl, PANE_FLUSH_CHILDREN, PANE_REQUEST, validPaneFile, type PaneFile } from '@/lib/file-panes';
+import { focusesPane, paneKey, paneRequest, paneUrl, PANE_FLUSH_CHILDREN, PANE_REQUEST, validPaneFile, type PaneFile } from '@/lib/file-panes';
 import { flushPaneFile } from '@/lib/pane-save';
 import { NativeFileSession, type FileSession } from './NativeFileSession';
 import { ProjectFileTabs } from './ProjectFileTabs';
@@ -218,10 +218,11 @@ export function FileWorkspace({ children, root, mainAI, teamState, discussionTar
               onPointerDown={event => { dragging.current = true; event.currentTarget.setPointerCapture(event.pointerId); }}
               onKeyDown={event => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); setPercent(value => Math.max(30, Math.min(70, value + (event.key === 'ArrowLeft' ? -2 : 2)))); } }} />}
             <section data-file-session={key} data-active={focused === key} aria-label={file.title} {...inertWhileBusy}
-              onPointerDownCapture={() => focus(file)} onFocusCapture={() => { if (focused !== key) focus(file); }}
+              onPointerDownCapture={event => { if (focusesPane(event.target)) focus(file); }}
+              onFocusCapture={event => { if (focused !== key && focusesPane(event.target)) focus(file); }}
               className="relative flex min-h-0 min-w-0 flex-col overflow-hidden" style={split ? { width: index === 0 ? `${percent}%` : undefined, flex: index === 1 ? 1 : undefined } : { flex: 1 }}>
               {split && <div className="flex h-9 shrink-0 items-center justify-between gap-2 border-b px-3 text-sm">
-                <span className="truncate">{file.title}</span><Button variant="ghost" size="icon-sm" aria-label={`Close pane: ${file.title}`} disabled={busy} onClick={() => close(file)}><X /></Button>
+                <span className="truncate">{file.title}</span><Button variant="ghost" size="icon-sm" aria-label={`Close pane: ${file.title}`} data-pane-close disabled={busy} onClick={() => close(file)}><X /></Button>
               </div>}
               <div ref={sessionScope.host} className="relative isolate flex min-h-0 flex-1 flex-col overflow-hidden [transform:translateZ(0)]">
                 <NativeFileSession file={file} active={focused === key} scope={sessionScope} root={root} mainAI={mainAI} teamState={editorTeam} discussionTarget={discussionTarget} onUpdate={publish} onNavigate={navigateSession} />

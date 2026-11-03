@@ -3,6 +3,9 @@ export const PANE_REQUEST = 'workspace:open-file-pane';
 export const PANE_FLUSH_CHILDREN = 'workspace:flush-child-panes';
 export const NOTE_PANE_SNAPSHOT = 'workspace:note-editor-snapshot';
 export const paneKey = (file: PaneFile) => `${file.type}:${file.uid}`;
+/** A press or focus on a pane's close button (`data-pane-close`) must not focus the pane it is about to close (BUG-041). */
+export const focusesPane = (target: EventTarget | null) =>
+  !(target as Element | null)?.closest?.('[data-pane-close]');
 export function paneRequest(files: PaneFile[], current: PaneFile, next: PaneFile) {
   if (next.projectId !== current.projectId) return 'reject';
   if (files.some(file => paneKey(file) === paneKey(next)) || (!files.length && paneKey(current) === paneKey(next))) return 'focus';
