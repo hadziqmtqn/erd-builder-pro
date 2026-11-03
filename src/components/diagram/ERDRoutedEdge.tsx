@@ -1,6 +1,6 @@
 import { createContext, useContext, useMemo } from 'react';
-import { BaseEdge, Position, useReactFlow, type EdgeProps, type Node } from '@xyflow/react';
-import { edgeRoutingObstacles, routeErdEdge, type RouteObstacle } from '@/lib/erd-routing';
+import { BaseEdge, Position, useReactFlow, useStore, type EdgeProps, type Node } from '@xyflow/react';
+import { edgeRoutingObstacles, routeErdEdge, routeErdEdgeWhileDragging, type RouteObstacle } from '@/lib/erd-routing';
 import { tableSize } from '@/lib/erd-geometry';
 import type { Entity } from '@/types';
 import { ERDEdgeLabelsContext } from './ERDEdgeLabels';
@@ -12,17 +12,19 @@ export function ERDRoutedEdge(props: EdgeProps) {
   const tables = useContext(ERDRoutingContext);
   const labels = useContext(ERDEdgeLabelsContext);
   const { getInternalNode } = useReactFlow<Node<Entity>>();
+  // BUG-040: skip the grid search on drag frames; the drop flips this back and routes the edge fully.
+  const dragging = useStore(state => Boolean(state.nodeLookup.get(props.source)?.dragging || state.nodeLookup.get(props.target)?.dragging));
   const routed = useMemo(() => {
     const endpoints = [getInternalNode(props.source), getInternalNode(props.target)].flatMap(node => node
       ? [{ id: node.id, ...node.internals.positionAbsolute, ...tableSize(node) }] : []);
     // Endpoint coordinates and their table bounds must come from the same live frame.
     const obstacles = edgeRoutingObstacles(tables, endpoints);
-    const points = routeErdEdge(
+    const points = (dragging ? routeErdEdgeWhileDragging : routeErdEdge)(
       { x: props.sourceX, y: props.sourceY }, { x: props.targetX, y: props.targetY },
       props.sourcePosition === Position.Right, props.targetPosition === Position.Right, obstacles,
     );
     return { points, obstacles };
-  }, [props.source, props.target, props.sourceX, props.sourceY, props.targetX, props.targetY, props.sourcePosition, props.targetPosition, tables, getInternalNode]);
+  }, [props.source, props.target, props.sourceX, props.sourceY, props.targetX, props.targetY, props.sourcePosition, props.targetPosition, tables, getInternalNode, dragging]);
   const { points, obstacles } = routed;
   const path = points.map((p, i) => `${i ? 'L' : 'M'}${p.x},${p.y}`).join(' ');
   const anchor = labels.anchors.get(props.id);
