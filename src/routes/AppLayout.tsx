@@ -68,7 +68,6 @@ import { AIActionProvider, useAIAction } from '@/contexts/AIActionContext';
 import { RightChatSidebar } from '@/components/ai/RightChatSidebar';
 import { AIChatPanel } from '@/components/ai/AIChatPanel';
 import { DBMLEditorPanel } from '@/components/diagram/DBMLEditorPanel';
-import { ERDTableListPanel } from '@/components/diagram/ERDTableListPanel';
 import { ERDPropertiesTabs } from '@/components/diagram/ERDPropertiesTabs';
 import PropertiesPanel from '@/components/PropertiesPanel';
 import { VersionHistoryPanel, type HistoryEntityType } from '@/components/history/VersionHistoryPanel';
@@ -1175,7 +1174,11 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
                     onUpdateEdge={handleEdgeUpdate2}
                     onFlipEdge={handleEdgeFlip2}
                     onDeleteEdge={deleteEdge}
-                    tables={propertiesEntity ? (
+                    onEditTable={(id) => {
+                      setPropertiesEntityId(id);
+                      setSelectedNodeId(id);
+                    }}
+                    tableEditor={propertiesEntity ? (
                       <PropertiesPanel
                         key={propertiesEntity.id}
                         selectedEntity={propertiesEntity}
@@ -1190,15 +1193,7 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
                           setRightPanelMode('closed');
                         }}
                       />
-                    ) : (
-                      <ERDTableListPanel
-                        nodes={nodes}
-                        onEdit={(id) => {
-                          setPropertiesEntityId(id);
-                          setSelectedNodeId(id);
-                        }}
-                      />
-                    )}
+                    ) : null}
                   />
                 )}
               </div>

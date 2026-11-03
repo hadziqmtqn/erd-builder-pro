@@ -6,6 +6,7 @@ import { buildERDRelationshipRows } from '@/lib/erd-relationship-list';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import RelationshipPropertiesPanel from './RelationshipPropertiesPanel';
 import { ERDRelationshipListPanel, relationshipLabel } from './ERDRelationshipListPanel';
+import { ERDTableListPanel } from './ERDTableListPanel';
 
 type PropertiesTab = 'tables' | 'relationships';
 
@@ -14,15 +15,22 @@ interface ERDPropertiesTabsProps {
   edges: Edge[];
   /** The table shown in the table editor; selecting one on the canvas brings the Tables tab back. */
   focusedTableId: string | null;
-  tables: ReactNode;
+  /** Editor for `focusedTableId`; the table list is shown while it is null. */
+  tableEditor: ReactNode;
+  onEditTable: (id: string) => void;
   onUpdateEdge: (edgeId: string, update: string | { label?: string; data?: Record<string, any> }) => void;
   onFlipEdge: (edgeId: string) => void;
   onDeleteEdge: (edgeId: string) => void;
 }
 
-export function ERDPropertiesTabs({ nodes, edges, focusedTableId, tables, onUpdateEdge, onFlipEdge, onDeleteEdge }: ERDPropertiesTabsProps) {
+export function ERDPropertiesTabs({ nodes, edges, focusedTableId, tableEditor, onEditTable, onUpdateEdge, onFlipEdge, onDeleteEdge }: ERDPropertiesTabsProps) {
   const [tab, setTab] = useState<PropertiesTab>('tables');
   const [editingEdgeId, setEditingEdgeId] = useState<string | null>(null);
+  // Kept here, not in the lists, so going back from an editor keeps the search and the last clicked row.
+  const [tableSearch, setTableSearch] = useState('');
+  const [relationshipSearch, setRelationshipSearch] = useState('');
+  const [activeTableId, setActiveTableId] = useState<string | null>(null);
+  const [activeRelationshipId, setActiveRelationshipId] = useState<string | null>(null);
   const rows = useMemo(() => buildERDRelationshipRows(nodes, edges), [nodes, edges]);
   const editingEdge = editingEdgeId ? edges.find(edge => edge.id === editingEdgeId) ?? null : null;
   const editingRow = editingEdge ? rows.find(row => row.id === editingEdge.id) : undefined;
@@ -35,6 +43,19 @@ export function ERDPropertiesTabs({ nodes, edges, focusedTableId, tables, onUpda
   useEffect(() => {
     if (editingEdgeId && !editingEdge) setEditingEdgeId(null);
   }, [editingEdgeId, editingEdge]);
+
+  useEffect(() => {
+    if (activeTableId && !nodes.some(node => node.id === activeTableId)) setActiveTableId(null);
+  }, [activeTableId, nodes]);
+
+  useEffect(() => {
+    if (activeRelationshipId && !edges.some(edge => edge.id === activeRelationshipId)) setActiveRelationshipId(null);
+  }, [activeRelationshipId, edges]);
+
+  const tables = tableEditor ?? (
+    <ERDTableListPanel nodes={nodes} search={tableSearch} onSearchChange={setTableSearch}
+      activeId={activeTableId} onSelect={setActiveTableId} onEdit={onEditTable} />
+  );
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -71,7 +92,8 @@ export function ERDPropertiesTabs({ nodes, edges, focusedTableId, tables, onUpda
             </div>
           </div>
         ) : (
-          <ERDRelationshipListPanel rows={rows} onEdit={setEditingEdgeId} />
+          <ERDRelationshipListPanel rows={rows} search={relationshipSearch} onSearchChange={setRelationshipSearch}
+            activeId={activeRelationshipId} onSelect={setActiveRelationshipId} onEdit={setEditingEdgeId} />
         )}
       </div>
     </div>

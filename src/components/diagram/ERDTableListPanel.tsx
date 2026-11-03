@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef } from 'react';
 import type { Node } from '@xyflow/react';
 import { MapPin, Pencil, Search } from 'lucide-react';
 import type { Entity } from '@/types';
 import { requestERDCanvasFocus } from '@/lib/erd-canvas-focus';
+import { useScrollActiveRowIntoView } from '@/hooks/useScrollActiveRowIntoView';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -13,11 +14,21 @@ export function filterERDTables(nodes: Node<Entity>[], search: string) {
     .sort((a, b) => a.data.name.localeCompare(b.data.name));
 }
 
-export function ERDTableListPanel({ nodes, onEdit }: { nodes: Node<Entity>[]; onEdit: (id: string) => void }) {
-  const [search, setSearch] = useState('');
-  const tables = useMemo(() => filterERDTables(nodes, search), [nodes, search]);
+interface ERDTableListPanelProps {
+  nodes: Node<Entity>[];
+  search: string;
+  onSearchChange: (search: string) => void;
+  activeId: string | null;
+  onSelect: (id: string) => void;
+  onEdit: (id: string) => void;
+}
 
-  const jumpToTable = (id: string) => requestERDCanvasFocus({ type: 'table', id });
+export function ERDTableListPanel({ nodes, search, onSearchChange, activeId, onSelect, onEdit }: ERDTableListPanelProps) {
+  const tables = useMemo(() => filterERDTables(nodes, search), [nodes, search]);
+  const listRef = useRef<HTMLDivElement>(null);
+  useScrollActiveRowIntoView(listRef);
+
+  const jumpToTable = (id: string) => { onSelect(id); requestERDCanvasFocus({ type: 'table', id }); };
   const editTable = (id: string) => { jumpToTable(id); onEdit(id); };
 
   return (
@@ -29,14 +40,14 @@ export function ERDTableListPanel({ nodes, onEdit }: { nodes: Node<Entity>[]; on
         </div>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search tables..." className="pl-9" autoFocus />
+          <Input value={search} onChange={event => onSearchChange(event.target.value)} placeholder="Search tables..." className="pl-9" autoFocus />
         </div>
         <p className="text-[11px] text-muted-foreground">Showing {tables.length} of {nodes.length} tables</p>
       </div>
-      <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
+      <div ref={listRef} className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
         {tables.map(node => (
-          <div key={node.id} className="group flex items-center gap-1 rounded-md border border-transparent px-1 hover:border-border hover:bg-muted/50">
-            <button type="button" onClick={() => jumpToTable(node.id)} className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2.5 text-left" title={`Jump to ${node.data.name}`}>
+          <div key={node.id} className="group flex items-center gap-1 rounded-md border border-transparent px-1 hover:border-border hover:bg-muted/50 has-[[aria-current=true]]:bg-muted has-[[aria-current=true]]:shadow-[inset_2px_0_0_var(--primary)]">
+            <button type="button" onClick={() => jumpToTable(node.id)} aria-current={node.id === activeId ? 'true' : undefined} className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2.5 text-left" title={`Jump to ${node.data.name}`}>
               <MapPin className="size-3.5 shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1 truncate text-sm font-medium">{node.data.name}</span>
               <span className="text-[10px] text-muted-foreground">{node.data.columns.length}</span>
