@@ -134,6 +134,7 @@ CSS variables from shadcn (`var(--popover)`, `var(--popover-foreground)`) used i
 
 ### Properties Panel (Tables / Relationships)
 - `ERDPropertiesTabs` wraps the Properties panel. The Relationships tab edits with `RelationshipPropertiesPanel` and the same handlers as `RelationshipPropertiesModal`, but keeps its own edit state: setting `selectedEdgeId` opens the modal.
+- `ERDPropertiesTabs` also owns each tab's search and last clicked row (`aria-current`, local state only, cleared when the item is deleted; not canvas selection). `ERDTableListPanel` and `ERDRelationshipListPanel` take them as props and have no fixed size, so the parent decides where they live.
 - Relationship rows put the FK side first using the `is_pk` rule from `onConnect` (`src/lib/erd-relationship-list.ts`). Canvas-drawn edges are not normalized, so `edge.source` can be the PK.
 - **Moving the canvas from the right panel**: the panel sits outside each file pane's `ReactFlowProvider`, so `useReactFlow()` there moves the wrong canvas in split view. Dispatch `requestERDCanvasFocus()` (`erd-canvas-focus` event); `useERDCanvasFocus` in the focused pane's `ERDView` zooms, selects the edge via `addSelectedEdges` (no `onEdgeClick`, so no modal), and blinks the table with a DOM class scoped to the pane's `canvasRef`.
 - Table jump: zoom that fits the table and its neighbours (0.5–1.2), centred on the table, one 400 ms glide; `prefers-reduced-motion` moves instantly and shows a steady highlight.
