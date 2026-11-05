@@ -1,13 +1,17 @@
 import { Eye } from 'lucide-react';
 import { useWorkspace } from '@/providers/WorkspaceContext';
-import { readOnlyNotice } from '@/lib/fileOwnership';
+import { isFileCreator, readOnlyNotice } from '@/lib/fileOwnership';
 import { Button } from './ui/button';
 
 /** Access notice shown inside the pane of a file the user cannot edit, whichever pane has focus (BUG-023). */
 export function ReadOnlyFileNotice() {
-  const { activeDocument, isReadOnlyFile, getFileAccessRole, handleDuplicate, isGuest, isPublicView, view } = useWorkspace();
+  const { activeDocument, isReadOnlyFile, getFileAccessRole, handleDuplicate, isGuest, isPublicView, view, user } = useWorkspace();
   if (isPublicView || !activeDocument || !isReadOnlyFile(activeDocument)) return null;
-  const notice = readOnlyNotice(getFileAccessRole(activeDocument), activeDocument.user?.name || activeDocument.user?.email || 'another member');
+  const notice = readOnlyNotice(
+    getFileAccessRole(activeDocument),
+    activeDocument.user?.name || activeDocument.user?.email || 'another member',
+    isFileCreator(activeDocument, user?.id),
+  );
   if (!notice) return null;
   const split = notice.indexOf(' · ');
   const label = notice.slice(0, split);
