@@ -126,6 +126,7 @@ CSS variables from shadcn (`var(--popover)`, `var(--popover-foreground)`) used i
 - `styledNodes`/`styledEdges` preserve references — only create new objects for nodes whose selected state changed.
 - Filter `type: 'select'` changes before forwarding to React Flow.
 - `defaultEdgeOptions` memoized.
+- Edge routing (BUG-040): while an endpoint table is dragging, `ERDRoutedEdge` uses `routeErdEdgeWhileDragging` (direct, then boundary lane, then the plain route that may cross a table). It skips the A* grid search and never uses the outside lane (SH-004). The drop flips `dragging` and routes fully with `routeErdEdge`. Measure with `npm run bench:erd-routing`.
 
 ### Schema Diff & Merge
 - `computeSchemaDiff` matches tables by name (lowercase). Diff overlay on canvas with green/amber/red borders.
