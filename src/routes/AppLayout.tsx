@@ -392,9 +392,10 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
 
   const activeDiagramIsProductionDb = isActiveDiagramContext
     && (activeDiagram?.source_type ?? activeDiagram?.sourceType) === 'production_db';
-  const canDeleteActiveDocument = isFileCreator(activeDocument, user?.id, isGuest);
   // The creator, a Team Manager and a Project Editor change the content, rename and import; sharing and history restore stay with the creator, like delete (DATA-004, COL-004).
+  // A Project creator a Manager limited reads their own files as Viewer or Commenter, so those actions go too (COL-007).
   const canEditActiveDocument = !isReadOnlyFile(activeDocument);
+  const canDeleteActiveDocument = isFileCreator(activeDocument, user?.id, isGuest) && canEditActiveDocument;
   const canManageActiveDocument = canDeleteActiveDocument;
   const activeFileRole = getFileAccessRole(activeDocument);
   const documentToDelete = tableDeleteDoc ?? activeDocument;

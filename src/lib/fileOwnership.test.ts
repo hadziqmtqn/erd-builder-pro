@@ -5,9 +5,16 @@ const theirs = { userId: 'creator' };
 const mine = { user_id: 'me' };
 
 describe('file access role (COL-004)', () => {
-  it('makes the creator the owner whatever the role fields say', () => {
-    expect(fileAccessRole({ ...mine, accessRole: 'viewer' }, 'me')).toBe('owner');
+  it('makes the creator the owner whatever the Project role says', () => {
+    expect(fileAccessRole(mine, 'me', false, 'viewer')).toBe('owner');
     expect(isFileViewer(mine, 'me', false, 'viewer')).toBe(false);
+    expect(fileAccessRole({ ...mine, accessRole: 'owner' }, 'me', false, 'commenter')).toBe('owner');
+  });
+
+  it('follows the server when it limits a Project creator on their own file (COL-007)', () => {
+    expect(fileAccessRole({ ...mine, accessRole: 'viewer' }, 'me')).toBe('viewer');
+    expect(isFileViewer({ ...mine, accessRole: 'commenter' }, 'me')).toBe(true);
+    expect(canCommentOnFile({ ...mine, access_role: 'viewer' }, 'me')).toBe(false);
   });
 
   it('prefers the server role for the file, then the Project role', () => {
@@ -56,5 +63,11 @@ describe('file access role (COL-004)', () => {
     expect(readOnlyNotice(null, 'Ana')).toContain('Comment only');
     expect(readOnlyNotice('editor', 'Ana')).toBeNull();
     expect(readOnlyNotice('owner', 'Ana')).toBeNull();
+  });
+
+  it('tells a limited Project creator why their own file is read-only (COL-007)', () => {
+    expect(readOnlyNotice('viewer', 'Me', true)).toBe('View only · A Team Manager limited your access to this Project, including the files you created.');
+    expect(readOnlyNotice('commenter', 'Me', true)).toContain('Comment only · A Team Manager limited your access');
+    expect(readOnlyNotice('owner', 'Me', true)).toBeNull();
   });
 });

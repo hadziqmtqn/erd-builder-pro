@@ -18,6 +18,8 @@ process.env.DB_VARIANT = "sqlite";
 
 const database = new Database(databasePath);
 database.exec(readFileSync(path.resolve("scripts/schema.sql"), "utf8"));
+// Team writes check Project grants (COL-007); installed databases get this table from the same migration.
+database.exec(readFileSync(path.resolve("prisma/migrations-sqlite/20261013090000_add_project_access_grants/migration.sql"), "utf8"));
 database.close();
 
 const { prisma } = await import("../../lib/prisma.js");
@@ -166,5 +168,33 @@ describe("entity history restore", () => {
 
     await expect(runWithTeamScope({ mode: "team", teamId: otherTeam.id }, () =>
       history.listHistory("notes", "shared-history-note", reader.id, 100))).resolves.toBeNull();
+  });
+
+  it("stops a Project creator a Manager limited from changing or restoring their own Note (COL-007)", async () => {
+    const creator = await prisma!.user.create({ data: { id: "limited-creator", email: "limited@test.local", name: "Limited", password: "test" } });
+    const team = await prisma!.team.create({ data: { name: "Limited Team", createdBy: creator.id } });
+    const project = await prisma!.project.create({ data: { name: "Limited project", userId: creator.id, teamId: team.id } });
+    await prisma!.note.create({ data: { uid: "limited-note", title: "Mine", content: "v1", userId: creator.id, projectId: project.id } });
+    const inTeam = <T,>(run: () => Promise<T>) => runWithTeamScope({ mode: "team", teamId: team.id }, run);
+
+    await expect(inTeam(() => notes.updateNote("limited-note", creator.id, { title: "Mine v2" }))).resolves.toMatchObject({ success: true });
+    const opened = await inTeam(() => history.listHistory("notes", "limited-note", creator.id, 100));
+    expect(opened?.revisions).toHaveLength(1);
+
+    for (const role of ["viewer", "commenter"]) {
+      await prisma!.projectAccessGrant.deleteMany({ where: { projectId: project.id } });
+      await prisma!.projectAccessGrant.create({ data: { projectId: project.id, userId: creator.id, role, grantedBy: "manager" } });
+      await expect(inTeam(() => notes.updateNote("limited-note", creator.id, { title: "Blocked" }))).resolves.toBeNull();
+      await expect(inTeam(() => history.restoreHistoryRevision({
+        entityType: "notes",
+        uid: "limited-note",
+        userId: creator.id,
+        revisionId: opened!.revisions[0].id,
+        expectedUpdatedAt: opened!.current_updated_at,
+      }))).resolves.toMatchObject({ status: "not_found" });
+    }
+
+    await prisma!.projectAccessGrant.update({ where: { projectId_userId: { projectId: project.id, userId: creator.id } }, data: { role: "editor" } });
+    await expect(inTeam(() => notes.updateNote("limited-note", creator.id, { title: "Editor again" }))).resolves.toMatchObject({ success: true });
   });
 });

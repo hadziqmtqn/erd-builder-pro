@@ -44,11 +44,24 @@ describe("Note creation identifiers (DATA-003)", () => {
 });
 
 describe("Note update authorization (COL-004)", () => {
-  it("lets the creator save without any role lookup", async () => {
+  it("lets the creator save in a Team after one access check", async () => {
+    mocks.note.count.mockResolvedValueOnce(1);
     const result = await inTeam(() => updateNote("note-1", "creator", { content: "<p>Changed</p>", expectedVersion: 3 }));
     expect(result.success).toBe(true);
-    expect(mocks.note.count).not.toHaveBeenCalled();
+    expect(mocks.note.count).toHaveBeenCalledOnce();
     expect(mocks.note.updateMany).toHaveBeenCalledOnce();
+  });
+
+  it("refuses the creator's own Note once a Manager limited them as Project creator (COL-007)", async () => {
+    mocks.note.count.mockResolvedValue(0);
+    expect(await inTeam(() => updateNote("note-1", "creator", { content: "<p>Changed</p>", expectedVersion: 3 }))).toBeNull();
+    expect(mocks.note.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("lets the creator save a Personal Note without any role lookup", async () => {
+    const result = await runWithTeamScope({ mode: "personal", teamId: null }, () => updateNote("note-1", "creator", { content: "<p>Changed</p>", expectedVersion: 3 })) as any;
+    expect(result.success).toBe(true);
+    expect(mocks.note.count).not.toHaveBeenCalled();
   });
 
   it("lets an Editor, Manager or Project creator save another member's Note", async () => {

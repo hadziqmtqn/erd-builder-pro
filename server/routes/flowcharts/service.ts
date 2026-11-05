@@ -3,7 +3,7 @@ import { captureEntityRevisionSafely, deleteEntityRevisions } from "../../lib/en
 import { isDesktopMode, isLocalPostgres } from "../../lib/config.js";
 import { createPersonalFile } from "../../lib/personal-file-quota.js";
 import { versionedWhere } from "../../lib/versioned-write.js";
-import { creatorFileIdentifierWhere, editableFileIdentifierWhere, fileIdentifierWhere, fileScopeWhere, projectScopeWhere } from "../../lib/team-scope.js";
+import { ownFileIdentifierWhere, editableFileIdentifierWhere, fileIdentifierWhere, fileScopeWhere, projectScopeWhere } from "../../lib/team-scope.js";
 import { isForeignProjectMove } from "../../lib/project-access.js";
 
 // Helper: build uid-or-id where clause that works with both UUIDs and numeric IDs
@@ -13,7 +13,7 @@ function uidWhere(uid: string, userId: string) {
 }
 
 function creatorUidWhere(uid: string, userId: string) {
-  return creatorFileIdentifierWhere(uid, userId);
+  return ownFileIdentifierWhere(uid, userId);
 }
 
 function editableUidWhere(uid: string, userId: string) {

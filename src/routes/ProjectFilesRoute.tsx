@@ -77,6 +77,8 @@ export function ProjectFilesRoute() {
   const isUnassigned = projectKey === UNASSIGNED_PROJECT;
   const project = isUnassigned ? null : projects.find((item: any) => item.uid === projectKey || String(item.id) === projectKey) ?? null;
   const projectId = isUnassigned ? 'null' : project ? String(project.id) : null;
+  // A Manager limited this Project's creator to Viewer or Commenter, which also covers the files they created (COL-007).
+  const creatorLimited = isFileCreator(project, user?.id, isGuest) && ['viewer', 'commenter'].includes(project?.accessRole ?? project?.access_role);
   const types = FILE_TYPES.filter((type) => type.value !== 'db-client' || isInstalledApp());
   const typeParam = searchParams.get('type');
   const type = types.some((item) => item.value === typeParam) ? typeParam as FileTypeKey : 'all';
@@ -275,7 +277,7 @@ export function ProjectFilesRoute() {
                   ) : data.map((row) => {
                     const fileType = FILE_TYPES.find((item) => item.value === row.type)!;
                     const TypeIcon = fileType.icon;
-                    const canDelete = row.type === 'db-client' || isFileCreator(row, user?.id, isGuest);
+                    const canDelete = row.type === 'db-client' || (isFileCreator(row, user?.id, isGuest) && !creatorLimited);
                     return (
                       <TableRow key={`${row.type}:${row.uid ?? row.id}`} className="group cursor-pointer" onClick={() => openFile(row)}>
                         {cols.map((col) => {

@@ -209,6 +209,30 @@ describe.skipIf(!enabled)("COL-004 project roles in an isolated PostgreSQL schem
     expect(await inTeam(() => notes.updateNote(otherFile.uid, users.creator, { content: "<p>restored</p>" }))).toMatchObject({ success: true });
   });
 
+  it("COL-007 limits a restricted Project creator on the files they created too, and lifts it with Editor", async () => {
+    for (const role of ["viewer", "commenter"] as const) {
+      expect(await inTeam(() => access.setProjectAccess(project.id, users.manager, users.creator, role))).toMatchObject({ ok: true });
+      expect(await inTeam(() => roles.fileAccessRole(note, users.creator))).toBe(role);
+      expect(await inTeam(() => notes.updateNote(note.uid, users.creator, { content: "<p>blocked</p>" }))).toBeNull();
+      expect(await inTeam(() => drawings.updateDrawing(drawing.uid, users.creator, { title: "blocked" }))).toBeNull();
+      expect(await inTeam(() => flowcharts.updateFlowchart(flowchart.uid, users.creator, { title: "blocked" }))).toBeNull();
+      expect(await inTeam(() => diagrams.updateDiagram(diagram.uid, users.creator, { name: "blocked" }))).toBeNull();
+      expect(await inTeam(() => saves.saveDiagram(diagram.uid, users.creator, {}))).toBeNull();
+      expect(await inTeam(() => notes.updateNoteShare(note.uid, users.creator, { isPublic: true }))).toBeNull();
+      expect(await inTeam(() => notes.softDeleteNote(note.uid, users.creator))).toBeNull();
+      await expect(inTeam(() => security.resolveNewFileProjectId(fixture.db, users.creator, project.id))).rejects.toThrow("Project not found");
+    }
+    // A Staff member who created a file in someone else's Project keeps it whatever their own role there (COL-004).
+    const commenterFile = await fixture.db.note.create({ data: { projectId: project.id, userId: users.commenter, uid: id(), title: "Mine", content: "<p>c</p>" } });
+    expect(await inTeam(() => access.setProjectAccess(project.id, users.manager, users.commenter, "viewer"))).toMatchObject({ ok: true });
+    expect(await inTeam(() => notes.updateNote(commenterFile.uid, users.commenter, { content: "<p>still mine</p>" }))).toMatchObject({ success: true });
+
+    expect(await inTeam(() => access.setProjectAccess(project.id, users.manager, users.creator, "editor"))).toMatchObject({ ok: true });
+    expect(await inTeam(() => roles.fileAccessRole(note, users.creator))).toBe("owner");
+    expect(await inTeam(() => notes.updateNote(note.uid, users.creator, { content: "<p>editor again</p>" }))).toMatchObject({ success: true });
+    expect(await inTeam(() => notes.softDeleteNote(note.uid, users.creator))).toMatchObject({ success: true });
+  });
+
   it("manages grants end to end: list, change, audit, remove, and cascade with the Project", async () => {
     const list = await inTeam(() => access.listProjectAccess(project.id, users.manager));
     expect(list.ok && Object.fromEntries(list.data.members.map((member) => [member.name, member.role]))).toEqual({

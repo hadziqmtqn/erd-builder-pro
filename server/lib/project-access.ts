@@ -28,8 +28,7 @@ export function effectiveRole(isCreator: boolean, isManager: boolean, grant: str
   return grantedRole(grant);
 }
 
-/** The signed-in user's role on one Project of the active Team, or null when the Project is outside it. */
-export async function projectRoleFor(projectId: number | bigint, userId: string): Promise<ProjectRole | null> {
+async function projectAccessFor(projectId: number | bigint, userId: string): Promise<{ role: ProjectRole; isCreator: boolean } | null> {
   const scope = currentTeamScope();
   if (scope?.mode !== "team" || !scope.teamId || !prisma) return null;
   const project = await (prisma as any).project.findFirst({
@@ -41,7 +40,22 @@ export async function projectRoleFor(projectId: number | bigint, userId: string)
     },
   });
   if (!project) return null;
-  return effectiveRole(project.userId === userId, project.team?.members?.[0]?.role === "manager", project.accessGrants?.[0]?.role);
+  const isCreator = project.userId === userId;
+  return { isCreator, role: effectiveRole(isCreator, project.team?.members?.[0]?.role === "manager", project.accessGrants?.[0]?.role) };
+}
+
+/** The signed-in user's role on one Project of the active Team, or null when the Project is outside it. */
+export async function projectRoleFor(projectId: number | bigint, userId: string): Promise<ProjectRole | null> {
+  return (await projectAccessFor(projectId, userId))?.role ?? null;
+}
+
+/**
+ * The Viewer or Commenter role a Manager stored for the Project creator, or null. It also covers the files that
+ * creator made in the Project, so they cannot edit, delete, share or add files there (COL-007).
+ */
+export async function limitedCreatorRole(projectId: number | bigint, userId: string): Promise<"viewer" | "commenter" | null> {
+  const access = await projectAccessFor(projectId, userId);
+  return access?.isCreator && (access.role === "viewer" || access.role === "commenter") ? access.role : null;
 }
 
 /** Roles for a page of Projects in one round trip; Personal Projects are always the user's own. */
@@ -67,14 +81,19 @@ export async function projectRolesFor(
   return roles;
 }
 
-/** Role on one file: its creator is the owner; anyone else inherits the Project role, and a missing Project reads as `viewer`. */
+/**
+ * Role on one file: its creator is the owner unless they created the Project and a Manager limited them (COL-007);
+ * anyone else inherits the Project role, and a missing Project reads as `viewer`.
+ */
 export async function fileAccessRole(
   file: { userId?: string | null; projectId?: number | bigint | null },
   userId: string,
 ): Promise<ProjectRole> {
-  if (currentTeamScope()?.mode !== "team" || file.userId === userId) return "owner";
-  if (file.projectId === null || file.projectId === undefined) return "viewer";
-  return (await projectRoleFor(file.projectId, userId)) ?? "viewer";
+  if (currentTeamScope()?.mode !== "team") return "owner";
+  const hasProject = file.projectId !== null && file.projectId !== undefined;
+  if (file.userId === userId) return (hasProject && await limitedCreatorRole(file.projectId!, userId)) || "owner";
+  if (!hasProject) return "viewer";
+  return (await projectRoleFor(file.projectId!, userId)) ?? "viewer";
 }
 
 /** True when a request moves a file to another Project, which only the file's creator may do. */

@@ -3,7 +3,7 @@ import { prisma } from "../../lib/prisma.js";
 import { captureEntityRevisionSafely, deleteEntityRevisions } from "../../lib/entity-history.js";
 import { isDesktopMode, isLocalPostgres } from "../../lib/config.js";
 import { createPersonalFile } from "../../lib/personal-file-quota.js";
-import { commentableFileIdentifierWhere, creatorFileIdentifierWhere, editableFileIdentifierWhere, fileIdentifierWhere, fileScopeWhere, projectScopeWhere } from "../../lib/team-scope.js";
+import { commentableFileIdentifierWhere, currentTeamScope, ownFileIdentifierWhere, editableFileIdentifierWhere, fileIdentifierWhere, fileScopeWhere, projectScopeWhere } from "../../lib/team-scope.js";
 import { isForeignProjectMove } from "../../lib/project-access.js";
 import { replacePrivateStorageUrls } from "../../lib/storage-access.js";
 import { versionedWhere } from "../../lib/versioned-write.js";
@@ -15,7 +15,7 @@ function uidWhere(uid: string, userId: string) {
 }
 
 function creatorUidWhere(uid: string, userId: string) {
-  return creatorFileIdentifierWhere(uid, userId);
+  return ownFileIdentifierWhere(uid, userId);
 }
 
 // ── Shared helpers ──
@@ -124,7 +124,8 @@ export async function updateNote(
 
   const existingContent = replacePrivateStorageUrls(existing.content ?? "", {});
   const content = data.content === undefined ? undefined : replacePrivateStorageUrls(data.content, {});
-  if (existing.userId !== userId) {
+  // A Project creator a Manager limited is checked on their own Notes too (COL-007).
+  if (existing.userId !== userId || currentTeamScope()?.mode === "team") {
     // Full access or an Editor grant writes the Note (COL-004). Everyone else except a Viewer may only add a comment anchor (DATA-004).
     const editable = await prisma.note.count({ where: editableFileIdentifierWhere(uid, userId) }) > 0;
     if (!editable) {
