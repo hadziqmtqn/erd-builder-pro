@@ -23,8 +23,8 @@ export function getApiBaseUrl(): string {
 
 export const AUTH_TOKEN_KEY='***';
 export const ACTIVE_TEAM_KEY = 'erd-active-team-id';
-// Trash, uploads, the Library and usage belong to the active workspace too (CLD-010); Cloud Feedback names its Team (CLD-013).
-const TEAM_SCOPED_API = /^\/api\/(?:projects|diagrams|notes|drawings|flowcharts|search|entity-changes|trash|upload|library|feedback|cloud\/usage|ai\/(?:chat|proxy|rules|settings\/prompts))(?=[/?#]|$)/;
+// Trash, uploads, the Library and usage belong to the active workspace too (CLD-010); Cloud Feedback and the Trial survey name their Team (CLD-013).
+const TEAM_SCOPED_API = /^\/api\/(?:projects|diagrams|notes|drawings|flowcharts|search|entity-changes|trash|upload|library|feedback|cloud\/(?:usage|trial-survey)|ai\/(?:chat|proxy|rules|settings\/prompts))(?=[/?#]|$)/;
 
 export function getAuthToken(): string | null {
   if (typeof window === 'undefined') return null;
