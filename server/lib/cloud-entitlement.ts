@@ -15,6 +15,14 @@ export type CloudEntitlement = {
   };
   period_start: string | null;
   period_end: string | null;
+  /** Team Trial for the survey panel (CLD-013.3); null when the Team is not on an active Trial. */
+  trial: CloudTrial | null;
+};
+
+export type CloudTrial = {
+  survey_key: "beta_trial" | "cloud_trial";
+  starts_at: string;
+  ends_at: string | null;
 };
 
 const MAX_STORAGE_BYTES = 1_000_000_000_000_000;
@@ -25,6 +33,17 @@ function optionalPositive(value: unknown, max: number): value is number | null |
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+const isDate = (value: unknown): value is string => typeof value === "string" && value.length <= 64 && !Number.isNaN(Date.parse(value));
+
+/** A malformed Trial only hides the survey panel; it never invalidates the entitlement that grants access. */
+function parseTrial(value: unknown): CloudTrial | null {
+  if (!isRecord(value)) return null;
+  const { survey_key: surveyKey, starts_at: startsAt, ends_at: endsAt = null } = value;
+  const validEnd = endsAt === null || isDate(endsAt);
+  if ((surveyKey !== "beta_trial" && surveyKey !== "cloud_trial") || !isDate(startsAt) || !validEnd) return null;
+  return { survey_key: surveyKey, starts_at: startsAt, ends_at: endsAt as string | null };
 }
 
 export function parseCloudEntitlement(value: unknown, workspaceStatus: string): CloudEntitlement | null {
@@ -63,6 +82,7 @@ export function parseCloudEntitlement(value: unknown, workspaceStatus: string): 
     },
     period_start: periodStart as string | null,
     period_end: periodEnd as string | null,
+    trial: parseTrial(value.trial),
   };
 }
 
