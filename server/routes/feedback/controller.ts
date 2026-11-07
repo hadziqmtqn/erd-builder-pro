@@ -17,50 +17,47 @@ export function feedbackPagePath(value: unknown): string | undefined {
 }
 
 /**
- * Cloud (CLD-013): the sender is the SSO session's SaaS user and the Team the `authenticate` middleware verified from
- * `X-Team-Id`; ids in the body are never used.
+ * Relays one Cloud feedback (CLD-013) as the signed-in user's SaaS identity. Returns true once SaaS stored it;
+ * otherwise it has already answered the request.
  */
+export async function relayCloudFeedback(req: ExpressRequest, res: ExpressResponse, payload: Record<string, unknown>): Promise<boolean> {
+  if (cloudFeedbackConfigMissing() || !prisma) {
+    logger.error("[Feedback] Cloud feedback client is not configured");
+    res.status(503).json({ error: "Feedback service is not configured" });
+    return false;
+  }
+  const user = await prisma.user.findUnique({ where: { id: (req as any).user.id }, select: { ssoSubject: true } });
+  if (!user?.ssoSubject) {
+    res.status(403).json({ error: "Feedback sender could not be verified" });
+    return false;
+  }
+
+  const status = await sendFeedbackToSaas({ user_id: user.ssoSubject, ...payload });
+  if (status === 200 || status === 201) return true;
+  logger.warn({ status, kind: payload.kind }, "[Feedback] SaaS rejected Cloud feedback");
+  if (status === 429) res.status(429).json({ error: "Too many feedback submissions, please try again later" });
+  else res.status(502).json({ error: "Feedback could not be delivered" });
+  return false;
+}
+
+/** Cloud: the Team is the one `authenticate` verified from `X-Team-Id`; ids in the body are never used. */
 async function submitCloudFeedback(req: ExpressRequest, res: ExpressResponse, category: string, content: string): Promise<void> {
   if (content.length > MAX_CLOUD_CONTENT_LENGTH) {
     res.status(400).json({ error: `Content must be ${MAX_CLOUD_CONTENT_LENGTH} characters or less` });
     return;
   }
-  if (cloudFeedbackConfigMissing() || !prisma) {
-    logger.error("[Feedback] Cloud feedback client is not configured");
-    res.status(503).json({ error: "Feedback service is not configured" });
-    return;
-  }
-
   const scope = currentTeamScope();
-  const [user, team] = await Promise.all([
-    prisma.user.findUnique({ where: { id: (req as any).user.id }, select: { ssoSubject: true } }),
-    scope?.mode === "team" && scope.teamId
-      ? prisma.team.findUnique({ where: { id: scope.teamId }, select: { ssoOrganizationId: true } })
-      : null,
-  ]);
-  if (!user?.ssoSubject) {
-    res.status(403).json({ error: "Feedback sender could not be verified" });
-    return;
-  }
-
-  const status = await sendFeedbackToSaas({
-    user_id: user.ssoSubject,
+  const team = scope?.mode === "team" && scope.teamId && prisma
+    ? await prisma.team.findUnique({ where: { id: scope.teamId }, select: { ssoOrganizationId: true } })
+    : null;
+  const stored = await relayCloudFeedback(req, res, {
     organization_id: team?.ssoOrganizationId ?? null,
     kind: "general",
     category,
     message: content,
     page_path: feedbackPagePath(req.body?.page_path) ?? null,
   });
-  if (status === 200 || status === 201) {
-    res.status(200).json({ status: "ok" });
-    return;
-  }
-  logger.warn({ status }, "[Feedback] SaaS rejected Cloud feedback");
-  if (status === 429) {
-    res.status(429).json({ error: "Too many feedback submissions, please try again later" });
-    return;
-  }
-  res.status(502).json({ error: "Feedback could not be delivered" });
+  if (stored) res.status(200).json({ status: "ok" });
 }
 
 export async function submitFeedback(

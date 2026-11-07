@@ -22,6 +22,7 @@ import { AppSidebar } from '@/components/app-sidebar';
 import { MainHeader } from '@/components/MainHeader';
 import { useAutoCollapseSidebar } from '@/hooks/useAutoCollapseSidebar';
 import { FeedbackDialog } from '@/components/FeedbackDialog';
+import { TrialSurveyPanel } from '@/components/TrialSurveyPanel';
 import { MoveToTrashAlert } from '@/components/modals/MoveToTrashAlert';
 import { DeleteEntityAlert } from '@/components/modals/DeleteEntityAlert';
 import { RenameDocumentDialog } from '@/components/modals/RenameDocumentDialog';
@@ -895,6 +896,8 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
           onOpenChange={setIsFeedbackOpen}
           isCloud={Boolean(user?.isSso)}
         />
+
+        {user?.isSso && teamState.activeTeamId && !isPublicView && <TrialSurveyPanel teamId={teamState.activeTeamId} />}
 
         <MoveToTrashAlert
           isOpen={isPermanentDeleteConfirmOpen}

@@ -63,6 +63,7 @@ describe("Cloud SSO workspace grants", () => {
           limits: { max_members: null, max_personal_files_per_feature: 3, max_storage_bytes: null, max_team_files_per_feature: null, ai_credits: 0 },
           period_start: null,
           period_end: null,
+          trial: null,
         }) },
     });
     expect(tx.team.create).toHaveBeenCalledWith({ data: expect.objectContaining({
