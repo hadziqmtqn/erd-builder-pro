@@ -893,6 +893,7 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
         <FeedbackDialog
           open={isFeedbackOpen}
           onOpenChange={setIsFeedbackOpen}
+          isCloud={Boolean(user?.isSso)}
         />
 
         <MoveToTrashAlert

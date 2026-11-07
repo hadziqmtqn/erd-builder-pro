@@ -36,6 +36,16 @@ describe("apiFetch Team scope", () => {
     expect(new Headers(fetchMock.mock.calls[0][1].headers).has("X-Team-Id")).toBe(false);
   });
 
+  it("sends the active Team with Cloud Feedback", async () => {
+    useActiveTeam();
+    const fetchMock = vi.fn().mockResolvedValue(new Response());
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiFetch("/api/feedback", { method: "POST" });
+
+    expect(new Headers(fetchMock.mock.calls[0][1].headers).get("X-Team-Id")).toBe("team-1");
+  });
+
   it("sends the active Team to all Team-scoped AI endpoints", async () => {
     useActiveTeam();
     const fetchMock = vi.fn().mockResolvedValue(new Response());
