@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildSchemaFormatOverride, fallbackSystemPrompt } from './buildSystemMessages';
+import { buildFlowchartContext } from '../aiEntityContext/flowchart';
 
 describe('AI DBML contract', () => {
   it('requires parser-valid relationships and composite uniques in every frontend prompt layer', () => {
@@ -15,5 +16,15 @@ describe('AI DBML contract', () => {
     expect(buildSchemaFormatOverride()).toContain('Enum users_access_role');
     expect(buildSchemaFormatOverride()).toContain('status invoices_status [not null, default: \'pending\']');
     expect(buildSchemaFormatOverride()).toContain('Ref: invoices.user_id > users.id');
+  });
+});
+
+describe('AI Flowchart colors (BUG-015)', () => {
+  it('teaches the monochrome default in every generic Flowchart prompt', () => {
+    const flowchartFormat = buildFlowchartContext({ title: 'QA', nodes: [{ id: 'a', type: 'custom', data: { label: 'Start', shape: 'oval' } }], edges: [] } as unknown as Parameters<typeof buildFlowchartContext>[0]) ?? '';
+    for (const prompt of [fallbackSystemPrompt, flowchartFormat]) {
+      expect(prompt).toContain('Omit "color" for the monochrome default');
+      expect(prompt).not.toMatch(/"color"\s*:\s*"#/);
+    }
   });
 });

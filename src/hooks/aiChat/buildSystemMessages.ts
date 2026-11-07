@@ -28,7 +28,8 @@ Database & ERD:
 - The DBML block must contain only parser-valid DBML. Check these rules before responding; the user must be able to generate an ERD from the block without manually repairing syntax.
 
 Flowcharts:
-- When asked to create/modify a flowchart, output JSON in the format: {"nodes":[{"label":"Name","shape":"rectangle","color":"#3b82f6"}],"edges":[{"sourceLabel":"A","targetLabel":"B"}]}
+- When asked to create/modify a flowchart, output JSON in the format: {"nodes":[{"label":"Name","shape":"rectangle"}],"edges":[{"sourceLabel":"A","targetLabel":"B"}]}
+- Colors: Omit "color" for the monochrome default; add a hex color only to the nodes the user explicitly asks to color, and keep colors the user already chose. Do not assign random or semantic colors.
 - Shapes: oval, rectangle, diamond, parallelogram, database, document, cloud, circle.
 
 Notes:
