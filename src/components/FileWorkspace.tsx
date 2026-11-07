@@ -8,7 +8,7 @@ import type { WorkspaceContextValue } from '@/providers/WorkspaceContext';
 import type { AIActionContextValue } from '@/contexts/AIActionContext';
 import type { FileSessionScope } from '@/contexts/FileSessionContext';
 import { FilePanesContext } from '@/contexts/FilePanesContext';
-import { focusesPane, paneKey, paneRequest, paneUrl, PANE_FLUSH_CHILDREN, PANE_REQUEST, validPaneFile, type PaneFile } from '@/lib/file-panes';
+import { findPaneDocument, focusesPane, loadedPaneTitle, paneDocumentTitle, paneKey, paneRequest, paneUrl, PANE_FLUSH_CHILDREN, PANE_REQUEST, validPaneFile, type PaneFile } from '@/lib/file-panes';
 import { flushPaneFile } from '@/lib/pane-save';
 import { NativeFileSession, type FileSession } from './NativeFileSession';
 import { ProjectFileTabs } from './ProjectFileTabs';
@@ -34,6 +34,9 @@ export function FileWorkspace({ children, root, mainAI, teamState, discussionTar
   const focusedRef = useRef(focused);
   focusedRef.current = focused;
   const [pending, setPending] = useState<PaneFile | null>(null);
+  // Name of the document each pane has loaded; it replaces the guess made when the pane was opened (BUG-045).
+  const [loadedTitles, setLoadedTitles] = useState<Record<string, string>>({});
+  const titleOf = (file: PaneFile) => loadedTitles[paneKey(file)] || file.title;
   const [replaceKey, setReplaceKey] = useState('');
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -63,12 +66,14 @@ export function FileWorkspace({ children, root, mainAI, teamState, discussionTar
   }, [paneAIRef, panes]);
   const publish = useCallback((key: string, session: FileSession) => {
     sessions.current.set(key, session);
+    const title = loadedPaneTitle(session.file, session.workspace.activeDocument);
+    if (title) setLoadedTitles(titles => titles[key] === title ? titles : { ...titles, [key]: title });
     if (key === focusedRef.current) onFocusedSession(session);
   }, [onFocusedSession]);
   useEffect(() => { onFocusedSession(sessions.current.get(focused) ?? null); }, [focused, onFocusedSession]);
   useEffect(() => () => onFocusedSession(null), [onFocusedSession]);
   useEffect(() => {
-    setPanes([]); setPending(null); setFocused(''); sessions.current.clear(); scopes.current.clear(); onFocusedSession(null);
+    setPanes([]); setPending(null); setFocused(''); setLoadedTitles({}); sessions.current.clear(); scopes.current.clear(); onFocusedSession(null);
   }, [scope, onFocusedSession]);
   useEffect(() => {
     if (root.isPublicView) { setPanes([]); setPending(null); setFocused(''); onFocusedSession(null); }
@@ -138,10 +143,9 @@ export function FileWorkspace({ children, root, mainAI, teamState, discussionTar
     if (destination && current) {
       const nextType = types[destination[1]];
       const uid = decodeURIComponent(destination[2]);
-      const list = nextType === 'notes' ? root.notes : nextType === 'erd' ? root.diagrams : nextType === 'flowchart' ? root.flowcharts : root.drawings;
-      const file = list.find(item => String(item.uid) === uid || String(item.id) === uid)
-        ?? [...sessions.current.values()].find(session => session.file.type === nextType && (String(session.workspace.activeDocument?.id) === uid || session.file.uid === uid))?.workspace.activeDocument;
-      select({ type: nextType, uid: String(file?.uid ?? file?.id ?? uid), title: file?.title || file?.name || 'Untitled', projectId: String(file?.project_id ?? file?.projectId ?? current.projectId) });
+      const opened = [...sessions.current.values()];
+      const file = findPaneDocument(nextType, uid, [root, ...opened.map(session => session.workspace)], opened.map(session => ({ file: session.file, document: session.workspace.activeDocument })));
+      select({ type: nextType, uid: String(file?.uid ?? file?.id ?? uid), title: paneDocumentTitle(file) || 'Untitled', projectId: String(file?.project_id ?? file?.projectId ?? current.projectId) });
     } else void perform(async () => {
       await Promise.all(panes.map(flush)); setPanes([]); setFocused(''); onFocusedSession(null); navigate(url);
     });
@@ -217,12 +221,12 @@ export function FileWorkspace({ children, root, mainAI, teamState, discussionTar
               className="w-2 shrink-0 cursor-col-resize touch-none border-x bg-muted/30 focus-visible:bg-accent"
               onPointerDown={event => { dragging.current = true; event.currentTarget.setPointerCapture(event.pointerId); }}
               onKeyDown={event => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); setPercent(value => Math.max(30, Math.min(70, value + (event.key === 'ArrowLeft' ? -2 : 2)))); } }} />}
-            <section data-file-session={key} data-active={focused === key} aria-label={file.title} {...inertWhileBusy}
+            <section data-file-session={key} data-active={focused === key} aria-label={titleOf(file)} {...inertWhileBusy}
               onPointerDownCapture={event => { if (focusesPane(event.target)) focus(file); }}
               onFocusCapture={event => { if (focused !== key && focusesPane(event.target)) focus(file); }}
               className="relative flex min-h-0 min-w-0 flex-col overflow-hidden" style={split ? { width: index === 0 ? `${percent}%` : undefined, flex: index === 1 ? 1 : undefined } : { flex: 1 }}>
               {split && <div className="flex h-9 shrink-0 items-center justify-between gap-2 border-b px-3 text-sm">
-                <span className="truncate">{file.title}</span><Button variant="ghost" size="icon-sm" aria-label={`Close pane: ${file.title}`} data-pane-close disabled={busy} onClick={() => close(file)}><X /></Button>
+                <span className="truncate">{titleOf(file)}</span><Button variant="ghost" size="icon-sm" aria-label={`Close pane: ${titleOf(file)}`} data-pane-close disabled={busy} onClick={() => close(file)}><X /></Button>
               </div>}
               <div ref={sessionScope.host} className="relative isolate flex min-h-0 flex-1 flex-col overflow-hidden [transform:translateZ(0)]">
                 <NativeFileSession file={file} active={focused === key} scope={sessionScope} root={root} mainAI={mainAI} teamState={editorTeam} discussionTarget={discussionTarget} onUpdate={publish} onNavigate={navigateSession} />
@@ -234,12 +238,12 @@ export function FileWorkspace({ children, root, mainAI, teamState, discussionTar
     </div>
     <AlertDialog open={!!pending} onOpenChange={value => { if (!value) cancelReplacement(); }}>
       <AlertDialogContent>
-        <AlertDialogHeader><AlertDialogTitle>Replace an open file</AlertDialogTitle><AlertDialogDescription>Choose the file to close before opening {pending?.title}.</AlertDialogDescription></AlertDialogHeader>
+        <AlertDialogHeader><AlertDialogTitle>Replace an open file</AlertDialogTitle><AlertDialogDescription>Choose the file to close before opening {pending && titleOf(pending)}.</AlertDialogDescription></AlertDialogHeader>
         <AlertDialogBody className="p-4">
           <RadioGroup aria-label="File to replace" value={replaceKey} onValueChange={value => setReplaceKey(String(value))} className="flex flex-col gap-2">
             {panes.map(file => <label key={paneKey(file)} className="flex cursor-pointer items-center gap-3 rounded-lg border p-3">
               <Radio.Root value={paneKey(file)} className="flex size-4 shrink-0 items-center justify-center rounded-full border border-input data-checked:border-primary focus-visible:ring-2 focus-visible:ring-ring"><Radio.Indicator className="size-2 rounded-full bg-primary" /></Radio.Root>
-              <span className="min-w-0"><span className="block truncate">{file.title}</span><span className="text-xs text-muted-foreground">{{ notes: 'Notes', erd: 'ERD Builder', flowchart: 'Flowchart', drawings: 'Drawings' }[file.type]}</span></span>
+              <span className="min-w-0"><span className="block truncate">{titleOf(file)}</span><span className="text-xs text-muted-foreground">{{ notes: 'Notes', erd: 'ERD Builder', flowchart: 'Flowchart', drawings: 'Drawings' }[file.type]}</span></span>
             </label>)}
           </RadioGroup>
         </AlertDialogBody>
