@@ -21,14 +21,18 @@ type LicenseStatus = {
   active?: boolean;
   code?: string;
   maxTeams?: number | null;
-  usage?: { teamCount?: number };
+  max_teams?: number | null;
+  usage?: { teamCount?: number; team_count?: number };
 };
 
-/** Maps GET /api/license/status to the Add Team outcome; null means the form may open (SH-007). */
+/**
+ * Maps GET /api/license/status to the Add Team outcome; null means the form may open (SH-007).
+ * The server's JSON middleware sends that route in snake_case, so both spellings are read (BUG-046).
+ */
 export function teamLicenseIssue(status: LicenseStatus): TeamLicenseIssue | null {
   if (status.active === true) {
-    const used = status.usage?.teamCount ?? 0;
-    const max = status.maxTeams;
+    const used = status.usage?.teamCount ?? status.usage?.team_count ?? 0;
+    const max = status.maxTeams ?? status.max_teams;
     return typeof max === "number" && used >= max ? { kind: "limit", used, max } : null;
   }
   if (status.code === "LICENSE_NOT_ACTIVATED") return { kind: "inactive" };

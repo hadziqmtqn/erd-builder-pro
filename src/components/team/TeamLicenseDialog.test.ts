@@ -11,6 +11,12 @@ describe('Add Team license outcome (SH-007)', () => {
     expect(teamLicenseIssue({ active: true, maxTeams: 2, usage: { teamCount: 2 } })).toEqual({ kind: 'limit', used: 2, max: 2 });
   });
 
+  it('reads the snake_case body the server actually sends (BUG-046)', () => {
+    expect(teamLicenseIssue({ active: true, max_teams: 2, usage: { team_count: 2 } })).toEqual({ kind: 'limit', used: 2, max: 2 });
+    expect(teamLicenseIssue({ active: true, max_teams: 2, usage: { team_count: 1 } })).toBeNull();
+    expect(teamLicenseIssue({ active: true, max_teams: null, usage: { team_count: 9 } })).toBeNull();
+  });
+
   it('maps an inactive license code to its dialog', () => {
     expect(teamLicenseIssue({ active: false, code: 'LICENSE_NOT_ACTIVATED' })).toEqual({ kind: 'inactive' });
     expect(teamLicenseIssue({ active: false, code: 'LICENSE_EXPIRED' })).toEqual({ kind: 'expired' });
