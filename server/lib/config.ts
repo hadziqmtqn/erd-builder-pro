@@ -121,6 +121,15 @@ export function getCloudTelemetryConfig() {
   };
 }
 
+export function getCloudFeedbackConfig() {
+  const { issuerUrl } = getSsoConfig();
+  return {
+    issuerUrl,
+    clientId: process.env.CLOUD_FEEDBACK_CLIENT_ID?.trim() || "",
+    clientSecret: process.env.CLOUD_FEEDBACK_CLIENT_SECRET?.trim() || "",
+  };
+}
+
 export function getCloudWebhookSecret(): string {
   return process.env.CLOUD_WEBHOOK_SECRET?.trim() || "";
 }

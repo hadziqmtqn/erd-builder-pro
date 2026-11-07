@@ -1,3 +1,5 @@
+import { fetchWithTimeout, getCloudMachineToken } from "../../lib/cloud-ai.js";
+import { getCloudFeedbackConfig } from "../../lib/config.js";
 import { logger } from "../../lib/logger.js";
 
 export async function sendFeedbackToTelegram(params: {
@@ -44,4 +46,21 @@ export async function sendFeedbackToTelegram(params: {
 
 export function feedbackConfigMissing(): boolean {
   return !process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID;
+}
+
+export function cloudFeedbackConfigMissing(): boolean {
+  const config = getCloudFeedbackConfig();
+  return !config.issuerUrl || !config.clientId || !config.clientSecret;
+}
+
+/** CLD-013: SaaS stores Cloud feedback; relay it with the `cloud:feedback` machine token and return the SaaS HTTP status. */
+export async function sendFeedbackToSaas(payload: Record<string, unknown>): Promise<number> {
+  const config = getCloudFeedbackConfig();
+  const token = await getCloudMachineToken(config, "cloud:feedback");
+  const response = await fetchWithTimeout(new URL("/api/v1/cloud/feedback", config.issuerUrl).toString(), {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json", Authorization: "Bearer " + token },
+    body: JSON.stringify(payload),
+  });
+  return response.status;
 }
