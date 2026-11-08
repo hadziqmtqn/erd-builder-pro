@@ -224,7 +224,9 @@ export function FileWorkspace({ children, root, mainAI, teamState, discussionTar
             <section data-file-session={key} data-active={focused === key} aria-label={titleOf(file)} {...inertWhileBusy}
               onPointerDownCapture={event => { if (focusesPane(event.target)) focus(file); }}
               onFocusCapture={event => { if (focused !== key && focusesPane(event.target)) focus(file); }}
-              className="relative flex min-h-0 min-w-0 flex-col overflow-hidden" style={split ? { width: index === 0 ? `${percent}%` : undefined, flex: index === 1 ? 1 : undefined } : { flex: 1 }}>
+              // Side by side, the focused pane has a foreground border (black in light mode, white in dark) so it is clear
+              // which file the header Actions, Share and History act on (BUG-049).
+              className={`relative flex min-h-0 min-w-0 flex-col overflow-hidden${split ? ` rounded-lg border-2 ${focused === key ? 'border-foreground' : 'border-transparent'}` : ''}`} style={split ? { width: index === 0 ? `${percent}%` : undefined, flex: index === 1 ? 1 : undefined } : { flex: 1 }}>
               {split && <div className="flex h-9 shrink-0 items-center justify-between gap-2 border-b px-3 text-sm">
                 <span className="truncate">{titleOf(file)}</span><Button variant="ghost" size="icon-sm" aria-label={`Close pane: ${titleOf(file)}`} data-pane-close disabled={busy} onClick={() => close(file)}><X /></Button>
               </div>}
