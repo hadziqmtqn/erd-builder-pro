@@ -356,7 +356,7 @@ const ERDViewComponent = ({
     const next = new Map<string, { node: Node<Entity>; selected: boolean; className?: string; styled: Node<Entity> }>();
     const result = nodes.map(node => {
       const selected = allSelectedIds.includes(node.id);
-      const className = !focus ? undefined : node.id === focus.primary ? 'erd-node-focus' : focus.tables.has(node.id) ? undefined : 'erd-node-dimmed';
+      const className = focus?.tables.has(node.id) ? 'erd-node-focus' : undefined;
       // Use !! to normalize undefined/null to boolean — avoids creating wrappers
       // for all nodes on the first drag after setNodes() (which may lack `selected`)
       if (!!node.selected === selected && node.className === className) return node;
@@ -382,9 +382,10 @@ const ERDViewComponent = ({
 
   const hasComments = Boolean(comments);
   const styledEdges = React.useMemo(() => styleErdEdges(edges, allSelectedIds, hoveredEdgeId).map(edge => {
-    // The Explorer or table editor focus replaces the selection's active/dimmed classes instead of stacking on them.
-    const focused = focus && (focus.edges.has(edge.id) ? 'edge-animated-active' : 'edge-dimmed');
-    const styled = focused ? { ...edge, className: [...(edge.className ?? '').split(' ').filter(name => name && name !== 'edge-animated-active' && name !== 'edge-dimmed'), focused].join(' ') } : edge;
+    // A focused line is emphasised; it drops a dimmed class the selection may have given it. Other lines are left as they are.
+    const styled = focus?.edges.has(edge.id)
+      ? { ...edge, className: [...(edge.className ?? '').split(' ').filter(name => name && name !== 'edge-animated-active' && name !== 'edge-dimmed'), 'edge-animated-active'].join(' ') }
+      : edge;
     return hasComments ? { ...styled, type: 'commentable' } : styled;
   }), [edges, allSelectedIds, hasComments, hoveredEdgeId, focus]);
   const styledDiffEdges = React.useMemo(

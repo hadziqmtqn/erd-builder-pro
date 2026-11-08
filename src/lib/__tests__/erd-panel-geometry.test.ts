@@ -51,7 +51,7 @@ describe('choosePopoverSide', () => {
   });
 
   it('keeps the popover off the toolbar on the left edge', () => {
-    const nearToolbar = { x: 340, y: 200, width: 220, height: 180 };
+    const nearToolbar = { x: 420, y: 200, width: 220, height: 180 };
     expect(choosePopoverSide(nearToolbar, { width: 880, height: 800 }, [], 16)).toBe('left');
     expect(choosePopoverSide(nearToolbar, { width: 880, height: 800 }, [], 72)).toBeNull();
   });

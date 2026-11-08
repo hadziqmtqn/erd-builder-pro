@@ -293,21 +293,10 @@
   marker-end: none !important;
 }
 
-/* The table the Explorer or the table editor points at, and the dimmed rest (ERD-004). Opacity only: blur costs GPU (BUG-040). */
+/* The table(s) the Explorer or the table editor points at (ERD-004). The other tables stay solid. */
 .react-flow__node.erd-node-focus .erd-node-container {
   border-color: rgb(59 130 246) !important;
   box-shadow: 0 0 0 4px rgb(59 130 246 / 0.35);
-}
-
-.react-flow__node.erd-node-dimmed {
-  opacity: 0.35;
-  transition: opacity 0.2s;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .react-flow__node.erd-node-dimmed {
-    transition: none;
-  }
 }
 
 @keyframes edge_dash_draw {
