@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { Entity, Column, Diagram, DraftType, Relationship } from '../types';
 import { localPersistence } from '../lib/localPersistence';
 import { useUndoRedo } from './useUndoRedo';
+import { useERDHistoryShortcuts } from './useERDHistoryShortcuts';
 import { buildErdIndexes, erdColumnKey, erdSourceColumnKey } from '../lib/erd-indexes';
 import { getForeignKeyConstraintName } from '../lib/diagram-payload';
 import { databaseColumnToERD } from '../lib/column-metadata';
@@ -40,7 +41,8 @@ export function useERDSession(
     broadcastEdgesUpdate?: (edges: Edge[]) => void;
     onEditEntity?: (entityId: string) => void;
     onDeleteEntity?: (entityId: string) => void;
-  }
+  },
+  historyShortcuts = true,
 ) {
   const editorActive = useEditorActive();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<Entity>>([]);
@@ -896,32 +898,8 @@ export function useERDSession(
     if (!isPublicView && event && changed) setSaveCounter(prev => prev + 1);
   }, [isPublicView]);
 
-  // ── ERD Keyboard Shortcuts (undo/redo) ──
-  // Extracted from App.tsx global keydown handler — only active in erd view
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!editorActive()) return;
-      const target = e.target as HTMLElement | null;
-      const isEditingText = target?.matches('input, textarea, [contenteditable="true"]')
-        || !!target?.closest('.cm-editor');
-      if (isEditingText) return;
-
-      const key = e.key.toLowerCase();
-      if ((e.ctrlKey || e.metaKey) && key === 'z') {
-        e.preventDefault();
-        if (e.shiftKey) {
-          if (canRedo) handleRedo();
-        } else {
-          if (canUndo) handleUndo();
-        }
-      } else if ((e.ctrlKey || e.metaKey) && key === 'y') {
-        e.preventDefault();
-        if (canRedo) handleRedo();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown, true);
-    return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [handleUndo, handleRedo, canUndo, canRedo]);
+  // ── ERD Keyboard Shortcuts (undo/redo), only while the ERD view is shown ──
+  useERDHistoryShortcuts(historyShortcuts, canUndo, canRedo, handleUndo, handleRedo);
 
   // ── ERD Custom Event Listener (deleteEntity) ──
   // Dispatched from EntityNode.tsx dropdown menu actions
