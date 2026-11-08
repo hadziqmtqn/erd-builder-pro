@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
+import { memo, useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import type { Node, Edge } from '@xyflow/react';
 import { X } from 'lucide-react';
@@ -60,7 +60,8 @@ const MAX_HEIGHT = 85;
  * The full, editable DBML of this pane's diagram, in a drawer at the bottom of its canvas (ERD-004).
  * It stays mounted while closed so an unapplied draft survives closing and opening it again.
  */
-export function ERDDBMLDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+// Memoized: ERDView re-renders on every drag frame and this drawer stays mounted while closed.
+export const ERDDBMLDrawer = memo(function ERDDBMLDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   // The URL UUID stays the same while the workspace swaps a numeric diagram ID for the UUID during loading.
   const { id: diagramUid } = useParams<{ id: string }>();
   const { activeDiagram, saveDiagram, viewportRef, isGuest, triggerDebouncedSync, setNodes, setEdges, takeSnapshot, setSelectedNodeId } = useWorkspace();
@@ -242,4 +243,4 @@ export function ERDDBMLDrawer({ open, onClose }: { open: boolean; onClose: () =>
       </div>
     </div>
   );
-}
+});

@@ -6,7 +6,7 @@ import { paneUrl } from '@/lib/file-panes';
 import type { FileSession } from '@/components/NativeFileSession';
 import { WorkspaceContext, type WorkspaceContextValue } from '@/providers/WorkspaceContext';
 import { AIActionScope, type AIActionContextValue } from '@/contexts/AIActionContext';
-import { ERDCanvasProvider, SettledERDCanvasProvider } from '@/contexts/ERDCanvasContext';
+import { SettledERDCanvasProvider } from '@/contexts/ERDCanvasContext';
 import { FileSessionContext } from '@/contexts/FileSessionContext';
 import { cn } from '@/lib/utils';
 import { flushWorkspaceChanges } from '@/lib/workspace-save';
@@ -913,10 +913,13 @@ function FileSessionShell({ paired, onPairChange }: { paired: boolean; onPairCha
     flushPendingSaves: root.flushPendingSaves, handleLogout: root.handleLogout,
   } : root, [session, root]);
   const ai = useMemo(() => session ? { ...session.ai, rightPanelMode: defaultAI.rightPanelMode, setRightPanelMode: defaultAI.setRightPanelMode } : defaultAI, [session, defaultAI]);
+  // Only the settled canvas is replaced here, for the layout's own panels. The live canvas is left to the
+  // WorkspaceProvider: replacing it with the settled one froze a dragged table in the single-file view
+  // until the drop, because the ERD route then received nodes that do not change while dragging.
   return <WorkspaceContext.Provider value={workspace}><AIActionScope value={ai}>
-    <ERDCanvasProvider value={session?.canvas ?? defaultCanvas}><SettledERDCanvasProvider value={session?.canvas ?? defaultCanvas}>
+    <SettledERDCanvasProvider value={session?.canvas ?? defaultCanvas}>
       <AppLayoutInner root={root} session={session} mainAI={defaultAI} paired={paired} onPairChange={onPairChange} onFocusedSession={setSession} />
-    </SettledERDCanvasProvider></ERDCanvasProvider>
+    </SettledERDCanvasProvider>
   </AIActionScope></WorkspaceContext.Provider>;
 }
 
