@@ -293,7 +293,7 @@ export function WorkspaceProvider({
     undo, redo, canUndo, canRedo, takeSnapshot, isItemLoading: isERDItemLoading, saveCounter,
     onNodeDragStop, onMoveEnd,
     extractColumnIdFromHandle, getRelationKey, dedupeEdgesByRelation,
-  } = useERDSession(isPublicView, isGuest, isAuthenticated, () => {}, erdOptions);
+  } = useERDSession(isPublicView, isGuest, isAuthenticated, () => {}, erdOptions, view === 'erd');
 
   // Effective ID for realtime sync
   const effectiveDiagramId = isPublicView ? publicData?.id : activeDiagramId;
