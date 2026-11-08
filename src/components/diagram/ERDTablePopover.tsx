@@ -28,7 +28,7 @@ export function ERDTablePopover({ entity, floating, onTogglePin, onClose, onBack
       className={cn(
         'nowheel nodrag flex flex-col overflow-hidden border bg-popover text-popover-foreground',
         floating
-          ? 'absolute z-30 h-[min(36rem,calc(100%-1.5rem))] w-[304px] rounded-xl shadow-2xl'
+          ? 'absolute z-30 h-[min(36rem,calc(100%-1.5rem))] w-96 rounded-xl shadow-2xl'
           : 'w-85 shrink-0 rounded-xl max-md:absolute max-md:inset-y-0 max-md:right-0 max-md:z-30 max-md:w-[min(21.25rem,100%)] max-md:shadow-xl',
       )}
     >

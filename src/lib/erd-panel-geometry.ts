@@ -6,7 +6,7 @@ export const EXPLORER_WIDTH = 300;
 export const EXPLORER_LEFT = 72;
 /** Canvas width hidden by an open Explorer, measured from the canvas's left edge. */
 export const EXPLORER_COVERED = EXPLORER_LEFT + EXPLORER_WIDTH;
-export const POPOVER_WIDTH = 304;
+export const POPOVER_WIDTH = 384;
 export const POPOVER_GAP = 12;
 /** Height of the floating table editor (36rem in ERDTablePopover), shrunk on short canvases. */
 export const POPOVER_HEIGHT = 576;

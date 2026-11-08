@@ -172,19 +172,18 @@ export function useERDPanels({ nodes, edges, canEdit, isActive, shortcutEnabled,
     if (!canEdit) setDbmlOpen(false);
   }, [inspector, nodes, canEdit, closeInspector]);
 
-  // What the Explorer or the table editor points at: that table (or relationship) and its related tables stay
-  // bright, the rest is dimmed with opacity only (ERD-004; no blur, see BUG-040).
+  // What the Explorer or the table editor points at: those tables get a ring and their relationship lines are
+  // emphasised. Every other table stays solid as before (owner's call, 8 November 2026: no dimming).
   const focus = useMemo(() => {
     const around = (id: string) => nodes.some(node => node.id === id) ? {
-      primary: id as string | null,
-      tables: new Set([id, ...getERDTableNeighbourIds(id, edges)]),
+      tables: new Set([id]),
       edges: new Set(edges.filter(edge => edge.source === id || edge.target === id).map(edge => edge.id)),
     } : null;
     if (inspector) return around(inspector.id);
     if (!explorerOpen || !highlight) return null;
     if (highlight.type === 'table') return around(highlight.id);
     const edge = edges.find(item => item.id === highlight.id);
-    return edge ? { primary: null, tables: new Set([edge.source, edge.target]), edges: new Set([edge.id]) } : null;
+    return edge ? { tables: new Set([edge.source, edge.target]), edges: new Set([edge.id]) } : null;
   }, [inspector, explorerOpen, highlight, nodes, edges]);
 
   const inspectorNode = inspector ? nodes.find(node => node.id === inspector.id) : undefined;
