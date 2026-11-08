@@ -11,7 +11,7 @@ import RelationshipPropertiesPanel from './RelationshipPropertiesPanel';
 import { ERDRelationshipListPanel, relationshipLabel } from './ERDRelationshipListPanel';
 import { ERDTableListPanel } from './ERDTableListPanel';
 
-/** Kept by the pane's ERDView, so leaving for the popover or an editor and coming back changes nothing. */
+/** Kept by the pane's ERDView, so reopening the Explorer (e.g. from `‹ Tables`) keeps the tab, searches and active rows. */
 export interface ERDExplorerState {
   tab: 'tables' | 'relationships';
   tableSearch: string;
@@ -40,12 +40,10 @@ interface ERDExplorerProps {
   onHighlight: (target: { type: 'table' | 'relationship'; id: string }) => void;
   onClose: () => void;
   shortcutLabel: string;
-  /** Hidden behind the table popover; stays mounted so the lists keep their scroll position. */
-  hidden?: boolean;
 }
 
 /** Floating Tables/Relationships panel on the left of an ERD canvas (ERD-004). */
-export function ERDExplorer({ nodes, edges, state, onChange, editing, onHighlight, onClose, shortcutLabel, hidden }: ERDExplorerProps) {
+export function ERDExplorer({ nodes, edges, state, onChange, editing, onHighlight, onClose, shortcutLabel }: ERDExplorerProps) {
   const rows = useMemo(() => buildERDRelationshipRows(nodes, edges), [nodes, edges]);
   const editingEdge = editing && state.editingEdgeId ? edges.find(edge => edge.id === state.editingEdgeId) ?? null : null;
   const editingRow = editingEdge ? rows.find(row => row.id === editingEdge.id) : undefined;
@@ -62,12 +60,10 @@ export function ERDExplorer({ nodes, edges, state, onChange, editing, onHighligh
   return (
     <aside
       aria-label="Explorer"
-      aria-hidden={hidden || undefined}
       className={cn(
         'nowheel absolute left-[4.5rem] top-3 bottom-3 z-20 flex w-[300px] max-w-[calc(100%-5.5rem)] flex-col overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-2xl',
         // Phones: the toolbar runs along the top, so the Explorer sits below it across the canvas.
         'max-md:left-2 max-md:right-2 max-md:top-20 max-md:w-auto max-md:max-w-none',
-        hidden && 'invisible',
       )}
     >
       <div className="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-2">

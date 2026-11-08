@@ -855,7 +855,6 @@ const ERDViewComponent = ({
           nodes={nodes} edges={edges} state={panels.explorer} onChange={panels.patchExplorer}
           editing={canEdit ? { onEditTable: id => void panels.editTable(id), onUpdateEdge: handleEdgeUpdate, onFlipEdge: handleEdgeFlip, onDeleteEdge: deleteEdge } : undefined}
           onHighlight={panels.highlightTarget} onClose={panels.closeExplorer} shortcutLabel={panels.explorerShortcut.label}
-          hidden={panels.popoverFloating}
         />
       </div>}
       {!pendingDiff && panels.inspectorEntity && panels.inspector?.floating && <ERDTablePopover entity={panels.inspectorEntity} floating={panels.inspector.floating}
