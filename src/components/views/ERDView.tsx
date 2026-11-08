@@ -566,12 +566,13 @@ const ERDViewComponent = ({
   React.useEffect(() => {
     const previewHistory = (event: Event) => {
       if (isProductionDb) return;
-      if (!editorActive()) return;
       const preview = (event as CustomEvent<ErdHistoryPreview | undefined>).detail;
+      // Closing History clears its preview in every pane: focus may have moved to the other pane by then (BUG-049).
       if (!preview) {
         setPendingDiff(current => current?.source === 'history' ? null : current);
         return;
       }
+      if (!editorActive()) return;
       startDiff(nodesRef.current, edgesRef.current, preview.nodes, preview.edges, { source: 'history', version: preview.version });
     };
     window.addEventListener(ERD_HISTORY_PREVIEW_EVENT, previewHistory);
