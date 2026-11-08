@@ -86,6 +86,10 @@ export function useFlowchartChangeHandler(params: UseFlowchartChangeHandlerParam
     // SAFETY: Flowchart ID Validation Guard
     if (lastLoadedFlowchartIdRef.current !== activeFlowchartId) return;
 
+    // Write the local draft now: a reload inside the delay below used to drop the last edit (BUG-047).
+    // The timer saves again with the latest title before it uploads.
+    if (stored && !isRefreshing && !isFlowchartItemLoading) void saveFlowchart({ ...stored, data: dataString });
+
     flowchartsSaveTimeout.current = setTimeout(async () => {
       // SAFETY: Wait if still loading/refreshing
       if (isRefreshing || isFlowchartItemLoading) return;
