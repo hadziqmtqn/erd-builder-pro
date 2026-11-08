@@ -140,7 +140,7 @@ CSS variables from shadcn (`var(--popover)`, `var(--popover-foreground)`) used i
 - **Table editor** (`ERDTablePopover`, wraps `PropertiesPanel`; its DBML tab is read-only with Copy): opened by Edit in the table menu, double-click, or ✎ in the Explorer (`useEditERDTable()` from table nodes, a stable function). Floating (384 px) next to the table on the side `choosePopoverSide` picks (away from related tables), after at most one camera move; pan, zoom and drag are locked until Esc, an empty-area click or close. Clicking another table moves it. Pin docks it beside the canvas; by default it docks when the pane is at least `DOCK_MIN_WIDTH` (1100 px) wide, and on phones.
 - **DBML drawer** (`ERDDBMLDrawer`): the full editable schema at the bottom of the canvas, height resizable (20–85 %), mounted while closed so an unapplied draft survives.
 - Relationship rows put the FK side first using the `is_pk` rule from `onConnect` (`src/lib/erd-relationship-list.ts`). Canvas-drawn edges are not normalized, so `edge.source` can be the PK.
-- The app-wide right panel (`rightPanelMode`: AI Chat, History, Repository) is an overlay drawer; it no longer narrows the panes or collapses the sidebar.
+- The app-wide right panel (`rightPanelMode`: AI Chat, History, Repository) is an overlay drawer below the header; it no longer narrows the panes or collapses the sidebar. AI Chat opens from the "AI Assistant" toggle at the end of `MainHeader` or Cmd/Ctrl+J (no floating button); `AIChatPanel` has its own close button.
 
 ## Flowchart Architecture
 

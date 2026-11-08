@@ -15,7 +15,7 @@ export function RightChatSidebar({ children }: RightChatSidebarProps) {
   if (rightPanelMode === 'closed') return null;
 
   return (
-    <aside className="fixed right-3 top-15 bottom-3 z-40 flex w-96 max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-2xl animate-in slide-in-from-right duration-200">
+    <aside className="fixed right-3 top-19 bottom-3 z-40 flex w-96 max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-2xl animate-in slide-in-from-right duration-200">
       {children}
     </aside>
   );

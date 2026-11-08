@@ -12,8 +12,6 @@ import { cn } from '@/lib/utils';
 import { flushWorkspaceChanges } from '@/lib/workspace-save';
 import { noteAnchorText } from '@/lib/noteAnchorMerge';
 import { toast } from 'sonner';
-import { Sparkles, PanelRightClose } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 
 // Components
 import { AppSidebar } from '@/components/app-sidebar';
@@ -70,7 +68,6 @@ import { RepositoryPanel } from '@/components/repository/RepositoryPanel';
 import { DiscussionsPanel, type CollaborationContext, type CollaborationFeatureType } from '@/components/diagram/DiscussionsPanel';
 import { closeRepositoryPreview } from '@/lib/repository-preview';
 import { isRightPanelAvailable } from '@/lib/right-panel-availability';
-import { AIChatToggle } from '@/components/ai/AIChatToggle';
 import { isFileCreator } from '@/lib/fileOwnership';
 import { useSettledERDCanvas } from '@/contexts/ERDCanvasContext';
 import { getAppPageTitle } from '@/lib/app-page-title';
@@ -526,6 +523,22 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
     repository: isActiveDiagramContext && !activeDiagramIsProductionDb,
   });
 
+  // The AI Assistant toggle sits in the header and Cmd/Ctrl+J opens or closes its drawer (ERD-004).
+  const isMac = typeof navigator !== 'undefined' && /mac|iphone|ipad|ipod/i.test(navigator.platform || navigator.userAgent);
+  const aiShortcut = useMemo(() => ({ label: isMac ? '⌘J' : 'Ctrl+J', ariaKeyShortcuts: isMac ? 'Meta+J' : 'Control+J' }), [isMac]);
+  const toggleAIChat = useCallback(() => setRightPanelMode(rightPanelMode === 'chat' ? 'closed' : 'chat'), [rightPanelMode, setRightPanelMode]);
+  useEffect(() => {
+    if (!showAIChat) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const modifier = isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+      if (!modifier || event.shiftKey || event.altKey || event.isComposing || event.defaultPrevented || event.key.toLowerCase() !== 'j') return;
+      event.preventDefault();
+      toggleAIChat();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [showAIChat, toggleAIChat, isMac]);
+
   const handleSidebarViewChange = useCallback((...args: Parameters<typeof handleViewChange>) => {
     if (rightPanelMode === 'repository') {
       closeRepositoryPreview();
@@ -624,6 +637,7 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
           noteContent={activeNote?.content}
           historyAvailable={Boolean(historyEntityType)}
           discussionPanel={session ? <span ref={setDiscussionTarget} className="contents" /> : discussionPanel}
+          aiAssistant={showAIChat ? { open: rightPanelMode === 'chat', onToggle: toggleAIChat, shortcut: aiShortcut } : undefined}
         /></FileSessionContext.Provider>
 
         <div className="relative flex flex-1 flex-col gap-4 p-4 pt-4 min-h-0 overflow-hidden" style={{ isolation: 'isolate' } as React.CSSProperties}>
@@ -852,70 +866,33 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
                 onRestored={refreshActiveDocument}
                 canRestore={canManageActiveDocument}
               />
-            ) : <div className="h-full flex flex-col">
-              {/* ── Tab bar ── */}
-              <div className="shrink-0 flex items-center border-b border-border bg-muted/20">
-                <div className="flex-1 flex">
-                  {showAIChat && (
-                    <button
-                      onClick={() => setRightPanelMode('chat')}
-                      className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
-                        rightPanelMode === 'chat'
-                          ? 'border-primary text-primary bg-background/50'
-                          : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30'
-                      }`}
-                    >
-                      <Sparkles className="size-3.5" />
-                      AI Chat
-                    </button>
-                  )}
-                </div>
-                <Button variant="ghost" size="icon" className="size-8 mr-1" onClick={() => setRightPanelMode('closed')} title="Close panel">
-                  <PanelRightClose className="size-3.5" />
-                </Button>
-              </div>
-
-              {/* ── Tab content ── */}
-              <div className="flex-1 min-h-0">
-                {showAIChat && (
-                  <div className={cn('h-full', rightPanelMode !== 'chat' && 'hidden')}>
-                    <AIChatPanel
-                      onClose={() => setRightPanelMode('closed')}
-                      entityType={entityContext!.entityType}
-                      entityUid={entityContext!.entityUid}
-                      entityTitle={entityContext!.entityType === 'dbClient' ? activeDbClient?.name || breadcrumbLabel :
-                                   entityContext!.entityType === 'note' ? activeNote?.title :
-                                   entityContext!.entityType === 'diagram' ? activeDiagram?.name :
-                                   entityContext!.entityType === 'flowchart' ? activeFlowchart?.title : null}
-                      entityContextText={entityContextText}
-                      viewType={isActiveDbClient ? 'db-client' : undefined}
-                      projectId={activeProjectId}
-                      pendingPrompt={pendingPrompt}
-                      onPromptUsed={clearPrompt}
-                      pendingAction={pendingAction}
-                      onClearPendingAction={clearPendingAction}
-                      notes={notes}
-                      diagrams={diagrams}
-                      flowcharts={flowcharts}
-                      drawings={drawings}
-                      activeNoteContent={entityContext?.entityType === 'note' ? activeNote?.content : undefined}
-                      getPaneAI={getPaneAI}
-                    />
-                  </div>
-                )}
-              </div>
-            </div>}
+            ) : showAIChat && rightPanelMode === 'chat' ? (
+              <AIChatPanel
+                onClose={() => setRightPanelMode('closed')}
+                entityType={entityContext!.entityType}
+                entityUid={entityContext!.entityUid}
+                entityTitle={entityContext!.entityType === 'dbClient' ? activeDbClient?.name || breadcrumbLabel :
+                             entityContext!.entityType === 'note' ? activeNote?.title :
+                             entityContext!.entityType === 'diagram' ? activeDiagram?.name :
+                             entityContext!.entityType === 'flowchart' ? activeFlowchart?.title : null}
+                entityContextText={entityContextText}
+                viewType={isActiveDbClient ? 'db-client' : undefined}
+                projectId={activeProjectId}
+                pendingPrompt={pendingPrompt}
+                onPromptUsed={clearPrompt}
+                pendingAction={pendingAction}
+                onClearPendingAction={clearPendingAction}
+                notes={notes}
+                diagrams={diagrams}
+                flowcharts={flowcharts}
+                drawings={drawings}
+                activeNoteContent={entityContext?.entityType === 'note' ? activeNote?.content : undefined}
+                getPaneAI={getPaneAI}
+              />
+            ) : null}
           </RightChatSidebar>
         )}
 
-        {/* Floating toggle button — visible when right panel is closed */}
-        {showAIChat && !rightPanelOpen && (
-          <AIChatToggle
-            isOpen={false}
-            raised={entityContext?.entityType === 'dbClient'}
-            onClick={() => setRightPanelMode('chat')}
-          />
-        )}
       </SidebarInset></ProjectTabsContext.Provider>
     </>
   );

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Sparkles, Plus, Loader2, Search, ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react';
+import { Sparkles, Plus, Loader2, Search, ChevronLeft, ChevronRight, ArrowLeft, X } from 'lucide-react';
 import { useAIChat, EntityContext } from '@/hooks/useAIChat';
 import { AIAction, getActionsForView, grillMeAction, ViewType } from '@/components/ai/AIActions';
 import { useAIAction, type AIActionContextValue } from '@/contexts/AIActionContext';
@@ -45,6 +45,7 @@ interface AIChatPanelProps {
 }
 
 export const AIChatPanel = ({
+  onClose,
   entityType,
   entityUid,
   entityTitle,
@@ -414,6 +415,13 @@ export const AIChatPanel = ({
   const hasMessages = messages.length > 0;
   const hasSessions = sessions.length > 0;
 
+  // The drawer has no tab bar of its own any more (ERD-004), so the panel closes itself.
+  const closeButton = (
+    <Button variant="ghost" size="icon" className="size-8" onClick={onClose} aria-label="Close AI Assistant" title="Close">
+      <X className="size-4" />
+    </Button>
+  );
+
   return (
     <Tooltip.Provider>
       <div
@@ -433,6 +441,7 @@ export const AIChatPanel = ({
                 <Button variant="ghost" size="icon" className="size-8" onClick={handleNewSession} title="New Chat">
                   <Plus className="size-4" />
                 </Button>
+                {closeButton}
               </div>
             </div>
 
@@ -516,6 +525,7 @@ export const AIChatPanel = ({
                 </button>
                 <span className="text-sm font-medium truncate">{currentSession?.title || 'AI Assistant'}</span>
               </div>
+              {closeButton}
             </div>
 
             {/* ── Messages ────────────────────────────── */}
