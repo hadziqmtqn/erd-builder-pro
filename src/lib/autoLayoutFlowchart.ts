@@ -75,14 +75,6 @@ function shapeFootprint(node: Node<FlowchartNodeData>): { width: number; height:
   };
 }
 
-function getNodeCenter(node: Node<FlowchartNodeData>): { x: number; y: number } {
-  const footprint = shapeFootprint(node);
-  return {
-    x: node.position.x + footprint.width / 2,
-    y: node.position.y + footprint.height / 2,
-  };
-}
-
 function sortChildren(
   parent: Node<FlowchartNodeData>,
   children: string[],
@@ -398,26 +390,81 @@ export function autoLayoutFlowchart(
   });
 
   const positionedNodeMap = new Map(positionedNodes.map(node => [node.id, node]));
-  const rightBoundary = Math.max(...positionedNodes.map(node => node.position.x + Number(node.style.width)));
+  const boxes = positionedNodes.map(node => ({
+    id: node.id,
+    x1: node.position.x,
+    y1: node.position.y,
+    x2: node.position.x + Number(node.style.width),
+    y2: node.position.y + Number(node.style.height),
+  }));
+  const boxOf = new Map(boxes.map(box => [box.id, box]));
+  const leftBoundary = Math.min(...boxes.map(box => box.x1));
+  const rightBoundary = Math.max(...boxes.map(box => box.x2));
 
-  let returnLane = 0;
+  type Point = { x: number; y: number };
+  type Box = (typeof boxes)[number];
+  // shortcut: routes are the corner points of a smoothstep path without its rounded bends; enough to see a crossed shape.
+  const crossesOtherNode = (points: Point[], source: Box, target: Box) => points.slice(1).some((point, index) => {
+    const from = points[index];
+    return boxes.some(box => box !== source && box !== target
+      && Math.min(from.x, point.x) < box.x2 + 8 && Math.max(from.x, point.x) > box.x1 - 8
+      && Math.min(from.y, point.y) < box.y2 + 8 && Math.max(from.y, point.y) > box.y1 - 8);
+  });
+  const centerX = (box: Box) => (box.x1 + box.x2) / 2;
+  const centerY = (box: Box) => (box.y1 + box.y2) / 2;
+  const defaultRoute = (source: Box, target: Box, sourceHandle: string): Point[] => {
+    const end = { x: centerX(target), y: target.y1 };
+    if (sourceHandle !== 'bottom') {
+      const start = { x: sourceHandle === 'left' ? source.x1 : source.x2, y: centerY(source) };
+      return [start, { x: end.x, y: start.y }, end];
+    }
+    const start = { x: centerX(source), y: source.y2 };
+    const middle = (start.y + end.y) / 2;
+    return [start, { x: start.x, y: middle }, { x: end.x, y: middle }, end];
+  };
+  // Outer lanes sit beyond every shape, 24px apart, so detoured connectors neither cross shapes nor share a lane (BUG-015).
+  const laneX = (side: 'left' | 'right', lane: number) => side === 'left' ? leftBoundary - 64 - lane * 24 : rightBoundary + 64 + lane * 24;
+  const outerRoute = (side: 'left' | 'right', source: Box, target: Box, lane: number): Point[] => {
+    const x = laneX(side, lane);
+    const edgeX = (box: Box) => side === 'left' ? box.x1 : box.x2;
+    return [{ x: edgeX(source), y: centerY(source) }, { x, y: centerY(source) }, { x, y: centerY(target) }, { x: edgeX(target), y: centerY(target) }];
+  };
+  const outerOffset = (side: 'left' | 'right', source: Box, target: Box, lane: number) => side === 'left'
+    ? Math.min(source.x1, target.x1) - laneX('left', lane)
+    : laneX('right', lane) - Math.max(source.x2, target.x2);
+
+  const lanes = { left: 0, right: 0 };
   const newEdges = edges.filter(edge => positionedNodeMap.has(edge.source) && positionedNodeMap.has(edge.target)).map((edge, index) => {
-    const source = positionedNodeMap.get(edge.source);
-    const target = positionedNodeMap.get(edge.target);
-    if (!source || !target) return edge;
+    const source = boxOf.get(edge.source)!;
+    const target = boxOf.get(edge.target)!;
+    const sourceNode = positionedNodeMap.get(edge.source)!;
 
-    const isReturn = backEdges.has(`${edge.source}->${edge.target}`);
-    const handles = isReturn
-      ? { sourceHandle: 'right', targetHandle: 'right' }
-      : { sourceHandle: isDecision(source) && Math.abs(getNodeCenter(source).x - getNodeCenter(target).x) > 40
-          ? (getNodeCenter(target).x < getNodeCenter(source).x ? 'left' : 'right') : 'bottom', targetHandle: 'top' };
+    let sourceHandle: string;
+    let targetHandle: string;
+    let offset = 20;
+    if (backEdges.has(`${edge.source}->${edge.target}`)) {
+      sourceHandle = targetHandle = 'right';
+      offset = outerOffset('right', source, target, lanes.right++);
+    } else {
+      sourceHandle = isDecision(sourceNode) && Math.abs(centerX(source) - centerX(target)) > 40
+        ? (centerX(target) < centerX(source) ? 'left' : 'right') : 'bottom';
+      targetHandle = 'top';
+      if (crossesOtherNode(defaultRoute(source, target, sourceHandle), source, target)) {
+        const preferred: 'left' | 'right' = centerX(source) < centerX(target)
+          || (centerX(source) === centerX(target) && assignedSide.get(edge.source) === -1) ? 'left' : 'right';
+        const sides: ('left' | 'right')[] = preferred === 'left' ? ['left', 'right'] : ['right', 'left'];
+        const side = sides.find(candidate => !crossesOtherNode(outerRoute(candidate, source, target, lanes[candidate]), source, target)) ?? preferred;
+        sourceHandle = targetHandle = side;
+        offset = outerOffset(side, source, target, lanes[side]++);
+      }
+    }
     return {
       ...edge,
       id: edge.id || `flowchart_edge_${index}`,
-      sourceHandle: handles.sourceHandle,
-      targetHandle: handles.targetHandle,
+      sourceHandle,
+      targetHandle,
       type: 'smoothstep',
-      pathOptions: { offset: isReturn ? rightBoundary - Math.max(source.position.x + Number(source.style.width), target.position.x + Number(target.style.width)) + 64 + returnLane++ * 24 : 20 },
+      pathOptions: { offset },
       markerEnd: edge.markerEnd || { type: MarkerType.ArrowClosed, color: '#b1b1b7' },
     };
   });
