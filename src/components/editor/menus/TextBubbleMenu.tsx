@@ -74,7 +74,7 @@ export function TextBubbleMenu({ editor, openLinkDialog, showSendToAIButton = fa
               { name: 'Bold', icon: Bold, shortcut: '⌘B', action: () => editor.chain().focus().toggleBold().run(), isActive: editor.isActive('bold') },
               { name: 'Italic', icon: Italic, shortcut: '⌘I', action: () => editor.chain().focus().toggleItalic().run(), isActive: editor.isActive('italic') },
               { name: 'Underline', icon: UnderlineIcon, shortcut: '⌘U', action: () => editor.chain().focus().toggleUnderline().run(), isActive: editor.isActive('underline') },
-              { name: 'Strikethrough', icon: Strikethrough, shortcut: '⌘⇧X', action: () => editor.chain().focus().toggleStrike().run(), isActive: editor.isActive('strike') },
+              { name: 'Strikethrough', icon: Strikethrough, shortcut: '⇧⌘X', action: () => editor.chain().focus().toggleStrike().run(), isActive: editor.isActive('strike') },
               { name: 'Code', icon: Code, shortcut: '⌘E', action: () => editor.chain().focus().toggleCode().run(), isActive: editor.isActive('code') },
             ].map(({ name, icon: Icon, shortcut, action, isActive }) => (
               <DropdownMenu.Item
@@ -107,7 +107,7 @@ export function TextBubbleMenu({ editor, openLinkDialog, showSendToAIButton = fa
             }
           />
           <TooltipContent side="top" className="text-[10px] py-1 px-2 font-medium">
-            Link (⌘ K)
+            Link (⌘K)
           </TooltipContent>
         </Tooltip>
 
@@ -238,7 +238,7 @@ export function TextBubbleMenu({ editor, openLinkDialog, showSendToAIButton = fa
               }
             />
             <TooltipContent side="top" className="text-[10px] py-1 px-2 font-medium">
-              Alignment (⌘ ⇧ L/C/R)
+              Alignment (⇧⌘L/C/R)
             </TooltipContent>
           </Tooltip>
           <DropdownMenu.Content className="bg-popover border border-border p-1.5 rounded-lg shadow-lg z-[10000] min-w-[130px] flex flex-col" sideOffset={5} align="start">

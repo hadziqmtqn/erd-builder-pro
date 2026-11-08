@@ -5,6 +5,7 @@ import type { Entity } from '@/types';
 import { buildERDRelationshipRows } from '@/lib/erd-relationship-list';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Kbd } from '@/components/ui/kbd';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import RelationshipPropertiesPanel from './RelationshipPropertiesPanel';
 import { ERDRelationshipListPanel, relationshipLabel } from './ERDRelationshipListPanel';
@@ -72,7 +73,7 @@ export function ERDExplorer({ nodes, edges, state, onChange, editing, onHighligh
       <div className="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-2">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold">Explorer</span>
-          <kbd className="rounded border bg-muted px-1.5 font-mono text-[10px] text-muted-foreground">{shortcutLabel}</kbd>
+          <Kbd>{shortcutLabel}</Kbd>
         </div>
         <Button type="button" variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close Explorer" title="Close Explorer">
           <X className="size-4" />

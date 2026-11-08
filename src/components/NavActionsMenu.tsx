@@ -19,6 +19,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuShortcut,
   DropdownMenuTrigger,
   DropdownMenuSub,
   DropdownMenuSubTrigger,
@@ -262,11 +263,7 @@ export const NavActionsMenu = ({
                     <Upload className="h-4 w-4 text-muted-foreground" />
                     <span>Import</span>
                   </div>
-                  <div className="ml-auto flex items-center gap-0.5 text-muted-foreground/60">
-                    <span className="text-[13px] font-sans leading-none">⌘</span>
-                    <span className="text-[13px] font-sans leading-none">⇧</span>
-                    <span className="text-[15px] font-mono font-bold mt-0.5">I</span>
-                  </div>
+                  <DropdownMenuShortcut>⇧⌘I</DropdownMenuShortcut>
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem 
@@ -278,11 +275,7 @@ export const NavActionsMenu = ({
                   <Download className="h-4 w-4 text-muted-foreground" />
                   <span>Export</span>
                 </div>
-                <div className="ml-auto flex items-center gap-0.5 text-muted-foreground/60">
-                  <span className="text-[13px] font-sans leading-none">⌘</span>
-                  <span className="text-[13px] font-sans leading-none">⇧</span>
-                  <span className="text-[15px] font-mono font-bold mt-0.5">E</span>
-                </div>
+                <DropdownMenuShortcut>⇧⌘E</DropdownMenuShortcut>
               </DropdownMenuItem>
 
               <DropdownMenuSeparator />
