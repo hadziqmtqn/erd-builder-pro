@@ -5,11 +5,9 @@ interface RightChatSidebarProps {
 }
 
 /**
- * RightChatSidebar — sticky right sidebar container for AI Chat Panel.
- *
- * Fixed-position sidebar on the right side of the viewport, below the
- * main header. Does not resize or push the workspace area. Only the
- * explicit close button (or toggle) can close it.
+ * App-wide drawer for AI Chat, History and Repository (ERD-004).
+ * It floats above the panes below the main header, so the layout behind it does not shrink.
+ * Only the explicit close button (or toggle) closes it.
  */
 export function RightChatSidebar({ children }: RightChatSidebarProps) {
   const { rightPanelMode } = useAIAction();
@@ -17,7 +15,7 @@ export function RightChatSidebar({ children }: RightChatSidebarProps) {
   if (rightPanelMode === 'closed') return null;
 
   return (
-    <aside className="fixed right-0 top-12 bottom-0 w-90 z-40 flex flex-col border-l border-border bg-card text-card-foreground shadow-xl animate-in slide-in-from-right duration-200">
+    <aside className="fixed right-3 top-15 bottom-3 z-40 flex w-96 max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-2xl animate-in slide-in-from-right duration-200">
       {children}
     </aside>
   );

@@ -39,7 +39,6 @@ import { EyeOff, Monitor } from 'lucide-react';
 import { buildErdIndexes, erdColumnKey, erdSourceColumnKey } from '@/lib/erd-indexes';
 import { canvasLayout, dbSchemaToCanvas, keepsDbRelation } from '@/lib/db-client-schema';
 import { useDatabaseSchemaSync } from '@/hooks/useDatabaseSchemaSync';
-import { useERDCanvasFocus } from '@/hooks/useERDCanvasFocus';
 import { setSchemaCache } from '@/hooks/useDataViewerHelpers';
 import { styleErdEdges } from '@/lib/erd-edge-style';
 import { ERD_HISTORY_PREVIEW_EVENT, type ErdHistoryPreview } from '@/lib/history-diagram';
@@ -122,7 +121,11 @@ interface ERDViewProps {
 
 import { ERDToolbar } from '@/components/diagram/ERDToolbar';
 import { useEditorActive } from '@/contexts/FileSessionContext';
-import { useOpenERDPanel, type ERDPanel } from '@/contexts/ERDPanelContext';
+import { EditERDTableContext } from '@/contexts/ERDPanelContext';
+import { ERDExplorer } from '@/components/diagram/ERDExplorer';
+import { ERDTablePopover } from '@/components/diagram/ERDTablePopover';
+import { ERDDBMLDrawer } from '@/components/diagram/ERDDBMLDrawer';
+import { useERDPanels } from '@/hooks/useERDPanels';
 
 const ERDViewComponent = ({
   nodes,
@@ -169,14 +172,9 @@ const ERDViewComponent = ({
 
   const { registerContentHandler, setSelectionText, setActionContextData, setRightPanelMode } = useAIAction();
   const editorActive = useEditorActive();
-  const openERDPanel = useOpenERDPanel();
-  // Properties and DBML open in this pane's own column; Repository stays in the app-wide panel (BUG-042).
-  const openPanel = useCallback((mode: Exclude<ERDPanel, 'closed'> | 'repository') => {
-    if (mode === 'repository') setRightPanelMode('repository');
-    else openERDPanel?.(mode);
-  }, [openERDPanel, setRightPanelMode]);
   const { getViewport, getNodes, getEdges, setViewport, setCenter } = useReactFlow();
-  const { resolvedTheme, activeDiagram, syncDrafts, hasPendingSyncs, isLocalSaving } = useWorkspace();
+  const { resolvedTheme, activeDiagram, syncDrafts, hasPendingSyncs, isLocalSaving,
+    handleEdgeUpdate, handleEdgeFlip, deleteEdge } = useWorkspace();
   const bgColor = resolvedTheme === 'dark' ? '#222' : '#ccc';
   const isProductionDb = isDbClient;
 
@@ -199,7 +197,9 @@ const ERDViewComponent = ({
     getBoundingClientRect: () => new DOMRect(edgeContextMenu.x, edgeContextMenu.y, 0, 0),
   } : null, [edgeContextMenu]);
   const canvasRef = React.useRef<HTMLDivElement>(null);
-  useERDCanvasFocus(canvasRef, isActive);
+
+  // ERD-004: the Explorer, table editor and DBML drawer state lives in useERDPanels (called below).
+  const canEdit = !isReadOnly && !isProductionDb;
   const lowDetailRef = React.useRef(false);
 
   const handleEdgeContextMenuLocal = useCallback((event: React.MouseEvent, edge: Edge) => {
@@ -307,11 +307,8 @@ const ERDViewComponent = ({
   } | null>(null);
   const [approvedChangeIds, setApprovedChangeIds] = useState<string[]>([]);
   const [showChecklist, setShowChecklist] = useState(false);
-  // A diff review blocks editing; the pane's Properties/DBML column would edit the canvas under it (BUG-042).
-  const hasPendingDiff = pendingDiff !== null;
-  React.useEffect(() => {
-    if (hasPendingDiff) openERDPanel?.('closed');
-  }, [hasPendingDiff, openERDPanel]);
+  const panels = useERDPanels({ nodes, edges, canEdit, isActive, shortcutEnabled: !isProductionDb, diffPending: pendingDiff !== null });
+  const { onNodeClick: panelsNodeClick, onNodeDoubleClick: panelsNodeDoubleClick, onPaneClick: panelsPaneClick, onEdgeClick: panelsEdgeClick } = panels;
 
   const handleNodeClickLocal = useCallback((e: React.MouseEvent, n: Node) => {
     if (e.ctrlKey || e.metaKey) {
@@ -324,12 +321,25 @@ const ERDViewComponent = ({
     }
     setMultiSelectedIds([]);
     onNodeClick(e, n);
-  }, [onNodeClick]);
+    panelsNodeClick(n.id);
+  }, [onNodeClick, panelsNodeClick]);
+
+  // The DB Client view passes neither handler.
+  const handleNodeDoubleClickLocal = useCallback((e: React.MouseEvent, n: Node) => {
+    onNodeDoubleClick?.(e, n);
+    panelsNodeDoubleClick(n.id, e.target);
+  }, [onNodeDoubleClick, panelsNodeDoubleClick]);
 
   const handlePaneClickLocal = useCallback(() => {
     setMultiSelectedIds([]);
     onPaneClick();
-  }, [onPaneClick]);
+    panelsPaneClick();
+  }, [onPaneClick, panelsPaneClick]);
+
+  const handleEdgeClickLocal = useCallback((e: React.MouseEvent, edge: Edge) => {
+    onEdgeClick?.(e, edge);
+    panelsEdgeClick(edge.id);
+  }, [onEdgeClick, panelsEdgeClick]);
 
   // Collect all visually-selected node IDs (multi-select + primary)
   const allSelectedIds = React.useMemo(() => {
@@ -338,15 +348,26 @@ const ERDViewComponent = ({
     return [];
   }, [multiSelectedIds, selectedNodeId]);
 
+  const { focus } = panels;
+  // Styled copies kept per table, so a dim or focus class does not re-create every node on each drag frame.
+  const styledCacheRef = React.useRef(new Map<string, { node: Node<Entity>; selected: boolean; className?: string; styled: Node<Entity> }>());
   const styledNodes = React.useMemo(() => {
-    return nodes.map(node => {
+    const cache = styledCacheRef.current;
+    const next = new Map<string, { node: Node<Entity>; selected: boolean; className?: string; styled: Node<Entity> }>();
+    const result = nodes.map(node => {
       const selected = allSelectedIds.includes(node.id);
+      const className = !focus ? undefined : node.id === focus.primary ? 'erd-node-focus' : focus.tables.has(node.id) ? undefined : 'erd-node-dimmed';
       // Use !! to normalize undefined/null to boolean — avoids creating wrappers
       // for all nodes on the first drag after setNodes() (which may lack `selected`)
-      if (!!node.selected === selected) return node;
-      return { ...node, selected };
+      if (!!node.selected === selected && node.className === className) return node;
+      const hit = cache.get(node.id);
+      const styled = hit && hit.node === node && hit.selected === selected && hit.className === className ? hit.styled : { ...node, selected, className };
+      next.set(node.id, { node, selected, className, styled });
+      return styled;
     });
-  }, [nodes, allSelectedIds]);
+    styledCacheRef.current = next;
+    return result;
+  }, [nodes, allSelectedIds, focus]);
 
   const diffNodesWithMode = React.useMemo(() => {
     if (!pendingDiff) return [];
@@ -360,7 +381,12 @@ const ERDViewComponent = ({
   }, [pendingDiff]);
 
   const hasComments = Boolean(comments);
-  const styledEdges = React.useMemo(() => styleErdEdges(edges, allSelectedIds, hoveredEdgeId).map(edge => hasComments ? { ...edge, type: 'commentable' } : edge), [edges, allSelectedIds, hasComments, hoveredEdgeId]);
+  const styledEdges = React.useMemo(() => styleErdEdges(edges, allSelectedIds, hoveredEdgeId).map(edge => {
+    // The Explorer or table editor focus replaces the selection's active/dimmed classes instead of stacking on them.
+    const focused = focus && (focus.edges.has(edge.id) ? 'edge-animated-active' : 'edge-dimmed');
+    const styled = focused ? { ...edge, className: [...(edge.className ?? '').split(' ').filter(name => name && name !== 'edge-animated-active' && name !== 'edge-dimmed'), focused].join(' ') } : edge;
+    return hasComments ? { ...styled, type: 'commentable' } : styled;
+  }), [edges, allSelectedIds, hasComments, hoveredEdgeId, focus]);
   const styledDiffEdges = React.useMemo(
     () => pendingDiff ? styleErdEdges(pendingDiff.diffEdges) : [],
     [pendingDiff],
@@ -759,9 +785,13 @@ const ERDViewComponent = ({
       )}
 
       {!pendingDiff && <ERDToolbar
-        nodes={nodes} isReadOnly={isReadOnly} isProductionDb={isProductionDb}
+        isReadOnly={isReadOnly} isProductionDb={isProductionDb}
         addEntity={addEntity} onImportSQL={onImportSQL} onAutoLayout={onAutoLayout}
-        openPanel={openPanel} handleSync={handleSync} isSyncing={isSyncing}
+        explorerOpen={panels.explorerOpen} explorerShortcut={panels.explorerShortcut}
+        onToggleExplorer={panels.explorerOpen ? panels.closeExplorer : panels.openExplorer}
+        onOpenDBML={panels.toggleDBML}
+        onOpenRepository={() => setRightPanelMode('repository')}
+        handleSync={handleSync} isSyncing={isSyncing}
         handleExportImage={handleExportImage} undo={undo} redo={redo} canUndo={canUndo} canRedo={canRedo}
       />}
       {isLoading && (
@@ -783,8 +813,8 @@ const ERDViewComponent = ({
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           onNodeClick={handleNodeClickLocal}
-          onNodeDoubleClick={onNodeDoubleClick}
-          onEdgeClick={onEdgeClick}
+          onNodeDoubleClick={handleNodeDoubleClickLocal}
+          onEdgeClick={handleEdgeClickLocal}
           onEdgeMouseEnter={handleEdgeMouseEnterLocal}
           onEdgeMouseLeave={handleEdgeMouseLeaveLocal}
           onEdgeContextMenu={comments && !pendingDiff ? handleEdgeContextMenuLocal : undefined}
@@ -793,7 +823,12 @@ const ERDViewComponent = ({
           colorMode={resolvedTheme}
           onlyRenderVisibleElements={true}
           // Production DB ERD stays read-only for schema edits, but table positions are editable.
-          nodesDraggable={!pendingDiff && (!isReadOnly || isProductionDb)}
+          // The floating table editor locks the canvas (no pan, zoom or drag) until it closes (ERD-004).
+          nodesDraggable={!pendingDiff && !panels.popoverFloating && (!isReadOnly || isProductionDb)}
+          panOnDrag={!panels.popoverFloating}
+          zoomOnScroll={!panels.popoverFloating}
+          zoomOnPinch={!panels.popoverFloating}
+          zoomOnDoubleClick={!panels.popoverFloating}
           nodesConnectable={!pendingDiff && (!isReadOnly || (isProductionDb && isReconnecting))}
           elementsSelectable={!pendingDiff && (!isReadOnly || isProductionDb)}
           edgesReconnectable={!pendingDiff && (!isReadOnly || isProductionDb)}
@@ -810,9 +845,21 @@ const ERDViewComponent = ({
         >
 
           <Background variant={BackgroundVariant.Lines} gap={50} size={1} color={bgColor} />
-          <Controls position="bottom-left" showInteractive={false} fitViewOptions={fitViewOptions} />
+          {!panels.popoverFloating && <Controls position="bottom-left" showInteractive={false} fitViewOptions={fitViewOptions} />}
         </ReactFlow>
       </div>
+
+      {panels.explorerOpen && !pendingDiff && <div ref={panels.explorerRef} className="contents">
+        <ERDExplorer
+          nodes={nodes} edges={edges} state={panels.explorer} onChange={panels.patchExplorer}
+          editing={canEdit ? { onEditTable: id => void panels.editTable(id), onUpdateEdge: handleEdgeUpdate, onFlipEdge: handleEdgeFlip, onDeleteEdge: deleteEdge } : undefined}
+          onHighlight={panels.highlightTarget} onClose={panels.closeExplorer} shortcutLabel={panels.explorerShortcut.label}
+          hidden={panels.popoverFloating}
+        />
+      </div>}
+      {!pendingDiff && panels.inspectorEntity && panels.inspector?.floating && <ERDTablePopover entity={panels.inspectorEntity} floating={panels.inspector.floating}
+        onTogglePin={panels.togglePin} onClose={panels.closeInspector} onBackToExplorer={panels.backToExplorer} />}
+      {canEdit && <ERDDBMLDrawer open={panels.dbmlOpen && !pendingDiff} onClose={panels.closeDBML} />}
 
       {edgeContextMenu && (
         <ContextMenu open onOpenChange={(next) => { if (!next) setEdgeContextMenu(null); }}>
@@ -855,7 +902,13 @@ const ERDViewComponent = ({
   const activeEdgeId = hoveredEdgeId ?? edges.find(edge => edge.selected)?.id ?? null;
   const routedContent = <ERDRoutingContext.Provider value={obstacles}>
     <ERDEdgeLabels nodes={settledCanvas.nodes} edges={pendingDiff ? styledDiffEdges : settledCanvas.edges} tables={obstacles} activeId={activeEdgeId}>
-      {content}
+      <EditERDTableContext.Provider value={panels.openTableEditor}>
+        <div ref={panels.layoutRef} className="relative flex min-h-0 min-w-0 flex-1 gap-2">
+          {content}
+          {!pendingDiff && panels.inspectorEntity && panels.inspector && !panels.inspector.floating && <ERDTablePopover entity={panels.inspectorEntity} floating={null}
+            onTogglePin={panels.togglePin} onClose={panels.closeInspector} onBackToExplorer={panels.backToExplorer} />}
+        </div>
+      </EditERDTableContext.Provider>
     </ERDEdgeLabels>
   </ERDRoutingContext.Provider>;
   return comments ? <ERDCommentsProvider config={comments}>{routedContent}</ERDCommentsProvider> : routedContent;

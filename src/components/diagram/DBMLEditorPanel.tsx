@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, memo, type ReactNode } from 'react';
 import { Database, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { dbmlToERD, erdToDBML } from '@/lib/dbml-converter';
@@ -27,6 +27,8 @@ interface DBMLEditorPanelProps {
   nodes: Node<Entity>[];
   edges: Edge[];
   onSelectTable?: (tableName: string) => void;
+  /** Extra header buttons after the reference button, e.g. closing the DBML drawer. */
+  headerActions?: ReactNode;
 }
 
 const APPLY_DEBOUNCE_MS = 1500;
@@ -47,6 +49,7 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({
   nodes,
   edges,
   onSelectTable,
+  headerActions,
 }: DBMLEditorPanelProps) {
   const [helpOpen, setHelpOpen] = useState(false);
   const [suggestions, setSuggestions] = useState<DBMLSuggestion[]>([]);
@@ -319,15 +322,18 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({
           <Database className="size-4 text-primary" />
           <h3 className="text-sm font-semibold tracking-tight">DBML Editor</h3>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-8"
-          onClick={() => setHelpOpen(true)}
-          title="DBML Reference"
-        >
-          <HelpCircle className="size-3.5" />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            onClick={() => setHelpOpen(true)}
+            title="DBML Reference"
+          >
+            <HelpCircle className="size-3.5" />
+          </Button>
+          {headerActions}
+        </div>
       </div>
 
       <div ref={containerRef} className="relative flex-1 min-h-0 overflow-hidden">

@@ -40,7 +40,6 @@ import { OfflineOverlay } from '@/components/layout/OfflineOverlay';
 import {
   SidebarInset,
   SidebarProvider,
-  useSidebar,
 } from '@/components/ui/sidebar';
 
 import { useWorkspace } from '@/providers/WorkspaceProvider';
@@ -535,19 +534,6 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
     return handleViewChange(...args);
   }, [handleViewChange, rightPanelMode, setRightPanelMode]);
 
-  // ── Collapse left sidebar when right panel opens ──
-  const { setOpen: setLeftSidebarOpen, open: leftSidebarOpen } = useSidebar();
-  const prevLeftOpenRef = useRef(leftSidebarOpen);
-  useEffect(() => {
-    if (rightPanelOpen) {
-      prevLeftOpenRef.current = leftSidebarOpen;
-      setLeftSidebarOpen(false);
-    } else if (prevLeftOpenRef.current) {
-      // Restore sidebar only if it was open before panel opened
-      setLeftSidebarOpen(true);
-    }
-  }, [rightPanelOpen]);
-
   // ── Auto-close right panel when leaving file pages ──
   useEffect(() => {
     if (!entityContext || (rightPanelMode === 'chat' && !showAIChat)) {
@@ -599,7 +585,6 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
 
       <ProjectTabsContext.Provider value={tabsTarget}><SidebarInset className={cn(
         isPublicView ? "w-full" : "",
-        rightPanelOpen && "mr-90 transition-[margin] duration-200"
       )}>
         <FileSessionContext.Provider value={session?.scope ?? null}><MainHeader
           tabsRef={setTabsTarget}
@@ -788,7 +773,8 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
 
         {!isPublicView && (
           <RelationshipPropertiesModal
-            isOpen={!!selectedEdgeId}
+            // An editable diagram edits relationships in its Explorer (ERD-004); the modal stays for read-only and DB Client views.
+            isOpen={!!selectedEdgeId && !(isActiveDiagramContext && canEditActiveDocument && !activeDiagramIsProductionDb)}
             onOpenChange={(open) => { if (!open) setSelectedEdgeId(null); }}
             selectedEdge={edges.find(e => e.id === selectedEdgeId) || null}
             nodes={nodes}

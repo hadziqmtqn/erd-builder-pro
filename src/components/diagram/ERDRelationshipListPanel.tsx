@@ -1,7 +1,6 @@
 import { useMemo, useRef } from 'react';
 import { Link2, Pencil, Search } from 'lucide-react';
 import { filterERDRelationships, type ERDRelationshipRow } from '@/lib/erd-relationship-list';
-import { requestERDCanvasFocus } from '@/lib/erd-canvas-focus';
 import { useScrollActiveRowIntoView } from '@/hooks/useScrollActiveRowIntoView';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -14,8 +13,10 @@ interface ERDRelationshipListPanelProps {
   search: string;
   onSearchChange: (search: string) => void;
   activeId: string | null;
+  /** Row click: the Explorer highlights the relationship on the canvas. */
   onSelect: (id: string) => void;
-  onEdit: (id: string) => void;
+  /** Opens the relationship editor; left out when the diagram is read-only. */
+  onEdit?: (id: string) => void;
 }
 
 export function ERDRelationshipListPanel({ rows, search, onSearchChange, activeId, onSelect, onEdit }: ERDRelationshipListPanelProps) {
@@ -23,15 +24,13 @@ export function ERDRelationshipListPanel({ rows, search, onSearchChange, activeI
   const listRef = useRef<HTMLDivElement>(null);
   useScrollActiveRowIntoView(listRef);
 
-  const showRelationship = (id: string) => { onSelect(id); requestERDCanvasFocus({ type: 'relationship', id }); };
-  const editRelationship = (id: string) => { onSelect(id); onEdit(id); };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="shrink-0 space-y-3 border-b p-4">
         <div>
           <h3 className="text-sm font-semibold">Relationships</h3>
-          <p className="text-xs text-muted-foreground">Find a relationship or edit its properties.</p>
+          <p className="text-xs text-muted-foreground">{onEdit ? 'Find a relationship or edit its properties.' : 'Find a relationship on the canvas.'}</p>
         </div>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -44,7 +43,7 @@ export function ERDRelationshipListPanel({ rows, search, onSearchChange, activeI
           const label = relationshipLabel(row);
           return (
             <div key={row.id} className="group flex items-center gap-1 rounded-md border border-transparent px-1 hover:border-border hover:bg-muted/50 has-[[aria-current=true]]:bg-muted has-[[aria-current=true]]:shadow-[inset_2px_0_0_var(--primary)]">
-              <button type="button" onClick={() => showRelationship(row.id)} aria-current={row.id === activeId ? 'true' : undefined} className="flex min-w-0 flex-1 items-start gap-2 px-2 py-2.5 text-left" title={`Show ${label}`}>
+              <button type="button" onClick={() => onSelect(row.id)} aria-current={row.id === activeId ? 'true' : undefined} className="flex min-w-0 flex-1 items-start gap-2 px-2 py-2.5 text-left" title={`Show ${label}`}>
                 <Link2 className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-mono text-xs font-medium">{label}</span>
@@ -52,9 +51,9 @@ export function ERDRelationshipListPanel({ rows, search, onSearchChange, activeI
                 </span>
                 <Badge variant="outline" className="shrink-0 font-mono text-[10px]">{row.type}</Badge>
               </button>
-              <Button type="button" variant="ghost" size="icon-sm" onClick={() => editRelationship(row.id)} title={`Edit ${label}`} aria-label={`Edit relationship ${label}`}>
+              {onEdit && <Button type="button" variant="ghost" size="icon-sm" onClick={() => onEdit(row.id)} title={`Edit ${label}`} aria-label={`Edit relationship ${label}`}>
                 <Pencil className="size-3.5" />
-              </Button>
+              </Button>}
             </div>
           );
         })}
