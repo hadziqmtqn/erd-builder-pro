@@ -19,14 +19,10 @@ describe('ERD-004 Explorer', () => {
     expect(readOnly).toContain('Find a table on the canvas.');
   });
 
-  it('keeps the search and active row it is given, so coming back from the popover changes nothing', () => {
+  it('keeps the search and active row it is given, so reopening it from the table editor changes nothing', () => {
     const html = render({ editing, state: { ...INITIAL_EXPLORER_STATE, tableSearch: 'ord', activeTableId: '2' } });
     expect(html).toContain('value="ord"');
     expect(html.match(/aria-current="true"/g)).toHaveLength(1);
     expect(html).toContain('Showing 1 of 2 tables');
-  });
-
-  it('stays mounted but invisible behind the floating table editor', () => {
-    expect(render({ editing, hidden: true })).toMatch(/aria-label="Explorer" aria-hidden="true" class="[^"]*invisible/);
   });
 });

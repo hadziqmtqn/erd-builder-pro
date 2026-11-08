@@ -44,8 +44,8 @@ export function useERDPanels({ nodes, edges, canEdit, isActive, shortcutEnabled,
   const pinnedRef = useRef<boolean | null>(null);
   // Every open or close bumps this, so an open that finishes its camera move after a newer request is dropped.
   const requestRef = useRef(0);
-  const latest = useRef({ canEdit, diffPending, isMobile, inspector, explorerOpen });
-  latest.current = { canEdit, diffPending, isMobile, inspector, explorerOpen };
+  const latest = useRef({ canEdit, diffPending, isMobile, inspector });
+  latest.current = { canEdit, diffPending, isMobile, inspector };
   const popoverFloating = Boolean(inspector?.floating);
 
   const closeFloating = useCallback(() => {
@@ -76,11 +76,15 @@ export function useERDPanels({ nodes, edges, canEdit, isActive, shortcutEnabled,
     const request = ++requestRef.current;
     const dock = docked ?? pinnedRef.current ?? (latest.current.isMobile || (layoutRef.current?.clientWidth ?? 0) >= DOCK_MIN_WIDTH);
     setDbmlOpen(false);
+    // The table editor takes over from the Explorer, which does not come back when the editor closes
+    // (owner's call); `‹ Tables` reopens it with its tab, search and active row.
+    setExplorerOpen(false);
+    setHighlight(null);
     if (dock) {
       setInspector({ id, floating: null });
       setSelectedNodeId(id);
       // The docked editor sits beside the canvas, so only bring an off-screen table into view.
-      void reveal([id], latest.current.explorerOpen && !latest.current.isMobile ? EXPLORER_COVERED : EXPLORER_LEFT);
+      void reveal([id], EXPLORER_LEFT);
       return;
     }
     const { side, anchor, top } = await placePopover(id, getERDTableNeighbourIds(id, getEdges()));
@@ -120,16 +124,18 @@ export function useERDPanels({ nodes, edges, canEdit, isActive, shortcutEnabled,
   }, [closeInspector]);
   const closeDBML = useCallback(() => setDbmlOpen(false), []);
 
-  // With the editor open, clicking another table moves the editor to it.
+  // A click outside the Explorer (a table or the empty canvas) closes it. With the editor open,
+  // clicking another table moves the editor to it.
   const onNodeClick = useCallback((id: string) => {
+    closeExplorer();
     const current = latest.current.inspector;
     if (current && current.id !== id) void editTable(id, current.floating === null);
-  }, [editTable]);
+  }, [closeExplorer, editTable]);
   const onNodeDoubleClick = useCallback((id: string, target: EventTarget) => {
     if (!(target instanceof Element && target.closest('.nodrag'))) void editTable(id);
   }, [editTable]);
-  // An empty-area click clears the highlight and closes the floating editor; a docked one stays.
-  const onPaneClick = useCallback(() => { setHighlight(null); closeFloating(); }, [closeFloating]);
+  // An empty-area click closes the Explorer and the floating editor; a docked editor stays.
+  const onPaneClick = useCallback(() => { closeExplorer(); closeFloating(); }, [closeExplorer, closeFloating]);
   // A relationship line opens its editor in the Explorer, with its row active, instead of a modal.
   const onEdgeClick = useCallback((id: string) => {
     if (!latest.current.canEdit || latest.current.diffPending) return;
