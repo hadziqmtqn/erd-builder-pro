@@ -122,6 +122,7 @@ interface ERDViewProps {
 
 import { ERDToolbar } from '@/components/diagram/ERDToolbar';
 import { useEditorActive } from '@/contexts/FileSessionContext';
+import { useOpenERDPanel, type ERDPanel } from '@/contexts/ERDPanelContext';
 
 const ERDViewComponent = ({
   nodes,
@@ -168,6 +169,12 @@ const ERDViewComponent = ({
 
   const { registerContentHandler, setSelectionText, setActionContextData, setRightPanelMode } = useAIAction();
   const editorActive = useEditorActive();
+  const openERDPanel = useOpenERDPanel();
+  // Properties and DBML open in this pane's own column; Repository stays in the app-wide panel (BUG-042).
+  const openPanel = useCallback((mode: Exclude<ERDPanel, 'closed'> | 'repository') => {
+    if (mode === 'repository') setRightPanelMode('repository');
+    else openERDPanel?.(mode);
+  }, [openERDPanel, setRightPanelMode]);
   const { getViewport, getNodes, getEdges, setViewport, setCenter } = useReactFlow();
   const { resolvedTheme, activeDiagram, syncDrafts, hasPendingSyncs, isLocalSaving } = useWorkspace();
   const bgColor = resolvedTheme === 'dark' ? '#222' : '#ccc';
@@ -300,6 +307,11 @@ const ERDViewComponent = ({
   } | null>(null);
   const [approvedChangeIds, setApprovedChangeIds] = useState<string[]>([]);
   const [showChecklist, setShowChecklist] = useState(false);
+  // A diff review blocks editing; the pane's Properties/DBML column would edit the canvas under it (BUG-042).
+  const hasPendingDiff = pendingDiff !== null;
+  React.useEffect(() => {
+    if (hasPendingDiff) openERDPanel?.('closed');
+  }, [hasPendingDiff, openERDPanel]);
 
   const handleNodeClickLocal = useCallback((e: React.MouseEvent, n: Node) => {
     if (e.ctrlKey || e.metaKey) {
@@ -614,11 +626,11 @@ const ERDViewComponent = ({
       saveDiagram(finalNodes, finalEdges, getViewport(), saveOptions).then(() => {
         triggerDebouncedSync?.();
         if (pendingDiff.source === 'repository') {
-          window.dispatchEvent(new CustomEvent(ERD_REPOSITORY_APPLIED_EVENT, { detail: { dbmlSource: repositoryDbml, commit: pendingDiff.commit } }));
+          window.dispatchEvent(new CustomEvent(ERD_REPOSITORY_APPLIED_EVENT, { detail: { dbmlSource: repositoryDbml, commit: pendingDiff.commit, diagramUid: activeDiagram?.uid } }));
         }
       }).catch(err => console.error('Error saving after merge:', err));
     }
-  }, [pendingDiff, approvedChangeIds, setNodes, setEdges, saveDiagram, triggerDebouncedSync, getViewport, isReadOnly, isProductionDb, onDatabaseSchemaApplied, sourceConnectionId]);
+  }, [pendingDiff, approvedChangeIds, setNodes, setEdges, saveDiagram, triggerDebouncedSync, getViewport, isReadOnly, isProductionDb, onDatabaseSchemaApplied, sourceConnectionId, activeDiagram?.uid]);
 
   const defaultEdgeOptions = React.useMemo(() => ({
     type: 'smoothstep' as const,
@@ -734,7 +746,7 @@ const ERDViewComponent = ({
   }, [nodes, startDiff, pendingErdDiffTrigger, isReadOnly, isProductionDb]);
 
   const content = (
-    <div className="flex-1 relative flex flex-col overflow-hidden border rounded-xl bg-muted/20" style={{ contain: 'paint layout' }}>
+    <div className="flex-1 min-w-0 relative flex flex-col overflow-hidden border rounded-xl bg-muted/20" style={{ contain: 'paint layout' }}>
       <PrepareCommentAnchor prepare={prepareAnchor} />
 
       {isReadOnly && isProductionDb && (
@@ -749,7 +761,7 @@ const ERDViewComponent = ({
       {!pendingDiff && <ERDToolbar
         nodes={nodes} isReadOnly={isReadOnly} isProductionDb={isProductionDb}
         addEntity={addEntity} onImportSQL={onImportSQL} onAutoLayout={onAutoLayout}
-        setRightPanelMode={setRightPanelMode} handleSync={handleSync} isSyncing={isSyncing}
+        openPanel={openPanel} handleSync={handleSync} isSyncing={isSyncing}
         handleExportImage={handleExportImage} undo={undo} redo={redo} canUndo={canUndo} canRedo={canRedo}
       />}
       {isLoading && (

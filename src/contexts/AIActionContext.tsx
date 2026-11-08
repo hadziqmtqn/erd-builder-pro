@@ -5,7 +5,8 @@ export interface PendingActionResult {
   onResult: (response: string) => void;
 }
 
-export type RightPanelMode = 'closed' | 'chat' | 'dbml' | 'properties' | 'history' | 'repository';
+// Properties and DBML live in each ERD pane instead (BUG-042).
+export type RightPanelMode = 'closed' | 'chat' | 'history' | 'repository';
 
 export interface AIActionContextValue {
   /** Send an AI action prompt — opens chat panel and injects prompt */
