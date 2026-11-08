@@ -28,6 +28,13 @@ export function isVisibleBesidePanel(target: PanelRect, canvas: { width: number;
     && target.y + target.height <= canvas.height - MARGIN;
 }
 
+/** Height and top of the floating popover next to `anchor`, kept inside the canvas. */
+export function popoverBox(anchor: PanelRect, canvas: { height: number }) {
+  const height = Math.min(POPOVER_HEIGHT, canvas.height - 2 * MARGIN);
+  const top = Math.max(MARGIN, Math.min(anchor.y, canvas.height - MARGIN - height));
+  return { top, height };
+}
+
 /**
  * The side of `anchor` (a table) where the popover fits inside the canvas, preferring the side that covers
  * none of `avoid` (its related tables), then the right. `leftBound` keeps it off the ERD toolbar.
@@ -40,8 +47,7 @@ export function choosePopoverSide(
   leftBound = MARGIN,
   width = POPOVER_WIDTH,
 ): 'left' | 'right' | null {
-  const height = Math.min(canvas.height - 2 * MARGIN, Math.max(anchor.height, 320));
-  const top = Math.max(MARGIN, Math.min(anchor.y, canvas.height - MARGIN - height));
+  const { top, height } = popoverBox(anchor, canvas);
   const candidates = (['right', 'left'] as const).map(side => {
     const rect = { x: side === 'right' ? anchor.x + anchor.width + POPOVER_GAP : anchor.x - POPOVER_GAP - width, y: top, width, height };
     const fits = rect.x >= leftBound && rect.x + width <= canvas.width - MARGIN;

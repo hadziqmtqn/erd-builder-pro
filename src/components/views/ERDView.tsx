@@ -39,7 +39,6 @@ import { EyeOff, Monitor } from 'lucide-react';
 import { buildErdIndexes, erdColumnKey, erdSourceColumnKey } from '@/lib/erd-indexes';
 import { canvasLayout, dbSchemaToCanvas, keepsDbRelation } from '@/lib/db-client-schema';
 import { useDatabaseSchemaSync } from '@/hooks/useDatabaseSchemaSync';
-import { useERDCanvasFocus } from '@/hooks/useERDCanvasFocus';
 import { setSchemaCache } from '@/hooks/useDataViewerHelpers';
 import { styleErdEdges } from '@/lib/erd-edge-style';
 import { ERD_HISTORY_PREVIEW_EVENT, type ErdHistoryPreview } from '@/lib/history-diagram';
@@ -123,13 +122,10 @@ interface ERDViewProps {
 import { ERDToolbar } from '@/components/diagram/ERDToolbar';
 import { useEditorActive } from '@/contexts/FileSessionContext';
 import { EditERDTableContext } from '@/contexts/ERDPanelContext';
-import { ERDExplorer, INITIAL_EXPLORER_STATE, type ERDExplorerState } from '@/components/diagram/ERDExplorer';
+import { ERDExplorer } from '@/components/diagram/ERDExplorer';
 import { ERDTablePopover } from '@/components/diagram/ERDTablePopover';
 import { ERDDBMLDrawer } from '@/components/diagram/ERDDBMLDrawer';
-import { useJumpToTableShortcut } from '@/hooks/useJumpToTableShortcut';
-import { useIsMobile } from '@/hooks/use-mobile';
-import { getERDTableNeighbourIds } from '@/lib/erd-canvas-focus';
-import { DOCK_MIN_WIDTH, EXPLORER_COVERED, POPOVER_GAP, POPOVER_WIDTH } from '@/lib/erd-panel-geometry';
+import { useERDPanels } from '@/hooks/useERDPanels';
 
 const ERDViewComponent = ({
   nodes,
@@ -177,7 +173,7 @@ const ERDViewComponent = ({
   const { registerContentHandler, setSelectionText, setActionContextData, setRightPanelMode } = useAIAction();
   const editorActive = useEditorActive();
   const { getViewport, getNodes, getEdges, setViewport, setCenter } = useReactFlow();
-  const { resolvedTheme, activeDiagram, syncDrafts, hasPendingSyncs, isLocalSaving, setSelectedNodeId,
+  const { resolvedTheme, activeDiagram, syncDrafts, hasPendingSyncs, isLocalSaving,
     handleEdgeUpdate, handleEdgeFlip, deleteEdge } = useWorkspace();
   const bgColor = resolvedTheme === 'dark' ? '#222' : '#ccc';
   const isProductionDb = isDbClient;
@@ -202,98 +198,8 @@ const ERDViewComponent = ({
   } : null, [edgeContextMenu]);
   const canvasRef = React.useRef<HTMLDivElement>(null);
 
-  // ─── ERD-004: Explorer, table popover and DBML drawer of this pane ───
+  // ERD-004: the Explorer, table editor and DBML drawer state lives in useERDPanels (called below).
   const canEdit = !isReadOnly && !isProductionDb;
-  const { reveal, placePopover } = useERDCanvasFocus();
-  const layoutRef = React.useRef<HTMLDivElement>(null);
-  const explorerRef = React.useRef<HTMLDivElement>(null);
-  const [explorerOpen, setExplorerOpen] = useState(false);
-  const [explorer, setExplorer] = useState<ERDExplorerState>(INITIAL_EXPLORER_STATE);
-  const patchExplorer = useCallback((patch: Partial<ERDExplorerState>) => setExplorer(state => ({ ...state, ...patch })), []);
-  const [highlight, setHighlight] = useState<{ type: 'table' | 'relationship'; id: string } | null>(null);
-  const [inspector, setInspector] = useState<{ id: string; floating: { left: number; top: number; side: 'left' | 'right' } | null } | null>(null);
-  const [dbmlOpen, setDbmlOpen] = useState(false);
-  // null = auto: docked beside the canvas when the pane is wide, floating otherwise. On phones the docked
-  // editor covers the canvas (its max-md styles), which fits better than a popover beside a table.
-  const pinnedRef = React.useRef<boolean | null>(null);
-  const isMobile = useIsMobile();
-  const isMobileRef = React.useRef(isMobile);
-  isMobileRef.current = isMobile;
-  // Measured when the editor opens, so a pane resized by the split separator is taken as it is now.
-  const dockByDefault = useCallback(() => isMobileRef.current || (layoutRef.current?.clientWidth ?? 0) >= DOCK_MIN_WIDTH, []);
-  const popoverFloating = Boolean(inspector?.floating);
-
-  const openExplorer = useCallback(() => {
-    setExplorerOpen(true);
-    setDbmlOpen(false);
-    setInspector(current => current?.floating ? null : current);
-    requestAnimationFrame(() => explorerRef.current?.querySelector<HTMLInputElement>('input')?.focus());
-  }, []);
-  const closeExplorer = useCallback(() => { setExplorerOpen(false); setHighlight(null); }, []);
-  const explorerShortcut = useJumpToTableShortcut(isActive && !isProductionDb, openExplorer);
-
-  const highlightTarget = useCallback((target: { type: 'table' | 'relationship'; id: string }) => {
-    setHighlight(target);
-    const edge = target.type === 'relationship' ? getEdges().find(item => item.id === target.id) : undefined;
-    void reveal(edge ? [edge.source, edge.target] : [target.id], EXPLORER_COVERED);
-  }, [getEdges, reveal]);
-
-  const canEditRef = React.useRef(canEdit);
-  canEditRef.current = canEdit;
-  const editTable = useCallback(async (id: string, docked = pinnedRef.current ?? dockByDefault()) => {
-    if (!canEditRef.current) return;
-    setDbmlOpen(false);
-    if (docked) { setInspector({ id, floating: null }); setSelectedNodeId(id); return; }
-    const { side, anchor, top } = await placePopover(id, getERDTableNeighbourIds(id, getEdges()));
-    setInspector({ id, floating: {
-      side,
-      left: side === 'right' ? anchor.x + anchor.width + POPOVER_GAP : anchor.x - POPOVER_GAP - POPOVER_WIDTH,
-      top,
-    } });
-    // Selected after the camera move: the re-render it causes would cut the glide short.
-    setSelectedNodeId(id);
-  }, [getEdges, placePopover, setSelectedNodeId, dockByDefault]);
-
-  // Stable for EntityNode, so opening the editor from a table does not re-render every table node.
-  const editTableRef = React.useRef(editTable);
-  editTableRef.current = editTable;
-  const openTableEditor = useCallback((id: string) => void editTableRef.current(id), []);
-
-  const togglePin = useCallback(() => {
-    if (!inspector) return;
-    const docked = inspector.floating !== null;
-    pinnedRef.current = docked;
-    void editTable(inspector.id, docked);
-  }, [editTable, inspector]);
-  const closeInspector = useCallback(() => setInspector(null), []);
-  const backToExplorer = useCallback(() => {
-    setInspector(null);
-    setExplorerOpen(true);
-    patchExplorer({ tab: 'tables' });
-  }, [patchExplorer]);
-
-  // Esc closes the table editor; inside a field it only leaves the field.
-  React.useEffect(() => {
-    if (!inspector) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || event.defaultPrevented || !editorActive()) return;
-      const target = event.target instanceof HTMLElement ? event.target : null;
-      if (target?.closest('[role="dialog"], [role="alertdialog"], [role="listbox"], [role="menu"]')) return;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable || target.closest('.cm-editor'))) {
-        target.blur();
-        return;
-      }
-      setInspector(null);
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [inspector, editorActive]);
-
-  // The edited table or relationship was deleted, or editing is no longer allowed.
-  React.useEffect(() => {
-    if (inspector && (!canEdit || !nodes.some(node => node.id === inspector.id))) setInspector(null);
-    if (!canEdit) setDbmlOpen(false);
-  }, [inspector, nodes, canEdit]);
   const lowDetailRef = React.useRef(false);
 
   const handleEdgeContextMenuLocal = useCallback((event: React.MouseEvent, edge: Edge) => {
@@ -401,18 +307,9 @@ const ERDViewComponent = ({
   } | null>(null);
   const [approvedChangeIds, setApprovedChangeIds] = useState<string[]>([]);
   const [showChecklist, setShowChecklist] = useState(false);
-  // A diff review blocks editing; the Explorer, table editor and DBML drawer would edit the canvas under it (BUG-042).
-  const hasPendingDiff = pendingDiff !== null;
-  React.useEffect(() => {
-    if (!hasPendingDiff) return;
-    setInspector(null);
-    setDbmlOpen(false);
-    setExplorerOpen(false);
-    setHighlight(null);
-  }, [hasPendingDiff]);
+  const panels = useERDPanels({ nodes, edges, canEdit, isActive, shortcutEnabled: !isProductionDb, diffPending: pendingDiff !== null });
+  const { onNodeClick: panelsNodeClick, onNodeDoubleClick: panelsNodeDoubleClick, onPaneClick: panelsPaneClick, onEdgeClick: panelsEdgeClick } = panels;
 
-  const inspectorRef = React.useRef(inspector);
-  inspectorRef.current = inspector;
   const handleNodeClickLocal = useCallback((e: React.MouseEvent, n: Node) => {
     if (e.ctrlKey || e.metaKey) {
       e.stopPropagation();
@@ -424,33 +321,25 @@ const ERDViewComponent = ({
     }
     setMultiSelectedIds([]);
     onNodeClick(e, n);
-    // With the table editor open, clicking another table moves the editor to it.
-    if (inspectorRef.current && inspectorRef.current.id !== n.id) void editTable(n.id, inspectorRef.current.floating === null);
-  }, [onNodeClick, editTable]);
+    panelsNodeClick(n.id);
+  }, [onNodeClick, panelsNodeClick]);
 
+  // The DB Client view passes neither handler.
   const handleNodeDoubleClickLocal = useCallback((e: React.MouseEvent, n: Node) => {
-    onNodeDoubleClick(e, n);
-    if (!(e.target as HTMLElement).closest('.nodrag')) void editTable(n.id);
-  }, [onNodeDoubleClick, editTable]);
+    onNodeDoubleClick?.(e, n);
+    panelsNodeDoubleClick(n.id, e.target);
+  }, [onNodeDoubleClick, panelsNodeDoubleClick]);
 
   const handlePaneClickLocal = useCallback(() => {
     setMultiSelectedIds([]);
     onPaneClick();
-    setHighlight(null);
-    // An empty-area click closes the floating editor; a docked one stays.
-    setInspector(current => current?.floating ? null : current);
-  }, [onPaneClick]);
+    panelsPaneClick();
+  }, [onPaneClick, panelsPaneClick]);
 
-  // A relationship line opens its editor in the Explorer, with its row active, instead of a modal.
   const handleEdgeClickLocal = useCallback((e: React.MouseEvent, edge: Edge) => {
-    onEdgeClick(e, edge);
-    if (!canEditRef.current) return;
-    setExplorerOpen(true);
-    setDbmlOpen(false);
-    setInspector(current => current?.floating ? null : current);
-    patchExplorer({ tab: 'relationships', activeRelationshipId: edge.id, editingEdgeId: edge.id });
-    setHighlight({ type: 'relationship', id: edge.id });
-  }, [onEdgeClick, patchExplorer]);
+    onEdgeClick?.(e, edge);
+    panelsEdgeClick(edge.id);
+  }, [onEdgeClick, panelsEdgeClick]);
 
   // Collect all visually-selected node IDs (multi-select + primary)
   const allSelectedIds = React.useMemo(() => {
@@ -459,35 +348,25 @@ const ERDViewComponent = ({
     return [];
   }, [multiSelectedIds, selectedNodeId]);
 
-  // What the Explorer or the table editor points at: that table (or relationship) and its related tables stay
-  // bright, the rest is dimmed with opacity only (ERD-004; no blur, see BUG-040).
-  const focus = React.useMemo(() => {
-    const around = (id: string) => ({
-      primary: id,
-      tables: new Set([id, ...getERDTableNeighbourIds(id, edges)]),
-      edges: new Set(edges.filter(edge => edge.source === id || edge.target === id).map(edge => edge.id)),
-    });
-    if (inspector) return around(inspector.id);
-    if (!explorerOpen || !highlight) return null;
-    if (highlight.type === 'table') return around(highlight.id);
-    const edge = edges.find(item => item.id === highlight.id);
-    return edge ? { primary: null, tables: new Set([edge.source, edge.target]), edges: new Set([edge.id]) } : null;
-  }, [inspector, explorerOpen, highlight, edges]);
-
-  const inspectorNode = inspector ? nodes.find(node => node.id === inspector.id) : undefined;
-  const inspectorEntity = React.useMemo(() => inspectorNode
-    ? inspectorNode.data.id === inspectorNode.id ? inspectorNode.data : { ...inspectorNode.data, id: inspectorNode.id }
-    : null, [inspectorNode?.data, inspectorNode?.id]);
-
+  const { focus } = panels;
+  // Styled copies kept per table, so a dim or focus class does not re-create every node on each drag frame.
+  const styledCacheRef = React.useRef(new Map<string, { node: Node<Entity>; selected: boolean; className?: string; styled: Node<Entity> }>());
   const styledNodes = React.useMemo(() => {
-    return nodes.map(node => {
+    const cache = styledCacheRef.current;
+    const next = new Map<string, { node: Node<Entity>; selected: boolean; className?: string; styled: Node<Entity> }>();
+    const result = nodes.map(node => {
       const selected = allSelectedIds.includes(node.id);
       const className = !focus ? undefined : node.id === focus.primary ? 'erd-node-focus' : focus.tables.has(node.id) ? undefined : 'erd-node-dimmed';
       // Use !! to normalize undefined/null to boolean — avoids creating wrappers
       // for all nodes on the first drag after setNodes() (which may lack `selected`)
       if (!!node.selected === selected && node.className === className) return node;
-      return { ...node, selected, className };
+      const hit = cache.get(node.id);
+      const styled = hit && hit.node === node && hit.selected === selected && hit.className === className ? hit.styled : { ...node, selected, className };
+      next.set(node.id, { node, selected, className, styled });
+      return styled;
     });
+    styledCacheRef.current = next;
+    return result;
   }, [nodes, allSelectedIds, focus]);
 
   const diffNodesWithMode = React.useMemo(() => {
@@ -908,9 +787,9 @@ const ERDViewComponent = ({
       {!pendingDiff && <ERDToolbar
         isReadOnly={isReadOnly} isProductionDb={isProductionDb}
         addEntity={addEntity} onImportSQL={onImportSQL} onAutoLayout={onAutoLayout}
-        explorerOpen={explorerOpen} explorerShortcut={explorerShortcut}
-        onToggleExplorer={explorerOpen ? closeExplorer : openExplorer}
-        onOpenDBML={() => { setDbmlOpen(open => !open); setInspector(null); setExplorerOpen(false); setHighlight(null); }}
+        explorerOpen={panels.explorerOpen} explorerShortcut={panels.explorerShortcut}
+        onToggleExplorer={panels.explorerOpen ? panels.closeExplorer : panels.openExplorer}
+        onOpenDBML={panels.toggleDBML}
         onOpenRepository={() => setRightPanelMode('repository')}
         handleSync={handleSync} isSyncing={isSyncing}
         handleExportImage={handleExportImage} undo={undo} redo={redo} canUndo={canUndo} canRedo={canRedo}
@@ -945,11 +824,11 @@ const ERDViewComponent = ({
           onlyRenderVisibleElements={true}
           // Production DB ERD stays read-only for schema edits, but table positions are editable.
           // The floating table editor locks the canvas (no pan, zoom or drag) until it closes (ERD-004).
-          nodesDraggable={!pendingDiff && !popoverFloating && (!isReadOnly || isProductionDb)}
-          panOnDrag={!popoverFloating}
-          zoomOnScroll={!popoverFloating}
-          zoomOnPinch={!popoverFloating}
-          zoomOnDoubleClick={!popoverFloating}
+          nodesDraggable={!pendingDiff && !panels.popoverFloating && (!isReadOnly || isProductionDb)}
+          panOnDrag={!panels.popoverFloating}
+          zoomOnScroll={!panels.popoverFloating}
+          zoomOnPinch={!panels.popoverFloating}
+          zoomOnDoubleClick={!panels.popoverFloating}
           nodesConnectable={!pendingDiff && (!isReadOnly || (isProductionDb && isReconnecting))}
           elementsSelectable={!pendingDiff && (!isReadOnly || isProductionDb)}
           edgesReconnectable={!pendingDiff && (!isReadOnly || isProductionDb)}
@@ -966,21 +845,21 @@ const ERDViewComponent = ({
         >
 
           <Background variant={BackgroundVariant.Lines} gap={50} size={1} color={bgColor} />
-          {!popoverFloating && <Controls position="bottom-left" showInteractive={false} fitViewOptions={fitViewOptions} />}
+          {!panels.popoverFloating && <Controls position="bottom-left" showInteractive={false} fitViewOptions={fitViewOptions} />}
         </ReactFlow>
       </div>
 
-      {explorerOpen && !pendingDiff && <div ref={explorerRef} className="contents">
+      {panels.explorerOpen && !pendingDiff && <div ref={panels.explorerRef} className="contents">
         <ERDExplorer
-          nodes={nodes} edges={edges} state={explorer} onChange={patchExplorer}
-          editing={canEdit ? { onEditTable: id => void editTable(id), onUpdateEdge: handleEdgeUpdate, onFlipEdge: handleEdgeFlip, onDeleteEdge: deleteEdge } : undefined}
-          onHighlight={highlightTarget} onClose={closeExplorer} shortcutLabel={explorerShortcut.label}
-          hidden={popoverFloating}
+          nodes={nodes} edges={edges} state={panels.explorer} onChange={panels.patchExplorer}
+          editing={canEdit ? { onEditTable: id => void panels.editTable(id), onUpdateEdge: handleEdgeUpdate, onFlipEdge: handleEdgeFlip, onDeleteEdge: deleteEdge } : undefined}
+          onHighlight={panels.highlightTarget} onClose={panels.closeExplorer} shortcutLabel={panels.explorerShortcut.label}
+          hidden={panels.popoverFloating}
         />
       </div>}
-      {inspectorEntity && inspector?.floating && <ERDTablePopover entity={inspectorEntity} floating={inspector.floating}
-        onTogglePin={togglePin} onClose={closeInspector} onBackToExplorer={backToExplorer} />}
-      {canEdit && <ERDDBMLDrawer open={dbmlOpen} onClose={() => setDbmlOpen(false)} />}
+      {!pendingDiff && panels.inspectorEntity && panels.inspector?.floating && <ERDTablePopover entity={panels.inspectorEntity} floating={panels.inspector.floating}
+        onTogglePin={panels.togglePin} onClose={panels.closeInspector} onBackToExplorer={panels.backToExplorer} />}
+      {canEdit && <ERDDBMLDrawer open={panels.dbmlOpen && !pendingDiff} onClose={panels.closeDBML} />}
 
       {edgeContextMenu && (
         <ContextMenu open onOpenChange={(next) => { if (!next) setEdgeContextMenu(null); }}>
@@ -1023,11 +902,11 @@ const ERDViewComponent = ({
   const activeEdgeId = hoveredEdgeId ?? edges.find(edge => edge.selected)?.id ?? null;
   const routedContent = <ERDRoutingContext.Provider value={obstacles}>
     <ERDEdgeLabels nodes={settledCanvas.nodes} edges={pendingDiff ? styledDiffEdges : settledCanvas.edges} tables={obstacles} activeId={activeEdgeId}>
-      <EditERDTableContext.Provider value={openTableEditor}>
-        <div ref={layoutRef} className="relative flex min-h-0 min-w-0 flex-1 gap-2">
+      <EditERDTableContext.Provider value={panels.openTableEditor}>
+        <div ref={panels.layoutRef} className="relative flex min-h-0 min-w-0 flex-1 gap-2">
           {content}
-          {inspectorEntity && inspector && !inspector.floating && <ERDTablePopover entity={inspectorEntity} floating={null}
-            onTogglePin={togglePin} onClose={closeInspector} onBackToExplorer={backToExplorer} />}
+          {!pendingDiff && panels.inspectorEntity && panels.inspector && !panels.inspector.floating && <ERDTablePopover entity={panels.inspectorEntity} floating={null}
+            onTogglePin={panels.togglePin} onClose={panels.closeInspector} onBackToExplorer={panels.backToExplorer} />}
         </div>
       </EditERDTableContext.Provider>
     </ERDEdgeLabels>

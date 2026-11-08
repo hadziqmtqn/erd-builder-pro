@@ -40,6 +40,11 @@ describe('choosePopoverSide', () => {
     expect(choosePopoverSide(table, canvas, [left, ...right])).toBe('left');
   });
 
+  it('checks related tables against the full popover height, not just the table height', () => {
+    const relatedBelowRight = { x: 760, y: 600, width: 220, height: 120 };
+    expect(choosePopoverSide(table, canvas, [relatedBelowRight])).toBe('left');
+  });
+
   it('falls back to the side that fits inside the canvas', () => {
     expect(choosePopoverSide({ x: 900, y: 200, width: 220, height: 180 }, canvas, [])).toBe('left');
     expect(choosePopoverSide({ x: 40, y: 200, width: 220, height: 180 }, canvas, [])).toBe('right');

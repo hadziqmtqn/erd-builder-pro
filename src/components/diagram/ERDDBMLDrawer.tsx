@@ -176,20 +176,22 @@ export function ERDDBMLDrawer({ open, onClose }: { open: boolean; onClose: () =>
       ?.then(() => triggerDebouncedSync?.());
   }, [nodes, edges, setNodes, setEdges, takeSnapshot, saveDiagram, viewportRef, triggerDebouncedSync]);
 
-  // Drag the top edge to resize; the height is a share of the canvas so it fits any pane.
+  // Drag the top edge to resize; the height is a share of the canvas so it fits any pane. Pointer capture
+  // sends the moves to the handle and ends with it (up, cancel or lost capture), so nothing is left listening.
+  const dragRef = useRef<DOMRect | null>(null);
   const startResize = (event: PointerEvent<HTMLDivElement>) => {
     const canvas = drawerRef.current?.parentElement;
     if (!canvas) return;
     event.currentTarget.setPointerCapture(event.pointerId);
-    const rect = canvas.getBoundingClientRect();
-    const move = (moveEvent: globalThis.PointerEvent) => {
-      const share = (rect.bottom - moveEvent.clientY) / rect.height * 100;
-      setHeight(Math.round(Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, share))));
-    };
-    const stop = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', stop); };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', stop);
+    dragRef.current = canvas.getBoundingClientRect();
   };
+  const resize = (event: PointerEvent<HTMLDivElement>) => {
+    const rect = dragRef.current;
+    if (!rect) return;
+    const share = (rect.bottom - event.clientY) / rect.height * 100;
+    setHeight(Math.round(Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, share))));
+  };
+  const stopResize = () => { dragRef.current = null; };
 
   return (
     <div
@@ -209,6 +211,8 @@ export function ERDDBMLDrawer({ open, onClose }: { open: boolean; onClose: () =>
         aria-valuenow={height}
         tabIndex={0}
         onPointerDown={startResize}
+        onPointerMove={resize}
+        onLostPointerCapture={stopResize}
         onKeyDown={event => {
           if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
           event.preventDefault();

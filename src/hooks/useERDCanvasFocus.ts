@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { useReactFlow, useStoreApi, type Rect } from '@xyflow/react';
 import { ERD_FOCUS_MAX_ZOOM, ERD_FOCUS_MIN_ZOOM } from '@/lib/erd-canvas-focus';
-import { choosePopoverSide, EXPLORER_LEFT, isVisibleBesidePanel, POPOVER_GAP, POPOVER_HEIGHT, POPOVER_WIDTH, type PanelRect } from '@/lib/erd-panel-geometry';
+import { choosePopoverSide, EXPLORER_LEFT, isVisibleBesidePanel, popoverBox, POPOVER_GAP, POPOVER_WIDTH, type PanelRect } from '@/lib/erd-panel-geometry';
 
 const MOVE_MS = 400;
 const PADDING = 48;
@@ -74,9 +74,7 @@ export function useERDCanvasFocus() {
       anchor = screenRect([id]);
       side = choosePopoverSide(anchor, canvas, related(), EXPLORER_LEFT) ?? 'right';
     }
-    const height = Math.min(POPOVER_HEIGHT, canvas.height - 24);
-    const top = Math.max(12, Math.min(anchor.y, canvas.height - 12 - height));
-    return { side, anchor, top };
+    return { side, anchor, top: popoverBox(anchor, canvas).top };
   }, [canvasSize, getNodesBounds, moveTo, screenRect]);
 
   return { reveal, placePopover };
