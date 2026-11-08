@@ -40,17 +40,17 @@ const CATEGORIES = ["Basic blocks", "Lists", "Media", "Organization", "Advanced"
 const MAIN_ITEMS: SlashMenuItem[] = [
   // Basic blocks
   { title: 'Text', icon: <Type className="w-4 h-4" />, shortcut: 'T', category: 'Basic blocks', command: (editor, range) => editor.chain().focus().deleteRange(range).setParagraph().run() },
-  { title: 'Heading 1', icon: <Heading1 className="w-4 h-4" />, shortcut: '⌘ ⌥ 1', category: 'Basic blocks', command: (editor, range) => editor.chain().focus().deleteRange(range).setNode('heading', { level: 1 }).run() },
-  { title: 'Heading 2', icon: <Heading2 className="w-4 h-4" />, shortcut: '⌘ ⌥ 2', category: 'Basic blocks', command: (editor, range) => editor.chain().focus().deleteRange(range).setNode('heading', { level: 2 }).run() },
-  { title: 'Heading 3', icon: <Heading3 className="w-4 h-4" />, shortcut: '⌘ ⌥ 3', category: 'Basic blocks', command: (editor, range) => editor.chain().focus().deleteRange(range).setNode('heading', { level: 3 }).run() },
-  { title: 'Heading 4', icon: <Heading4 className="w-4 h-4" />, shortcut: '⌘ ⌥ 4', category: 'Basic blocks', command: (editor, range) => editor.chain().focus().deleteRange(range).setNode('heading', { level: 4 }).run() },
-  { title: 'Badge', icon: <Tag className="w-4 h-4" />, shortcut: '⌘ ⌥ B', category: 'Basic blocks', command: (editor, range) => editor.chain().focus().deleteRange(range).toggleBadge().run() },
-  { title: 'Divider', icon: <Minus className="w-4 h-4" />, shortcut: '⌘ ⌥ -', category: 'Basic blocks', command: (editor, range) => editor.chain().focus().deleteRange(range).setHorizontalRule().run() },
+  { title: 'Heading 1', icon: <Heading1 className="w-4 h-4" />, shortcut: '⌥⌘1', category: 'Basic blocks', command: (editor, range) => editor.chain().focus().deleteRange(range).setNode('heading', { level: 1 }).run() },
+  { title: 'Heading 2', icon: <Heading2 className="w-4 h-4" />, shortcut: '⌥⌘2', category: 'Basic blocks', command: (editor, range) => editor.chain().focus().deleteRange(range).setNode('heading', { level: 2 }).run() },
+  { title: 'Heading 3', icon: <Heading3 className="w-4 h-4" />, shortcut: '⌥⌘3', category: 'Basic blocks', command: (editor, range) => editor.chain().focus().deleteRange(range).setNode('heading', { level: 3 }).run() },
+  { title: 'Heading 4', icon: <Heading4 className="w-4 h-4" />, shortcut: '⌥⌘4', category: 'Basic blocks', command: (editor, range) => editor.chain().focus().deleteRange(range).setNode('heading', { level: 4 }).run() },
+  { title: 'Badge', icon: <Tag className="w-4 h-4" />, shortcut: '⌥⌘B', category: 'Basic blocks', command: (editor, range) => editor.chain().focus().deleteRange(range).toggleBadge().run() },
+  { title: 'Divider', icon: <Minus className="w-4 h-4" />, shortcut: '⌥⌘-', category: 'Basic blocks', command: (editor, range) => editor.chain().focus().deleteRange(range).setHorizontalRule().run() },
   
   // Lists
-  { title: 'Bulleted list', icon: <List className="w-4 h-4" />, shortcut: '⌘ ⇧ 8', category: 'Lists', command: (editor, range) => editor.chain().focus().deleteRange(range).toggleBulletList().run() },
-  { title: 'Ordered list', icon: <ListOrdered className="w-4 h-4" />, shortcut: '⌘ ⇧ 7', category: 'Lists', command: (editor, range) => editor.chain().focus().deleteRange(range).toggleOrderedList().run() },
-  { title: 'To-do list', icon: <CheckSquare className="w-4 h-4" />, shortcut: '⌘ ⇧ 9', category: 'Lists', command: (editor, range) => editor.chain().focus().deleteRange(range).toggleTaskList().run() },
+  { title: 'Bulleted list', icon: <List className="w-4 h-4" />, shortcut: '⇧⌘8', category: 'Lists', command: (editor, range) => editor.chain().focus().deleteRange(range).toggleBulletList().run() },
+  { title: 'Ordered list', icon: <ListOrdered className="w-4 h-4" />, shortcut: '⇧⌘7', category: 'Lists', command: (editor, range) => editor.chain().focus().deleteRange(range).toggleOrderedList().run() },
+  { title: 'To-do list', icon: <CheckSquare className="w-4 h-4" />, shortcut: '⇧⌘9', category: 'Lists', command: (editor, range) => editor.chain().focus().deleteRange(range).toggleTaskList().run() },
   
   // Media
   { title: 'Image', icon: <ImageIcon className="w-4 h-4" />, category: 'Media', command: (editor, range) => { 
@@ -58,12 +58,12 @@ const MAIN_ITEMS: SlashMenuItem[] = [
     const input = document.getElementById('tiptap-image-upload') as HTMLInputElement;
     if (input) input.click();
   }},
-  { title: 'Lucide Icon', icon: <Smile className="w-4 h-4" />, shortcut: '⌘ ⌥ I', category: 'Media', customView: 'icon-search' },
+  { title: 'Lucide Icon', icon: <Smile className="w-4 h-4" />, shortcut: '⌥⌘I', category: 'Media', customView: 'icon-search' },
 
   // Organization
-  { title: 'Blockquote', icon: <Quote className="w-4 h-4" />, shortcut: '⌘ ⇧ .', category: 'Organization', command: (editor, range) => editor.chain().focus().deleteRange(range).toggleBlockquote().run() },
+  { title: 'Blockquote', icon: <Quote className="w-4 h-4" />, shortcut: '⇧⌘.', category: 'Organization', command: (editor, range) => editor.chain().focus().deleteRange(range).toggleBlockquote().run() },
   { title: 'Toggle Section', icon: <ChevronDown className="w-4 h-4" />, category: 'Organization', command: (editor, range) => editor.chain().focus().deleteRange(range).setToggle().run() },
-  { title: 'Code block', icon: <Code className="w-4 h-4" />, shortcut: '⌘ ⌥ C', category: 'Organization', command: (editor, range) => editor.chain().focus().deleteRange(range).toggleCodeBlock().run() },
+  { title: 'Code block', icon: <Code className="w-4 h-4" />, shortcut: '⌥⌘C', category: 'Organization', command: (editor, range) => editor.chain().focus().deleteRange(range).toggleCodeBlock().run() },
   { title: 'SQL Query', icon: <DatabaseZap className="w-4 h-4" />, category: 'Organization', installedOnly: true, command: (editor, range) => editor.chain().focus().deleteRange(range).setCodeBlock({ language: 'sql' }).run() },
   {
     title: 'Open preview',
@@ -80,10 +80,10 @@ const MAIN_ITEMS: SlashMenuItem[] = [
   { 
     title: 'Table Actions', 
     icon: <TableIcon className="w-4 h-4" />, 
-    shortcut: '⌘ ⌥ T',
+    shortcut: '⌥⌘T',
     category: 'Advanced',
     children: [
-      { title: 'Insert Table', icon: <Layout className="w-4 h-4" />, shortcut: '⌘ ⌥ T', command: (editor, range) => editor.chain().focus().deleteRange(range).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
+      { title: 'Insert Table', icon: <Layout className="w-4 h-4" />, shortcut: '⌥⌘T', command: (editor, range) => editor.chain().focus().deleteRange(range).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
       { title: 'Add Column', icon: <Columns className="w-4 h-4" />, command: (editor) => editor.chain().focus().addColumnAfter().run() },
       { title: 'Delete Column', icon: <Columns className="w-4 h-4 text-destructive" />, command: (editor) => editor.chain().focus().deleteColumn().run() },
       { title: 'Add Row', icon: <Layout className="w-4 h-4" />, command: (editor) => editor.chain().focus().addRowAfter().run() },
@@ -390,7 +390,7 @@ const ItemRow = ({ item, isSelected, index, onClick, onMouseEnter, query }: { it
       )}
     </span>
     {item.shortcut && !item.children && !item.customView && (
-      <span className="text-[10px] font-mono opacity-40 ml-auto">{item.shortcut}</span>
+      <span className="ml-auto font-sans text-[10px] text-muted-foreground">{item.shortcut}</span>
     )}
     {(item.children || item.customView) && (
       <ChevronRight className="w-3 h-3 opacity-40 ml-auto" />

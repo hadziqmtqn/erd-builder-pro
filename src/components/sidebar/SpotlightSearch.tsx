@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog"
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
 import { Input } from "@/components/ui/input"
+import { Kbd } from "@/components/ui/kbd"
 
 function getSearchShortcutLabel(): string {
   if (typeof navigator === "undefined") return "Ctrl+K"
@@ -94,7 +95,7 @@ export function SpotlightSearch({
           >
             <Search aria-hidden="true" />
             <span className="flex-1">Search</span>
-            <kbd className="rounded border border-border/60 bg-muted/50 px-1.5 text-[10px] font-medium group-data-[collapsible=icon]:hidden">{shortcutLabel}</kbd>
+            <Kbd className="group-data-[collapsible=icon]:hidden">{shortcutLabel}</Kbd>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>
@@ -122,7 +123,7 @@ export function SpotlightSearch({
               aria-label="Spotlight file search"
               className="min-w-0 flex-1"
             />
-            <kbd className="rounded-lg border border-border/60 bg-muted/50 px-2.5 py-1.5 text-xs font-medium text-muted-foreground">ESC</kbd>
+            <Kbd className="h-7 rounded-lg px-2.5 text-xs">Esc</Kbd>
           </div>
           <div className="flex items-center gap-2 overflow-x-auto border-b border-border/60 px-4 py-2.5 text-sm">
             <span className="text-muted-foreground">Filter:</span>

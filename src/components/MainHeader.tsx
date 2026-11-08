@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/breadcrumb"
 import { Globe, CloudOff, Sparkles } from 'lucide-react';
 import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
 import { toast } from 'sonner';
 import { Badge } from "@/components/ui/badge";
@@ -283,7 +284,7 @@ export const MainHeader = React.memo(({
           >
             <Sparkles className="size-4 text-primary" />
             <span className="hidden sm:inline">AI Assistant</span>
-            <kbd className="hidden rounded border px-1 font-mono text-[11px] text-muted-foreground lg:inline">{aiAssistant.shortcut.label}</kbd>
+            <Kbd className="hidden lg:inline-flex">{aiAssistant.shortcut.label}</Kbd>
           </Button>
         )}
       </div>

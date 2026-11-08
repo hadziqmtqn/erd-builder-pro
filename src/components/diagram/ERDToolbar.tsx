@@ -30,6 +30,9 @@ export function ERDToolbar({ isReadOnly, isProductionDb, addEntity, onImportSQL,
   explorerOpen, explorerShortcut, onToggleExplorer, onOpenDBML, onOpenRepository, handleSync, isSyncing, handleExportImage,
   undo, redo, canUndo, canRedo }: ERDToolbarProps) {
   const isMobile = useIsMobile();
+  const isMac = typeof navigator !== 'undefined' && /mac|iphone|ipad|ipod/i.test(navigator.platform || navigator.userAgent);
+  const undoLabel = `Undo (${isMac ? '⌘Z' : 'Ctrl+Z'})`;
+  const redoLabel = `Redo (${isMac ? '⇧⌘Z' : 'Ctrl+Y'})`;
   const action = (label: string, button: ReactElement<{ disabled?: boolean }>) => isMobile ? button : <Tooltip>
     <TooltipTrigger render={button.props.disabled ? <span className="inline-flex">{button}</span> : button} />
     <TooltipContent side="right">{label}</TooltipContent>
@@ -72,10 +75,10 @@ export function ERDToolbar({ isReadOnly, isProductionDb, addEntity, onImportSQL,
         <Download className={iconClass} />{label('Export SVG')}
       </Button>)}
       {!isReadOnly && <div className={cn('flex gap-0.5', isMobile ? 'items-center ml-auto' : 'flex-col items-center')}>
-        {action('Undo (Ctrl+Z)', <Button variant="ghost" size="icon" onClick={undo} disabled={!canUndo} aria-label="Undo (Ctrl+Z)" title={isMobile ? 'Undo (Ctrl+Z)' : undefined} className={isMobile ? 'h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-30' : undefined}>
+        {action(undoLabel, <Button variant="ghost" size="icon" onClick={undo} disabled={!canUndo} aria-label={undoLabel} title={isMobile ? undoLabel : undefined} className={isMobile ? 'h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-30' : undefined}>
           <Undo2 className="size-4" />
         </Button>)}
-        {action('Redo (Ctrl+Y)', <Button variant="ghost" size="icon" onClick={redo} disabled={!canRedo} aria-label="Redo (Ctrl+Y)" title={isMobile ? 'Redo (Ctrl+Y)' : undefined} className={isMobile ? 'h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-30' : undefined}>
+        {action(redoLabel, <Button variant="ghost" size="icon" onClick={redo} disabled={!canRedo} aria-label={redoLabel} title={isMobile ? redoLabel : undefined} className={isMobile ? 'h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-30' : undefined}>
           <Redo2 className="size-4" />
         </Button>)}
       </div>}
