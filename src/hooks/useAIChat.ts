@@ -42,6 +42,8 @@ interface UseAIChatReturn {
   isSessionsLoading: boolean;
   isMessagesLoading: boolean;
   isStreaming: boolean;
+  /** The conversation the AI is answering right now, so the list can mark it (BUG-050). */
+  streamingSessionUid: string | null;
   canManageSession: (session: AIChatSession | null) => boolean;
 
   listSessions: () => Promise<void>;
@@ -114,7 +116,8 @@ export function useAIChat(
   const [messages, setMessages] = useState<AIChatMessage[]>([]);
   const [isSessionsLoading, setIsSessionsLoading] = useState(false);
   const [isMessagesLoading, setIsMessagesLoading] = useState(false);
-  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamingSessionUid, setStreamingSessionUid] = useState<string | null>(null);
+  const isStreaming = streamingSessionUid !== null;
 
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
@@ -129,6 +132,12 @@ export function useAIChat(
   const outboxSyncRef = useRef(false);
   const sessionsRef = useRef<AIChatSession[]>(sessions);
   sessionsRef.current = sessions;
+  const currentSessionUidRef = useRef<string | null>(null);
+  currentSessionUidRef.current = currentSession ? String(currentSession.uid ?? currentSession.id) : null;
+  // The reply being streamed, kept outside the shown messages so reopening its conversation mid-stream shows it (BUG-050).
+  const liveStreamRef = useRef<{ sessionUid: string; message: AIChatMessage } | null>(null);
+  const withLiveStream = (sessionUid: string, shown: AIChatMessage[]) =>
+    liveStreamRef.current?.sessionUid === sessionUid ? [...shown, liveStreamRef.current.message] : shown;
 
   // Stable refs (break dependency chains)
   const isGuestRef = useRef(auth.isGuest);
@@ -245,7 +254,7 @@ export function useAIChat(
           const allMessages = await mergePlanOutbox(sessionUid, ((stored?.messages as AIChatMessage[]) || []).map(message => normalizeAIChatMessage(message, true)));
           messagesCacheMapRef.current.set(sessionUid, allMessages);
           displayCountRef.current = Math.min(PAGE_SIZE, allMessages.length);
-          setMessages(allMessages.slice(-PAGE_SIZE));
+          setMessages(withLiveStream(sessionUid, allMessages.slice(-PAGE_SIZE)));
           setHasMoreMessages(allMessages.length > PAGE_SIZE);
         } catch { setMessages([]); }
       }
@@ -277,7 +286,7 @@ export function useAIChat(
       messagesCacheMapRef.current.set(sessionUid, allMessages);
 
       displayCountRef.current = Math.min(PAGE_SIZE, allMessages!.length);
-      setMessages(allMessages!.slice(-PAGE_SIZE));
+      setMessages(withLiveStream(sessionUid, allMessages!.slice(-PAGE_SIZE)));
       setHasMoreMessages(allMessages!.length > PAGE_SIZE);
     } catch {
       toast.error('Failed to load messages');
@@ -431,12 +440,12 @@ export function useAIChat(
     }
 
     if (isPlanRequest && !navigator.onLine) {
-      setIsStreaming(false);
+      setStreamingSessionUid(null);
       toast.info('Plan answer saved locally and will sync when the connection returns');
       return;
     }
 
-    setIsStreaming(true);
+    setStreamingSessionUid(sessionUid);
     setMessages(previous => [...previous.filter(message => message.id !== 'streaming'), streamingMsg]);
 
     const updateDeliveryStatus = (status?: AIChatMessage['delivery_status']) => {
@@ -453,7 +462,7 @@ export function useAIChat(
       const persisted = await persistGuestMessages(currentSession.uid, updatedCache);
       if (!persisted) {
         setMessages(previous => previous.filter(message => message.id !== 'streaming'));
-        setIsStreaming(false);
+        setStreamingSessionUid(null);
         toast.error(isPlanRequest ? 'Failed to save the Plan answer locally' : 'Failed to save message locally');
         return;
       }
@@ -507,12 +516,13 @@ export function useAIChat(
         } else {
           toast.error('Failed to save message');
         }
-        setIsStreaming(false);
+        setStreamingSessionUid(null);
         return;
       }
     }
 
     // ─── Build messages & call AI ─────────────────────
+    liveStreamRef.current = { sessionUid, message: streamingMsg };
     try {
       // Resolve AI config — all modes now delegate config resolution to the proxy (avoids double Vercel cold start)
       const config: { baseUrl: string | undefined; apiKey: string | undefined; model: string | undefined; providerCode?: string } =
@@ -633,6 +643,8 @@ export function useAIChat(
         streamingBuffer = '';
         streamingFrame = null;
         if (!chunk) return;
+        const live = liveStreamRef.current;
+        if (live?.sessionUid === sessionUid) live.message = { ...live.message, content: live.message.content + chunk };
         setMessages(prev => {
           const last = prev[prev.length - 1];
           return last?.id === 'streaming' ? [...prev.slice(0, -1), { ...last, content: last.content + chunk }] : prev;
@@ -683,7 +695,9 @@ export function useAIChat(
             delivery_status: isPlanRequest ? 'pending-assistant' as const : undefined,
           }
         : message;
-      setMessages(prev => [...prev
+      liveStreamRef.current = null;
+      // The user may be reading another conversation by now; the reply then waits in the cache for this one (BUG-050).
+      if (currentSessionUidRef.current === sessionUid) setMessages(prev => [...prev
         .filter(m => m.id !== 'streaming')
         .filter(message => message.client_message_id !== assistantMessageId)
         .map(commitUser), finalAiMsg]);
@@ -752,7 +766,8 @@ export function useAIChat(
         updateDeliveryStatus(status);
       }
     } finally {
-      setIsStreaming(false);
+      liveStreamRef.current = null;
+      setStreamingSessionUid(null);
       abortControllerRef.current = null;
     }
   }, [currentSession, entityContextText, entityContext, viewType, auth.user?.id, canManageSession]);
@@ -846,7 +861,7 @@ export function useAIChat(
 
   return {
     sessions, currentSession, messages, allMessages,
-    isSessionsLoading, isMessagesLoading, isStreaming, canManageSession,
+    isSessionsLoading, isMessagesLoading, isStreaming, streamingSessionUid, canManageSession,
     listSessions, createSession, selectSession, deleteSession, clearSessions,
     sendMessage, clearMessages, abortStream,
     hasMoreMessages, isLoadingMore, loadMoreMessages,

@@ -11,7 +11,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
-import { Globe, CloudOff, Sparkles } from 'lucide-react';
+import { Globe, CloudOff, Loader2, Sparkles } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
@@ -67,7 +67,7 @@ interface MainHeaderProps {
   discussionPanel?: React.ReactNode;
   tabsRef?: (element: HTMLDivElement | null) => void;
   /** The AI Assistant toggle at the end of the header (ERD-004); left out where AI Chat is not available. */
-  aiAssistant?: { open: boolean; onToggle: () => void; shortcut: { label: string; ariaKeyShortcuts: string } };
+  aiAssistant?: { open: boolean; answering?: boolean; onToggle: () => void; shortcut: { label: string; ariaKeyShortcuts: string } };
 }
 
 export const MainHeader = React.memo(({
@@ -284,6 +284,12 @@ export const MainHeader = React.memo(({
           >
             <Sparkles className="size-4 text-primary" />
             <span className="hidden sm:inline">AI Assistant</span>
+            {aiAssistant.answering && !aiAssistant.open && (
+              <span title="AI is still answering" className="text-primary">
+                <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                <span className="sr-only">AI is still answering</span>
+              </span>
+            )}
             <Kbd className="hidden lg:inline-flex">{aiAssistant.shortcut.label}</Kbd>
           </Button>
         )}

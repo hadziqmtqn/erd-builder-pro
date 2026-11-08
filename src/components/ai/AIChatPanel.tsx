@@ -42,6 +42,8 @@ interface AIChatPanelProps {
   activeNoteContent?: string;
   /** AI scope of a file open in a side-by-side pane, keyed `${viewType}:${uid}`; undefined once that pane closes. */
   getPaneAI?: (key: string) => AIActionContextValue | undefined;
+  /** Told whether the AI is answering, so the header toggle can show it while the drawer is closed (BUG-050). */
+  onAnsweringChange?: (answering: boolean) => void;
 }
 
 export const AIChatPanel = ({
@@ -62,6 +64,7 @@ export const AIChatPanel = ({
   drawings = [],
   activeNoteContent,
   getPaneAI,
+  onAnsweringChange,
 }: AIChatPanelProps) => {
   const entityContext: EntityContext | null =
     entityType && entityUid ? { entityType, entityUid } : null;
@@ -110,6 +113,7 @@ export const AIChatPanel = ({
     isSessionsLoading,
     isMessagesLoading,
     isStreaming,
+    streamingSessionUid,
     canManageSession,
     createSession,
     selectSession,
@@ -121,6 +125,10 @@ export const AIChatPanel = ({
     loadMoreMessages,
   } = useAIChat(entityContext, effectiveEntityContextText, onStreamComplete, projectId, currentViewType);
   const canWriteCurrentSession = !currentSession || canManageSession(currentSession);
+  useEffect(() => {
+    onAnsweringChange?.(isStreaming);
+    return () => onAnsweringChange?.(false);
+  }, [isStreaming, onAnsweringChange]);
 
   const [lastActionId, setLastActionId] = useState<string | null>(null);
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
@@ -478,6 +486,7 @@ export const AIChatPanel = ({
                       key={session.uid ?? session.id}
                       session={session}
                       isActive={currentSession?.uid === session.uid}
+                      answering={streamingSessionUid === String(session.uid ?? session.id)}
                       onClick={() => {
                         selectSession(session.uid);
                         setPage('chat');
