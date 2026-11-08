@@ -19,7 +19,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { useEntityNodeContext } from '@/contexts/EntityNodeContext';
-import { useAIAction } from '@/contexts/AIActionContext';
+import { useOpenERDPanel } from '@/contexts/ERDPanelContext';
 import { CommentMarker, OPEN_COMMENT_EVENT, useERDComments } from './ERDComments';
 
 import {
@@ -125,7 +125,7 @@ const EntityColumnRow = memo(({ col, borderColor, typeColor, hideHandles, onDoub
 const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
   const comments = useERDComments();
   const { isReadOnly: isViewOnly, duplicateEntity, sourceType, setSelectedNodeId } = useEntityNodeContext();
-  const { setRightPanelMode } = useAIAction();
+  const openERDPanel = useOpenERDPanel();
   const isNotesCompanion = Boolean((data as any)._notesCompanion);
   const isProductionDb = !isNotesCompanion && (sourceType === 'production_db' || !!(data as any).isReadOnly);
   const isReadOnly = isViewOnly || !!data.isDiffMode || isProductionDb;
@@ -152,8 +152,8 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
       return;
     }
     setSelectedNodeId(id);
-    setRightPanelMode('properties');
-  }, [isReadOnly, isNotesCompanion, id, setSelectedNodeId, setRightPanelMode]);
+    openERDPanel?.('properties');
+  }, [isReadOnly, isNotesCompanion, id, setSelectedNodeId, openERDPanel]);
 
   const handleDeleteClick = useCallback((e: React.MouseEvent) => {
     e.preventDefault();

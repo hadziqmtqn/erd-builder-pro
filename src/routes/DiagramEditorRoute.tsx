@@ -7,6 +7,8 @@ import { autoLayoutERD } from '@/lib/autoLayoutERD';
 import { alignErdHandles } from '@/lib/erd-geometry';
 
 import { ERDView } from '@/components/views/ERDView';
+import { ERDSidePanel } from '@/components/diagram/ERDSidePanel';
+import { OpenERDPanelContext, type ERDPanel } from '@/contexts/ERDPanelContext';
 import type { ERDCommentsConfig } from '@/components/diagram/ERDComments';
 import { DataViewer } from '@/components/db-connect/DataViewer';
 import { DataViewerModeToolbar, type DataViewerMode } from '@/components/db-connect/DataViewerModeToolbar';
@@ -43,6 +45,8 @@ export function DiagramEditorRoute() {
   const [queryInitialTable, setQueryInitialTable] = useState<string | null>(null);
   const [queryOpenNonce, setQueryOpenNonce] = useState(0);
   const [dbType, setDbType] = useState<string | null>(null);
+  // Each pane renders its own route, so this panel state is per pane (BUG-042).
+  const [erdPanel, setErdPanel] = useState<ERDPanel>('closed');
 
   // Read snake_case fields from API response (camelToSnake middleware converts all)
   const isProductionDb = useMemo(() => {
@@ -191,6 +195,7 @@ export function DiagramEditorRoute() {
           openNonce={queryOpenNonce}
         />
       ) : (
+        <OpenERDPanelContext.Provider value={setErdPanel}><div className="relative flex min-h-0 flex-1 gap-2">
         <ERDView
           key={isPublicView ? publicData?.id : activeDiagramId}
           isLoading={isERDItemLoading}
@@ -225,6 +230,8 @@ export function DiagramEditorRoute() {
           getRelationKey={getRelationKey}
           dedupeEdgesByRelation={dedupeEdgesByRelation}
         />
+        {!isProductionDb && <ERDSidePanel panel={erdPanel} onPanelChange={setErdPanel} editable={!effectiveReadOnly} diagramUid={id} />}
+        </div></OpenERDPanelContext.Provider>
       )}
     </div>
   );

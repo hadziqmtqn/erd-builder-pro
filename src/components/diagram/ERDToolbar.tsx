@@ -16,7 +16,7 @@ interface ERDToolbarProps {
   addEntity: () => void;
   onImportSQL?: () => void;
   onAutoLayout?: () => void;
-  setRightPanelMode: (mode: 'dbml' | 'repository' | 'properties') => void;
+  openPanel: (mode: 'dbml' | 'repository' | 'properties') => void;
   handleSync: () => void;
   isSyncing: boolean;
   handleExportImage: () => void;
@@ -27,7 +27,7 @@ interface ERDToolbarProps {
 }
 
 export function ERDToolbar({ nodes, isReadOnly, isProductionDb, addEntity, onImportSQL, onAutoLayout,
-  setRightPanelMode, handleSync, isSyncing, handleExportImage,
+  openPanel, handleSync, isSyncing, handleExportImage,
   undo, redo, canUndo, canRedo }: ERDToolbarProps) {
   const isMobile = useIsMobile();
   const action = (label: string, button: ReactElement<{ disabled?: boolean }>) => isMobile ? button : <Tooltip>
@@ -51,13 +51,13 @@ export function ERDToolbar({ nodes, isReadOnly, isProductionDb, addEntity, onImp
       {!isReadOnly && action('Import SQL', <Button onClick={onImportSQL} variant="outline" size={isMobile ? 'sm' : 'icon-lg'} aria-label="Import SQL" className={isMobile ? mobileButton : undefined}>
         <Upload className={iconClass} />{label('Import SQL')}
       </Button>)}
-      {!isProductionDb && !isReadOnly && action('DBML', <Button onClick={() => setRightPanelMode('dbml')} variant="outline" size={isMobile ? 'sm' : 'icon-lg'} aria-label="DBML" className={isMobile ? mobileButton : undefined}>
+      {!isProductionDb && !isReadOnly && action('DBML', <Button onClick={() => openPanel('dbml')} variant="outline" size={isMobile ? 'sm' : 'icon-lg'} aria-label="DBML" className={isMobile ? mobileButton : undefined}>
         <Database className={iconClass} />{label('DBML')}
       </Button>)}
-      {!isProductionDb && !isReadOnly && action('Open Properties', <Button onClick={() => setRightPanelMode('properties')} variant="outline" size={isMobile ? 'sm' : 'icon-lg'} aria-label="Open Properties" className={isMobile ? mobileButton : undefined}>
+      {!isProductionDb && !isReadOnly && action('Open Properties', <Button onClick={() => openPanel('properties')} variant="outline" size={isMobile ? 'sm' : 'icon-lg'} aria-label="Open Properties" className={isMobile ? mobileButton : undefined}>
         <Pencil className={iconClass} />{label('Properties')}
       </Button>)}
-      {!isReadOnly && !isProductionDb && isInstalledApp() && action('Repository', <Button onClick={() => setRightPanelMode('repository')} variant="outline" size={isMobile ? 'sm' : 'icon-lg'} aria-label="Repository" className={isMobile ? mobileButton : undefined}>
+      {!isReadOnly && !isProductionDb && isInstalledApp() && action('Repository', <Button onClick={() => openPanel('repository')} variant="outline" size={isMobile ? 'sm' : 'icon-lg'} aria-label="Repository" className={isMobile ? mobileButton : undefined}>
         <FolderGit2 className={iconClass} />{label('Repository')}
       </Button>)}
       {onAutoLayout && (!isReadOnly || isProductionDb) && action('Auto Layout', <Button onClick={onAutoLayout} variant="outline" size={isMobile ? 'sm' : 'icon-lg'} aria-label="Auto Layout" className={isMobile ? mobileButton : undefined}>
