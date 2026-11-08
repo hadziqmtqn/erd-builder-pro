@@ -11,7 +11,9 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
-import { Globe, CloudOff } from 'lucide-react';
+import { Globe, CloudOff, Sparkles } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { toast } from 'sonner';
 import { Badge } from "@/components/ui/badge";
 import { ShareModal } from "./modals/ShareModal";
@@ -63,6 +65,8 @@ interface MainHeaderProps {
   onRefresh?: () => void;
   discussionPanel?: React.ReactNode;
   tabsRef?: (element: HTMLDivElement | null) => void;
+  /** The AI Assistant toggle at the end of the header (ERD-004); left out where AI Chat is not available. */
+  aiAssistant?: { open: boolean; onToggle: () => void; shortcut: { label: string; ariaKeyShortcuts: string } };
 }
 
 export const MainHeader = React.memo(({
@@ -103,6 +107,7 @@ export const MainHeader = React.memo(({
   onRefresh,
   discussionPanel,
   tabsRef,
+  aiAssistant,
 }: MainHeaderProps) => {
   const location = useLocation();
   const [isShareModalOpen, setIsShareModalOpen] = React.useState(false);
@@ -265,6 +270,21 @@ export const MainHeader = React.memo(({
             )}
 
           </div>
+        )}
+        {aiAssistant && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={aiAssistant.onToggle}
+            aria-pressed={aiAssistant.open}
+            aria-keyshortcuts={aiAssistant.shortcut.ariaKeyShortcuts}
+            title={`AI Assistant (${aiAssistant.shortcut.label})`}
+            className={cn('ml-1 h-8 gap-2 px-2.5 text-[13px] font-medium', aiAssistant.open && 'border-ring bg-muted')}
+          >
+            <Sparkles className="size-4 text-primary" />
+            <span className="hidden sm:inline">AI Assistant</span>
+            <kbd className="hidden rounded border px-1 font-mono text-[11px] text-muted-foreground lg:inline">{aiAssistant.shortcut.label}</kbd>
+          </Button>
         )}
       </div>
     </header>
