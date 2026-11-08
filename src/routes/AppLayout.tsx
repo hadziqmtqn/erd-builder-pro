@@ -526,6 +526,7 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
   // The AI Assistant toggle sits in the header and Cmd/Ctrl+J opens or closes its drawer (ERD-004).
   const isMac = typeof navigator !== 'undefined' && /mac|iphone|ipad|ipod/i.test(navigator.platform || navigator.userAgent);
   const aiShortcut = useMemo(() => ({ label: isMac ? '⌘J' : 'Ctrl+J', ariaKeyShortcuts: isMac ? 'Meta+J' : 'Control+J' }), [isMac]);
+  const [aiAnswering, setAIAnswering] = useState(false);
   const toggleAIChat = useCallback(() => setRightPanelMode(rightPanelMode === 'chat' ? 'closed' : 'chat'), [rightPanelMode, setRightPanelMode]);
   useEffect(() => {
     if (!showAIChat) return;
@@ -637,7 +638,7 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
           noteContent={activeNote?.content}
           historyAvailable={Boolean(historyEntityType)}
           discussionPanel={session ? <span ref={setDiscussionTarget} className="contents" /> : discussionPanel}
-          aiAssistant={showAIChat ? { open: rightPanelMode === 'chat', onToggle: toggleAIChat, shortcut: aiShortcut } : undefined}
+          aiAssistant={showAIChat ? { open: rightPanelMode === 'chat', answering: aiAnswering, onToggle: toggleAIChat, shortcut: aiShortcut } : undefined}
         /></FileSessionContext.Provider>
 
         <div className="relative flex flex-1 flex-col gap-4 p-4 pt-4 min-h-0 overflow-hidden" style={{ isolation: 'isolate' } as React.CSSProperties}>
@@ -846,8 +847,8 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
         )}
 
         {/* Right panel with tabs — sticky right sidebar */}
-        {rightPanelOpen && (
-          <RightChatSidebar>
+        {(rightPanelOpen || showAIChat) && (
+          <RightChatSidebar open={rightPanelOpen}>
             {rightPanelMode === 'repository' && entityContext?.entityType === 'diagram' ? (
               <RepositoryPanel
                 key={entityContext.entityUid}
@@ -866,30 +867,35 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
                 onRestored={refreshActiveDocument}
                 canRestore={canManageActiveDocument}
               />
-            ) : showAIChat && rightPanelMode === 'chat' ? (
-              <AIChatPanel
-                onClose={() => setRightPanelMode('closed')}
-                entityType={entityContext!.entityType}
-                entityUid={entityContext!.entityUid}
-                entityTitle={entityContext!.entityType === 'dbClient' ? activeDbClient?.name || breadcrumbLabel :
-                             entityContext!.entityType === 'note' ? activeNote?.title :
-                             entityContext!.entityType === 'diagram' ? activeDiagram?.name :
-                             entityContext!.entityType === 'flowchart' ? activeFlowchart?.title : null}
-                entityContextText={entityContextText}
-                viewType={isActiveDbClient ? 'db-client' : undefined}
-                projectId={activeProjectId}
-                pendingPrompt={pendingPrompt}
-                onPromptUsed={clearPrompt}
-                pendingAction={pendingAction}
-                onClearPendingAction={clearPendingAction}
-                notes={notes}
-                diagrams={diagrams}
-                flowcharts={flowcharts}
-                drawings={drawings}
-                activeNoteContent={entityContext?.entityType === 'note' ? activeNote?.content : undefined}
-                getPaneAI={getPaneAI}
-              />
             ) : null}
+            {/* Mounted while the drawer is closed or shows another panel, so the open conversation and a reply in progress survive (BUG-050). */}
+            {showAIChat && (
+              <div hidden={rightPanelMode !== 'chat'} className="contents">
+                <AIChatPanel
+                  onAnsweringChange={setAIAnswering}
+                  onClose={() => setRightPanelMode('closed')}
+                  entityType={entityContext!.entityType}
+                  entityUid={entityContext!.entityUid}
+                  entityTitle={entityContext!.entityType === 'dbClient' ? activeDbClient?.name || breadcrumbLabel :
+                               entityContext!.entityType === 'note' ? activeNote?.title :
+                               entityContext!.entityType === 'diagram' ? activeDiagram?.name :
+                               entityContext!.entityType === 'flowchart' ? activeFlowchart?.title : null}
+                  entityContextText={entityContextText}
+                  viewType={isActiveDbClient ? 'db-client' : undefined}
+                  projectId={activeProjectId}
+                  pendingPrompt={pendingPrompt}
+                  onPromptUsed={clearPrompt}
+                  pendingAction={pendingAction}
+                  onClearPendingAction={clearPendingAction}
+                  notes={notes}
+                  diagrams={diagrams}
+                  flowcharts={flowcharts}
+                  drawings={drawings}
+                  activeNoteContent={entityContext?.entityType === 'note' ? activeNote?.content : undefined}
+                  getPaneAI={getPaneAI}
+                />
+              </div>
+            )}
           </RightChatSidebar>
         )}
 
