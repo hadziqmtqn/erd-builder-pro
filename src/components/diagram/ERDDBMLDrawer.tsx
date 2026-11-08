@@ -1,14 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
+import { useParams } from 'react-router-dom';
 import type { Node, Edge } from '@xyflow/react';
-import { Database, PanelRightClose, Pencil } from 'lucide-react';
+import { X } from 'lucide-react';
 import type { Entity } from '@/types';
 import { Button } from '@/components/ui/button';
 import { DBMLEditorPanel } from '@/components/diagram/DBMLEditorPanel';
-import { ERDPropertiesTabs } from '@/components/diagram/ERDPropertiesTabs';
-import PropertiesPanel from '@/components/PropertiesPanel';
+import { cn } from '@/lib/utils';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { useSettledERDCanvas } from '@/contexts/ERDCanvasContext';
-import type { ERDPanel } from '@/contexts/ERDPanelContext';
 import { dbmlToERD, erdToDBML } from '@/lib/dbml-converter';
 import { mergeDBMLCanvas } from '@/lib/dbml-canvas-merge';
 import { ERD_REPOSITORY_APPLIED_EVENT } from '@/lib/repository-preview';
@@ -54,27 +53,22 @@ function entitySchemaKey(entity: Entity): string {
   });
 }
 
+const MIN_HEIGHT = 20;
+const MAX_HEIGHT = 85;
+
 /**
- * Properties and DBML for the diagram in this pane, docked next to its canvas (BUG-042).
- * It reads the pane's own workspace and canvas, so two ERD panes side by side each keep their own panel.
+ * The full, editable DBML of this pane's diagram, in a drawer at the bottom of its canvas (ERD-004).
+ * It stays mounted while closed so an unapplied draft survives closing and opening it again.
  */
-export function ERDSidePanel({ panel, onPanelChange, editable, diagramUid }: {
-  panel: ERDPanel;
-  onPanelChange: (panel: ERDPanel) => void;
-  editable: boolean;
-  /** The diagram UUID from the URL, stable while the workspace swaps a numeric ID for the UUID during loading. */
-  diagramUid: string | undefined;
-}) {
-  const {
-    activeDiagram, saveDiagram, viewportRef, isGuest, triggerDebouncedSync,
-    setNodes, setEdges, takeSnapshot,
-    selectedNodeId, setSelectedNodeId,
-    handleEdgeUpdate, handleEdgeFlip, deleteEdge, handleEntityUpdate, deleteEntity,
-  } = useWorkspace();
+export function ERDDBMLDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+  // The URL UUID stays the same while the workspace swaps a numeric diagram ID for the UUID during loading.
+  const { id: diagramUid } = useParams<{ id: string }>();
+  const { activeDiagram, saveDiagram, viewportRef, isGuest, triggerDebouncedSync, setNodes, setEdges, takeSnapshot, setSelectedNodeId } = useWorkspace();
   // Settled, not live: re-rendering on every drag frame made dragging slow.
   const { nodes, edges } = useSettledERDCanvas();
+  const [height, setHeight] = useState(48);
+  const drawerRef = useRef<HTMLDivElement>(null);
 
-  const [propertiesEntityId, setPropertiesEntityId] = useState<string | null>(null);
   const [dbmlContent, setDbmlContent] = useState('');
   const dbmlContentRef = useRef('');
   const dbmlDraftDirtyRef = useRef(false);
@@ -84,13 +78,6 @@ export function ERDSidePanel({ panel, onPanelChange, editable, diagramUid }: {
     dbmlContentRef.current = content;
     setDbmlContent(content);
   }, []);
-
-  const propertiesEntity = useMemo(() => {
-    const node = nodes.find(node => node.id === selectedNodeId)
-      ?? nodes.find(node => node.id === propertiesEntityId);
-    if (!node) return null;
-    return node.data.id === node.id ? node.data : { ...node.data, id: node.id };
-  }, [nodes, propertiesEntityId, selectedNodeId]);
 
   const dbmlStorageKey = diagramUid ? `erd-builder-dbml:${diagramUid}` : null;
   const activeDiagramDbmlSource = activeDiagram?.dbml_source ?? activeDiagram?.dbmlSource ?? '';
@@ -129,13 +116,13 @@ export function ERDSidePanel({ panel, onPanelChange, editable, diagramUid }: {
   // Generate DBML from the canvas on the first open. Keep the source text afterwards:
   // it contains DBML-only constructs (Enum, Note and TableGroup) which the canvas does not model completely.
   useEffect(() => {
-    if (panel === 'dbml' && nodes.length > 0 && !dbmlContent.trim()) {
+    if (open && nodes.length > 0 && !dbmlContent.trim()) {
       try {
         const dbml = erdToDBML(nodes, edges);
         if (dbml.trim()) setLocalDbmlContent(dbml);
       } catch { /* retried once the canvas is ready */ }
     }
-  }, [panel, nodes, edges, dbmlContent, setLocalDbmlContent]);
+  }, [open, nodes, edges, dbmlContent, setLocalDbmlContent]);
 
   useEffect(() => {
     const syncRepositoryDbml = (event: Event) => {
@@ -147,24 +134,6 @@ export function ERDSidePanel({ panel, onPanelChange, editable, diagramUid }: {
     window.addEventListener(ERD_REPOSITORY_APPLIED_EVENT, syncRepositoryDbml);
     return () => window.removeEventListener(ERD_REPOSITORY_APPLIED_EVENT, syncRepositoryDbml);
   }, [activeDiagram?.uid, setLocalDbmlContent]);
-
-  // Losing edit access closes the panel, so it does not come back by itself when access returns.
-  useEffect(() => {
-    if (!editable && panel !== 'closed') onPanelChange('closed');
-  }, [editable, panel, onPanelChange]);
-
-  // Table properties belong to the diagram this pane shows.
-  const previousDiagramUidRef = useRef(diagramUid);
-  useEffect(() => {
-    if (previousDiagramUidRef.current === diagramUid) return;
-    previousDiagramUidRef.current = diagramUid;
-    setPropertiesEntityId(null);
-    if (panel === 'properties') onPanelChange('closed');
-  }, [diagramUid, panel, onPanelChange]);
-
-  useEffect(() => {
-    if (panel === 'properties' && selectedNodeId) setPropertiesEntityId(selectedNodeId);
-  }, [panel, selectedNodeId]);
 
   const handleDBMLContentChange = useCallback((content: string, persistNow = false) => {
     setLocalDbmlContent(content);
@@ -207,83 +176,66 @@ export function ERDSidePanel({ panel, onPanelChange, editable, diagramUid }: {
       ?.then(() => triggerDebouncedSync?.());
   }, [nodes, edges, setNodes, setEdges, takeSnapshot, saveDiagram, viewportRef, triggerDebouncedSync]);
 
-  if (!editable || panel === 'closed') return null;
-
-  const tab = (value: Exclude<ERDPanel, 'closed'>, icon: ReactNode, label: string) => (
-    <button
-      type="button"
-      onClick={() => onPanelChange(value)}
-      aria-pressed={panel === value}
-      className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
-        panel === value
-          ? 'border-primary text-primary bg-background/50'
-          : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30'
-      }`}
-    >
-      {icon}
-      {label}
-    </button>
-  );
+  // Drag the top edge to resize; the height is a share of the canvas so it fits any pane.
+  const startResize = (event: PointerEvent<HTMLDivElement>) => {
+    const canvas = drawerRef.current?.parentElement;
+    if (!canvas) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const rect = canvas.getBoundingClientRect();
+    const move = (moveEvent: globalThis.PointerEvent) => {
+      const share = (rect.bottom - moveEvent.clientY) / rect.height * 100;
+      setHeight(Math.round(Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, share))));
+    };
+    const stop = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', stop); };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', stop);
+  };
 
   return (
-    <aside
-      aria-label="Diagram panel"
-      // Docked beside the canvas; on narrow screens it covers the canvas as before instead of squeezing it.
-      className="flex w-85 shrink-0 flex-col overflow-hidden rounded-xl border bg-card text-card-foreground max-md:absolute max-md:inset-y-0 max-md:right-0 max-md:z-30 max-md:w-[min(21.25rem,100%)] max-md:shadow-xl"
+    <div
+      ref={drawerRef}
+      role="dialog"
+      aria-label="DBML drawer"
+      aria-hidden={!open || undefined}
+      style={{ height: `${height}%` }}
+      className={cn('nowheel nodrag absolute inset-x-2 bottom-2 z-30 flex flex-col overflow-hidden rounded-xl border bg-card text-card-foreground shadow-2xl', !open && 'hidden')}
     >
-      <div className="shrink-0 flex items-center border-b border-border bg-muted/20">
-        <div className="flex-1 flex">
-          {tab('properties', <Pencil className="size-3.5" />, 'Properties')}
-          {tab('dbml', <Database className="size-3.5" />, 'DBML')}
-        </div>
-        <Button variant="ghost" size="icon" className="size-8 mr-1" onClick={() => onPanelChange('closed')} title="Close panel" aria-label="Close panel">
-          <PanelRightClose className="size-3.5" />
-        </Button>
+      <div
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Resize DBML drawer"
+        aria-valuemin={MIN_HEIGHT}
+        aria-valuemax={MAX_HEIGHT}
+        aria-valuenow={height}
+        tabIndex={0}
+        onPointerDown={startResize}
+        onKeyDown={event => {
+          if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+          event.preventDefault();
+          setHeight(value => Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, value + (event.key === 'ArrowUp' ? 5 : -5))));
+        }}
+        className="flex h-3 shrink-0 cursor-row-resize touch-none items-center justify-center focus-visible:bg-accent"
+      >
+        <span aria-hidden="true" className="h-1 w-10 rounded-full bg-border" />
       </div>
-      <div className="flex-1 min-h-0">
-        {panel === 'dbml' ? (
-          <DBMLEditorPanel
-            value={dbmlContent}
-            onChange={handleDBMLContentChange}
-            onApply={handleDBMLApply}
-            nodes={nodes}
-            edges={edges}
-            onSelectTable={(name) => {
-              const node = nodes.find(n => n.data.name.toLowerCase() === name.toLowerCase());
-              if (node) setSelectedNodeId(node.id);
-            }}
-          />
-        ) : (
-          <ERDPropertiesTabs
-            nodes={nodes}
-            edges={edges}
-            focusedTableId={propertiesEntity?.id ?? null}
-            onUpdateEdge={handleEdgeUpdate}
-            onFlipEdge={handleEdgeFlip}
-            onDeleteEdge={deleteEdge}
-            onEditTable={(id) => {
-              setPropertiesEntityId(id);
-              setSelectedNodeId(id);
-            }}
-            tableEditor={propertiesEntity ? (
-              <PropertiesPanel
-                key={propertiesEntity.id}
-                selectedEntity={propertiesEntity}
-                onUpdateEntity={handleEntityUpdate}
-                onBackToTables={() => {
-                  setSelectedNodeId(null);
-                  setPropertiesEntityId(null);
-                }}
-                onDeleteEntity={(id) => {
-                  deleteEntity(id);
-                  setSelectedNodeId(null);
-                  onPanelChange('closed');
-                }}
-              />
-            ) : null}
-          />
-        )}
+      <div className="min-h-0 flex-1">
+        <DBMLEditorPanel
+          value={dbmlContent}
+          onChange={handleDBMLContentChange}
+          onApply={handleDBMLApply}
+          nodes={nodes}
+          edges={edges}
+          onSelectTable={(name) => {
+            const node = nodes.find(n => n.data.name.toLowerCase() === name.toLowerCase());
+            if (node) setSelectedNodeId(node.id);
+          }}
+          headerActions={
+            <Button type="button" variant="ghost" size="icon" className="size-8" onClick={onClose} aria-label="Close DBML drawer" title="Close">
+              <X className="size-3.5" />
+            </Button>
+          }
+        />
       </div>
-    </aside>
+    </div>
   );
 }

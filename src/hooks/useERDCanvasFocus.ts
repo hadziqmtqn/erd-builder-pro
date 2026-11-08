@@ -1,84 +1,73 @@
-import { useEffect, useRef, type RefObject } from 'react';
-import { getViewportForBounds, useReactFlow, useStoreApi, type Node } from '@xyflow/react';
-import { useEditorActive } from '@/contexts/FileSessionContext';
-import {
-  ERD_CANVAS_FOCUS_EVENT,
-  ERD_FOCUS_MAX_ZOOM,
-  ERD_FOCUS_MIN_ZOOM,
-  getERDTableNeighbourIds,
-  type ERDCanvasFocusRequest,
-} from '@/lib/erd-canvas-focus';
+import { useCallback } from 'react';
+import { useReactFlow, useStoreApi, type Rect } from '@xyflow/react';
+import { ERD_FOCUS_MAX_ZOOM, ERD_FOCUS_MIN_ZOOM } from '@/lib/erd-canvas-focus';
+import { choosePopoverSide, isVisibleBesidePanel, POPOVER_GAP, POPOVER_WIDTH, type PanelRect } from '@/lib/erd-panel-geometry';
 
-const FLASH_CLASS = 'erd-node-flash';
-const FLASH_MS = 1500;
-const PADDING = 0.2;
 const MOVE_MS = 400;
+const PADDING = 48;
 
 // Glide to the target, or jump straight there when the viewer asked for reduced motion.
 const moveDuration = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : MOVE_MS;
 
-const centerOf = (node: Node) => ({
-  x: node.position.x + (node.measured?.width ?? node.width ?? 180) / 2,
-  y: node.position.y + (node.measured?.height ?? node.height ?? 120) / 2,
-});
-
-/** Handles Properties panel requests to show a table or relationship on this pane's canvas. */
-export function useERDCanvasFocus(canvasRef: RefObject<HTMLDivElement | null>, isActive: boolean) {
-  const editorActive = useEditorActive();
-  const { getNodes, getEdges, getNodesBounds, setCenter, setViewport } = useReactFlow();
+/**
+ * Camera moves for the Explorer and the table popover of this pane's canvas (ERD-004).
+ * Each move happens only when its target is not already fully visible, and at most once.
+ */
+export function useERDCanvasFocus() {
+  const { getNodesBounds, getViewport, setViewport } = useReactFlow();
   const store = useStoreApi();
-  const flashTimer = useRef<number | undefined>(undefined);
-  // Refs keep the listener attached while tables are dragged; ERDView re-renders on every frame then.
-  const activeRef = useRef(() => isActive && editorActive());
-  activeRef.current = () => isActive && editorActive();
 
-  useEffect(() => {
-    // A class on the DOM node instead of node data: no re-render of every table and nothing to save.
-    const flash = (nodeId: string) => {
-      const element = canvasRef.current?.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(nodeId)}"]`);
-      if (!element) return;
-      canvasRef.current?.querySelectorAll(`.${FLASH_CLASS}`).forEach(item => item.classList.remove(FLASH_CLASS));
-      void element.offsetWidth; // restart the animation when the same table is chosen again
-      element.classList.add(FLASH_CLASS);
-      window.clearTimeout(flashTimer.current);
-      flashTimer.current = window.setTimeout(() => element.classList.remove(FLASH_CLASS), FLASH_MS);
-    };
+  const canvasSize = useCallback(() => {
+    const { width, height } = store.getState();
+    return { width, height };
+  }, [store]);
 
-    const onFocus = async (event: Event) => {
-      if (!activeRef.current()) return;
-      const request = (event as CustomEvent<ERDCanvasFocusRequest>).detail;
-      if (!request?.id) return;
+  /** Screen rectangle of the given tables, relative to the canvas. */
+  const screenRect = useCallback((ids: string[]): PanelRect => {
+    const bounds = getNodesBounds(ids);
+    const { x, y, zoom } = getViewport();
+    return { x: bounds.x * zoom + x, y: bounds.y * zoom + y, width: bounds.width * zoom, height: bounds.height * zoom };
+  }, [getNodesBounds, getViewport]);
 
-      if (request.type === 'table') {
-        const node = getNodes().find(item => item.id === request.id);
-        if (!node) return;
-        // Take the zoom that fits the table and its neighbours, but centre on the table, in one movement.
-        const { width, height } = store.getState();
-        const bounds = getNodesBounds([node.id, ...getERDTableNeighbourIds(node.id, getEdges())]);
-        const { zoom } = getViewportForBounds(bounds, width, height, ERD_FOCUS_MIN_ZOOM, ERD_FOCUS_MAX_ZOOM, PADDING);
-        const center = centerOf(node);
-        await setCenter(center.x, center.y, { zoom, duration: moveDuration() });
-        flash(node.id);
-        return;
-      }
+  // Keep the zoom when the target fits beside the panel, otherwise fit it; centre it in the uncovered area.
+  const moveTo = useCallback(async (bounds: Rect, coveredLeft: number, shiftRight = 0) => {
+    const { width, height } = canvasSize();
+    const free = Math.max(1, width - coveredLeft - shiftRight);
+    const current = getViewport().zoom;
+    const fitZoom = Math.min((free - 2 * PADDING) / bounds.width, (height - 2 * PADDING) / bounds.height);
+    const zoom = Math.max(ERD_FOCUS_MIN_ZOOM, Math.min(ERD_FOCUS_MAX_ZOOM, Math.min(current, fitZoom)));
+    const centerX = coveredLeft + free / 2;
+    await setViewport({
+      x: centerX - (bounds.x + bounds.width / 2) * zoom,
+      y: height / 2 - (bounds.y + bounds.height / 2) * zoom,
+      zoom,
+    }, { duration: moveDuration() });
+  }, [canvasSize, getViewport, setViewport]);
 
-      const edge = getEdges().find(item => item.id === request.id);
-      if (!edge) return;
-      // Not fitView: it waits for a nodes update, and ERDView drops the empty one it queues.
-      const { width, height } = store.getState();
-      const bounds = getNodesBounds([edge.source, edge.target]);
-      const viewport = getViewportForBounds(bounds, width, height, ERD_FOCUS_MIN_ZOOM, ERD_FOCUS_MAX_ZOOM, PADDING);
-      await setViewport(viewport, { duration: moveDuration() });
-      // Select only after the move: the re-render it causes makes ERDView reapply initialViewport
-      // (the live viewportRef), which would snap a running animation back to its first frame.
-      // Same selection a click on the line makes, without onEdgeClick, so the relationship modal stays closed.
-      store.getState().addSelectedEdges([edge.id]);
-    };
+  /** Shows tables picked in the Explorer; `coveredLeft` is the width the Explorer hides. */
+  const reveal = useCallback(async (ids: string[], coveredLeft: number) => {
+    if (ids.length === 0) return;
+    if (isVisibleBesidePanel(screenRect(ids), canvasSize(), coveredLeft)) return;
+    await moveTo(getNodesBounds(ids), coveredLeft);
+  }, [canvasSize, getNodesBounds, moveTo, screenRect]);
 
-    window.addEventListener(ERD_CANVAS_FOCUS_EVENT, onFocus);
-    return () => {
-      window.removeEventListener(ERD_CANVAS_FOCUS_EVENT, onFocus);
-      window.clearTimeout(flashTimer.current);
-    };
-  }, [canvasRef, getNodes, getEdges, getNodesBounds, setCenter, setViewport, store]);
+  /**
+   * Makes room for the floating popover next to `id`, then returns where it goes:
+   * the side and the table's screen rectangle after the (single) camera move.
+   */
+  const placePopover = useCallback(async (id: string, relatedIds: string[]) => {
+    const canvas = canvasSize();
+    const related = () => relatedIds.map(item => screenRect([item]));
+    let anchor = screenRect([id]);
+    let side = isVisibleBesidePanel(anchor, canvas, 0) ? choosePopoverSide(anchor, canvas, related()) : null;
+    if (!side) {
+      // Centre the table in the space left of a popover on its right.
+      await moveTo(getNodesBounds([id]), 0, POPOVER_WIDTH + POPOVER_GAP);
+      anchor = screenRect([id]);
+      side = choosePopoverSide(anchor, canvas, related()) ?? 'right';
+    }
+    return { side, anchor };
+  }, [canvasSize, getNodesBounds, moveTo, screenRect]);
+
+  return { reveal, placePopover };
 }

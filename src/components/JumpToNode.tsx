@@ -15,27 +15,19 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { useJumpToTableShortcut } from '@/hooks/useJumpToTableShortcut';
 
 interface JumpToNodeProps {
   nodes: Node[];
   className?: string;
   label?: string;
   iconOnly?: boolean;
-  findShortcut?: boolean;
 }
 
-export function JumpToNode({ nodes, className, label = 'Symbol', iconOnly = false, findShortcut = false }: JumpToNodeProps) {
+export function JumpToNode({ nodes, className, label = 'Symbol', iconOnly = false }: JumpToNodeProps) {
   const { fitView } = useReactFlow();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const inputRef = React.useRef<HTMLInputElement>(null);
-  const openFromShortcut = React.useCallback(() => {
-    setOpen(true);
-    inputRef.current?.focus();
-    inputRef.current?.select();
-  }, []);
-  const shortcut = useJumpToTableShortcut(findShortcut, openFromShortcut);
 
   // Focus input when dropdown opens
   React.useEffect(() => {
@@ -90,7 +82,6 @@ export function JumpToNode({ nodes, className, label = 'Symbol', iconOnly = fals
           variant="outline" 
           size={iconOnly ? 'icon-lg' : 'sm'}
           aria-label={`Jump to ${label}`}
-          aria-keyshortcuts={findShortcut ? shortcut.ariaKeyShortcuts : undefined}
           className={cn(
             !iconOnly && "h-9 px-3 text-xs font-bold border-border/50 bg-muted/20 hover:bg-muted text-muted-foreground transition-all",
             className
@@ -109,10 +100,7 @@ export function JumpToNode({ nodes, className, label = 'Symbol', iconOnly = fals
     <DropdownMenu open={open} onOpenChange={setOpen}>
       {iconOnly ? <Tooltip>
         <TooltipTrigger render={trigger} />
-        <TooltipContent side="right" className="gap-6">
-          <span className="whitespace-nowrap">Jump to {label}</span>
-          {findShortcut && <kbd className="ml-auto shrink-0 whitespace-nowrap font-sans text-xs tracking-widest opacity-70">{shortcut.label}</kbd>}
-        </TooltipContent>
+        <TooltipContent side="right">Jump to {label}</TooltipContent>
       </Tooltip> : trigger}
       <DropdownMenuContent align="start" side={iconOnly ? 'right' : 'bottom'} className="w-[280px] p-0 shadow-2xl border-border/50 bg-background/95 backdrop-blur-xl">
         <div className="p-3 pb-2" onPointerDown={(e) => e.stopPropagation()}>

@@ -1,5 +1,5 @@
 import { toast } from 'sonner';
-import { useState, useEffect, useRef, type PointerEvent } from 'react';
+import { useState, useEffect, useRef, type PointerEvent, type ReactNode } from 'react';
 import { ArrowLeft, Plus, Trash2, Key, Check, X, Type, GripVertical, Wand2, MoreHorizontal, Clock3 } from 'lucide-react';
 import { Entity, Column } from '../types';
 import { cn } from '../lib/utils';
@@ -37,6 +37,9 @@ interface PropertiesPanelProps {
   onDeleteEntity: (id: string) => void;
   onBackToTables?: () => void;
   propertiesOnly?: boolean;
+  /** Extra header buttons after Delete, e.g. pin and close of the table popover. */
+  headerActions?: ReactNode;
+  dbmlReadOnly?: boolean;
 }
 
 export default function PropertiesPanel({ 
@@ -45,6 +48,8 @@ export default function PropertiesPanel({
   onDeleteEntity,
   onBackToTables,
   propertiesOnly = false,
+  headerActions,
+  dbmlReadOnly = false,
 }: PropertiesPanelProps) {
   const [editingEntity, setEditingEntity] = useState<Entity | null>(selectedEntity);
   const [activeEditorTab, setActiveEditorTab] = useState<'properties' | 'schema' | 'dbml'>('properties');
@@ -322,6 +327,7 @@ export default function PropertiesPanel({
           >
             <Trash2 className="size-4" />
           </Button>
+          {headerActions}
         </div>
         {!propertiesOnly && <div className="flex w-full gap-1 rounded-lg border border-border bg-muted p-1" aria-label="Table editor sections">
           {[
@@ -351,6 +357,7 @@ export default function PropertiesPanel({
         <TableCodePanel
           entity={editingEntity}
           mode={activeEditorTab}
+          dbmlReadOnly={dbmlReadOnly}
           onUpdateEntity={(updated) => {
             setEditingEntity(updated);
             onUpdateEntity(updated);
