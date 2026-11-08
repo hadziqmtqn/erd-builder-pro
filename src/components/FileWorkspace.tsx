@@ -176,6 +176,14 @@ export function FileWorkspace({ children, root, mainAI, teamState, discussionTar
       }
     });
   }, [location.pathname, location.search, loaded?.uid, loaded?.projectId, panes, busy, flush, navigate, onFocusedSession]);
+  // The address bar shows the focused pane's file, so a copied link or a reload opens that file (BUG-049). It skips the
+  // router on purpose: a router navigation would make the root workspace load the file the pane already has open.
+  // With no panes it goes back to the router's URL. Location is left out of the deps so a route change mid-flush is not overwritten.
+  useEffect(() => {
+    const file = panes.find(pane => paneKey(pane) === focused);
+    const url = file ? paneUrl(file) : location.pathname + location.search;
+    if (window.location.pathname + window.location.search !== url) window.history.replaceState(window.history.state, '', url);
+  }, [panes, focused]);
   const cancelReplacement = () => {
     if (busy) return;
     setPending(null);
