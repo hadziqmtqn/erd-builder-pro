@@ -12,14 +12,13 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies (skip postinstall: prisma generate needs prisma.config.ts, not yet copied)
+# postinstall runs prisma generate, which needs prisma.config.ts (copied later), so skip install scripts for now
 RUN npm ci --ignore-scripts
 
-# Install build tools for better-sqlite3 native compilation
-RUN apk add --no-cache python3 make g++
-
-# Rebuild better-sqlite3 native addon against node:26-alpine ABI
-RUN npm_config_build_from_source=true npm rebuild better-sqlite3
+# Compile better-sqlite3 from source for this image's Node ABI. The C++ toolchain exists only in this
+# stage: the production stage takes the compiled module instead of building it again.
+RUN apk add --no-cache g++ make python3 \
+    && npm_config_build_from_source=true npm rebuild better-sqlite3
 
 # Copy Prisma files (needed for client generation)
 COPY prisma.config.ts ./
@@ -52,15 +51,14 @@ COPY package*.json ./
 # Install the locked production dependencies without running postinstall.
 # prisma CLI is needed at runtime for client regeneration + db push
 # better-sqlite3: native addon required by @prisma/adapter-better-sqlite3 for SQLite mode
-# --ignore-scripts prevents native compilation; built module is copied from build stage below
+# --ignore-scripts: nothing is compiled in this image; better-sqlite3 is swapped for the build stage's copy below
 # --fetch-timeout=300000 handles slow/distanced npm registries
-RUN npm ci --omit=dev --ignore-scripts --fetch-timeout=300000
+# postgresql-client provides psql to probe PostgreSQL databases; no compiler is installed here.
+RUN apk add --no-cache postgresql-client \
+    && npm ci --omit=dev --ignore-scripts --fetch-timeout=300000
 
-# Install runtime dependencies only (postgresql-client for psql database probing)
-RUN apk add --no-cache postgresql-client
-
-# Copy built better-sqlite3 native addon from build stage
-COPY --from=build /app/node_modules/better-sqlite3 ./node_modules/better-sqlite3
+# Swap in the better-sqlite3 module compiled in the build stage
+COPY --from=build /app/node_modules/better-sqlite3/ node_modules/better-sqlite3/
 
 # Copy pre-generated Prisma client from build stage (fallback for Supabase)
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
