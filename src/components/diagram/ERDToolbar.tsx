@@ -8,6 +8,7 @@ import { JumpToNode } from '@/components/JumpToNode';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { isInstalledApp } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import type { ERDPanel } from '@/contexts/ERDPanelContext';
 
 interface ERDToolbarProps {
   nodes: Node<Entity>[];
@@ -16,7 +17,7 @@ interface ERDToolbarProps {
   addEntity: () => void;
   onImportSQL?: () => void;
   onAutoLayout?: () => void;
-  openPanel: (mode: 'dbml' | 'repository' | 'properties') => void;
+  openPanel: (mode: Exclude<ERDPanel, 'closed'> | 'repository') => void;
   handleSync: () => void;
   isSyncing: boolean;
   handleExportImage: () => void;

@@ -140,12 +140,18 @@ export function ERDSidePanel({ panel, onPanelChange, editable, diagramUid }: {
   useEffect(() => {
     const syncRepositoryDbml = (event: Event) => {
       const detail = (event as CustomEvent<{ dbmlSource?: string; diagramUid?: string }>).detail;
-      if (detail?.diagramUid && diagramUid && detail.diagramUid !== diagramUid) return;
+      // Same workspace field as the sender (ERDView), not the URL, which can hold the numeric ID.
+      if (detail?.diagramUid && detail.diagramUid !== activeDiagram?.uid) return;
       if (detail?.dbmlSource) setLocalDbmlContent(detail.dbmlSource);
     };
     window.addEventListener(ERD_REPOSITORY_APPLIED_EVENT, syncRepositoryDbml);
     return () => window.removeEventListener(ERD_REPOSITORY_APPLIED_EVENT, syncRepositoryDbml);
-  }, [diagramUid, setLocalDbmlContent]);
+  }, [activeDiagram?.uid, setLocalDbmlContent]);
+
+  // Losing edit access closes the panel, so it does not come back by itself when access returns.
+  useEffect(() => {
+    if (!editable && panel !== 'closed') onPanelChange('closed');
+  }, [editable, panel, onPanelChange]);
 
   // Table properties belong to the diagram this pane shows.
   const previousDiagramUidRef = useRef(diagramUid);

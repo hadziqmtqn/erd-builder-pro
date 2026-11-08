@@ -122,7 +122,7 @@ interface ERDViewProps {
 
 import { ERDToolbar } from '@/components/diagram/ERDToolbar';
 import { useEditorActive } from '@/contexts/FileSessionContext';
-import { useOpenERDPanel } from '@/contexts/ERDPanelContext';
+import { useOpenERDPanel, type ERDPanel } from '@/contexts/ERDPanelContext';
 
 const ERDViewComponent = ({
   nodes,
@@ -171,7 +171,7 @@ const ERDViewComponent = ({
   const editorActive = useEditorActive();
   const openERDPanel = useOpenERDPanel();
   // Properties and DBML open in this pane's own column; Repository stays in the app-wide panel (BUG-042).
-  const openPanel = useCallback((mode: 'dbml' | 'repository' | 'properties') => {
+  const openPanel = useCallback((mode: Exclude<ERDPanel, 'closed'> | 'repository') => {
     if (mode === 'repository') setRightPanelMode('repository');
     else openERDPanel?.(mode);
   }, [openERDPanel, setRightPanelMode]);
@@ -307,6 +307,11 @@ const ERDViewComponent = ({
   } | null>(null);
   const [approvedChangeIds, setApprovedChangeIds] = useState<string[]>([]);
   const [showChecklist, setShowChecklist] = useState(false);
+  // A diff review blocks editing; the pane's Properties/DBML column would edit the canvas under it (BUG-042).
+  const hasPendingDiff = pendingDiff !== null;
+  React.useEffect(() => {
+    if (hasPendingDiff) openERDPanel?.('closed');
+  }, [hasPendingDiff, openERDPanel]);
 
   const handleNodeClickLocal = useCallback((e: React.MouseEvent, n: Node) => {
     if (e.ctrlKey || e.metaKey) {
