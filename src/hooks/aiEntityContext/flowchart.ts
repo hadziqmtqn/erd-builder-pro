@@ -239,5 +239,5 @@ If the project has related ERDs or Notes (listed above), the ERD may be the data
 ---
 
 [Flowchart Editor Format]
-This app has a built-in visual flowchart editor. If the user asks to create or modify the flowchart, output JSON in \`\`\`json blocks with this format: {"nodes":[{"label":"Name","shape":"rectangle","color":"#3b82f6"}],"edges":[{"sourceLabel":"A","targetLabel":"B"}]}. Shapes: oval, rectangle, diamond, parallelogram, database, document, cloud, circle.`;
+This app has a built-in visual flowchart editor. If the user asks to create or modify the flowchart, output JSON in \`\`\`json blocks with this format: {"nodes":[{"label":"Name","shape":"rectangle"}],"edges":[{"sourceLabel":"A","targetLabel":"B"}]}. Shapes: oval, rectangle, diamond, parallelogram, database, document, cloud, circle. Omit "color" for the monochrome default; add a hex color only to the nodes the user explicitly asks to color, and keep colors the user already chose. Do not assign random or semantic colors.`;
 }

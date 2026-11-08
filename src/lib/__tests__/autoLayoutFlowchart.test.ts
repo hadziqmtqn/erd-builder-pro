@@ -271,4 +271,70 @@ describe('autoLayoutFlowchart', () => {
         a.position.y + Number(a.style!.height) <= b.position.y || b.position.y + Number(b.style!.height) <= a.position.y).toBe(true);
     }
   });
+
+  it('routes connectors into a shared End around shapes, each on its own lane (BUG-015)', () => {
+    const result = autoLayoutFlowchart([
+      makeNode('start', 'Mulai', 'oval'),
+      makeNode('receive', 'Terima webhook'),
+      makeNode('valid', 'Payload valid?', 'diamond'),
+      makeNode('reject', 'Tolak request'),
+      makeNode('transform', 'Transformasi payload'),
+      makeNode('send', 'Kirim API'),
+      makeNode('ok', 'Berhasil?', 'diamond'),
+      makeNode('save', 'Simpan hasil'),
+      makeNode('notify', 'Kirim notifikasi'),
+      makeNode('log', 'Catat error'),
+      makeNode('canRetry', 'Bisa retry?', 'diamond'),
+      makeNode('retry', 'Retry bertahap'),
+      makeNode('fail', 'Tandai gagal'),
+      makeNode('end', 'Selesai', 'oval'),
+    ], [
+      makeEdge('start', 'receive'), makeEdge('receive', 'valid'),
+      makeEdge('valid', 'transform', 'Yes'), makeEdge('valid', 'reject', 'No'),
+      makeEdge('transform', 'send'), makeEdge('send', 'ok'),
+      makeEdge('ok', 'save', 'Yes'), makeEdge('ok', 'log', 'No'),
+      makeEdge('save', 'notify'), makeEdge('notify', 'end'),
+      makeEdge('log', 'canRetry'), makeEdge('canRetry', 'retry', 'Yes'), makeEdge('canRetry', 'fail', 'No'),
+      makeEdge('retry', 'send'), makeEdge('fail', 'end'), makeEdge('reject', 'end'),
+    ]);
+    const box = new Map(result.nodes.map(node => [node.id, {
+      x1: node.position.x, y1: node.position.y,
+      x2: node.position.x + Number(node.style!.width), y2: node.position.y + Number(node.style!.height),
+    }]));
+    type B = { x1: number; y1: number; x2: number; y2: number };
+    const cx = (b: B) => (b.x1 + b.x2) / 2, cy = (b: B) => (b.y1 + b.y2) / 2;
+    // Corner points of each smoothstep route, rebuilt from the handles and offset the layout chose.
+    const route = (edge: Edge) => {
+      const s = box.get(edge.source)!, t = box.get(edge.target)!;
+      const offset = (edge as Edge & { pathOptions: { offset: number } }).pathOptions.offset;
+      if (edge.sourceHandle === edge.targetHandle) {
+        const left = edge.sourceHandle === 'left';
+        const x = left ? Math.min(s.x1, t.x1) - offset : Math.max(s.x2, t.x2) + offset;
+        const side = (b: B) => left ? b.x1 : b.x2;
+        return { lane: x, points: [[side(s), cy(s)], [x, cy(s)], [x, cy(t)], [side(t), cy(t)]] };
+      }
+      if (edge.sourceHandle === 'bottom') {
+        const mid = (s.y2 + t.y1) / 2;
+        return { lane: null, points: [[cx(s), s.y2], [cx(s), mid], [cx(t), mid], [cx(t), t.y1]] };
+      }
+      const sx = edge.sourceHandle === 'left' ? s.x1 : s.x2;
+      return { lane: null, points: [[sx, cy(s)], [cx(t), cy(s)], [cx(t), t.y1]] };
+    };
+    const lanes: number[] = [];
+    for (const edge of result.edges) {
+      const { lane, points } = route(edge);
+      if (lane !== null) lanes.push(lane);
+      for (const [id, b] of box) {
+        if (id === edge.source || id === edge.target) continue;
+        for (let i = 1; i < points.length; i++) {
+          const [ax, ay] = points[i - 1], [bx, by] = points[i];
+          const hit = Math.min(ax, bx) < b.x2 && Math.max(ax, bx) > b.x1 && Math.min(ay, by) < b.y2 && Math.max(ay, by) > b.y1;
+          expect(hit, `${edge.id} crosses ${id}`).toBe(false);
+        }
+      }
+    }
+    expect(result.edges.find(edge => edge.source === 'reject')).toMatchObject({ sourceHandle: 'left', targetHandle: 'left' });
+    expect(new Set(lanes).size).toBe(lanes.length);
+  });
 });
+
