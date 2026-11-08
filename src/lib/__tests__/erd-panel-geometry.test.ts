@@ -45,6 +45,12 @@ describe('choosePopoverSide', () => {
     expect(choosePopoverSide({ x: 40, y: 200, width: 220, height: 180 }, canvas, [])).toBe('right');
   });
 
+  it('keeps the popover off the toolbar on the left edge', () => {
+    const nearToolbar = { x: 340, y: 200, width: 220, height: 180 };
+    expect(choosePopoverSide(nearToolbar, { width: 880, height: 800 }, [], 16)).toBe('left');
+    expect(choosePopoverSide(nearToolbar, { width: 880, height: 800 }, [], 72)).toBeNull();
+  });
+
   it('returns null when the popover fits on neither side, so the camera moves first', () => {
     expect(choosePopoverSide({ x: 200, y: 200, width: 220, height: 180 }, { width: 700, height: 800 }, [])).toBeNull();
   });

@@ -8,6 +8,8 @@ export const EXPLORER_LEFT = 72;
 export const EXPLORER_COVERED = EXPLORER_LEFT + EXPLORER_WIDTH;
 export const POPOVER_WIDTH = 304;
 export const POPOVER_GAP = 12;
+/** Height of the floating table editor (36rem in ERDTablePopover), shrunk on short canvases. */
+export const POPOVER_HEIGHT = 576;
 /** Panes at least this wide dock the table editor beside the canvas instead of floating it. */
 export const DOCK_MIN_WIDTH = 1100;
 const MARGIN = 16;
@@ -28,19 +30,21 @@ export function isVisibleBesidePanel(target: PanelRect, canvas: { width: number;
 
 /**
  * The side of `anchor` (a table) where the popover fits inside the canvas, preferring the side that covers
- * none of `avoid` (its related tables), then the right. `null` when neither side fits: move the camera first.
+ * none of `avoid` (its related tables), then the right. `leftBound` keeps it off the ERD toolbar.
+ * `null` when neither side fits: move the camera first.
  */
 export function choosePopoverSide(
   anchor: PanelRect,
   canvas: { width: number; height: number },
   avoid: PanelRect[],
+  leftBound = MARGIN,
   width = POPOVER_WIDTH,
 ): 'left' | 'right' | null {
   const height = Math.min(canvas.height - 2 * MARGIN, Math.max(anchor.height, 320));
   const top = Math.max(MARGIN, Math.min(anchor.y, canvas.height - MARGIN - height));
   const candidates = (['right', 'left'] as const).map(side => {
     const rect = { x: side === 'right' ? anchor.x + anchor.width + POPOVER_GAP : anchor.x - POPOVER_GAP - width, y: top, width, height };
-    const fits = rect.x >= MARGIN && rect.x + width <= canvas.width - MARGIN;
+    const fits = rect.x >= leftBound && rect.x + width <= canvas.width - MARGIN;
     return { side, fits, covered: avoid.filter(item => overlaps(rect, item)).length };
   }).filter(candidate => candidate.fits);
   if (candidates.length === 0) return null;

@@ -127,6 +127,7 @@ import { ERDExplorer, INITIAL_EXPLORER_STATE, type ERDExplorerState } from '@/co
 import { ERDTablePopover } from '@/components/diagram/ERDTablePopover';
 import { ERDDBMLDrawer } from '@/components/diagram/ERDDBMLDrawer';
 import { useJumpToTableShortcut } from '@/hooks/useJumpToTableShortcut';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { getERDTableNeighbourIds } from '@/lib/erd-canvas-focus';
 import { DOCK_MIN_WIDTH, EXPLORER_COVERED, POPOVER_GAP, POPOVER_WIDTH } from '@/lib/erd-panel-geometry';
 
@@ -215,16 +216,11 @@ const ERDViewComponent = ({
   // null = auto: docked beside the canvas when the pane is wide, floating otherwise. On phones the docked
   // editor covers the canvas (its max-md styles), which fits better than a popover beside a table.
   const pinnedRef = React.useRef<boolean | null>(null);
-  const [dockByDefault, setDockByDefault] = useState(false);
-  const dockByDefaultRef = React.useRef(dockByDefault);
-  dockByDefaultRef.current = dockByDefault;
-  React.useEffect(() => {
-    const element = layoutRef.current;
-    if (!element) return;
-    const observer = new ResizeObserver(([entry]) => setDockByDefault(entry.contentRect.width >= DOCK_MIN_WIDTH || entry.contentRect.width < 768));
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
+  const isMobile = useIsMobile();
+  const isMobileRef = React.useRef(isMobile);
+  isMobileRef.current = isMobile;
+  // Measured when the editor opens, so a pane resized by the split separator is taken as it is now.
+  const dockByDefault = useCallback(() => isMobileRef.current || (layoutRef.current?.clientWidth ?? 0) >= DOCK_MIN_WIDTH, []);
   const popoverFloating = Boolean(inspector?.floating);
 
   const openExplorer = useCallback(() => {
@@ -244,18 +240,19 @@ const ERDViewComponent = ({
 
   const canEditRef = React.useRef(canEdit);
   canEditRef.current = canEdit;
-  const editTable = useCallback(async (id: string, docked = pinnedRef.current ?? dockByDefaultRef.current) => {
+  const editTable = useCallback(async (id: string, docked = pinnedRef.current ?? dockByDefault()) => {
     if (!canEditRef.current) return;
     setDbmlOpen(false);
-    setSelectedNodeId(id);
-    if (docked) { setInspector({ id, floating: null }); return; }
-    const { side, anchor } = await placePopover(id, getERDTableNeighbourIds(id, getEdges()));
+    if (docked) { setInspector({ id, floating: null }); setSelectedNodeId(id); return; }
+    const { side, anchor, top } = await placePopover(id, getERDTableNeighbourIds(id, getEdges()));
     setInspector({ id, floating: {
       side,
       left: side === 'right' ? anchor.x + anchor.width + POPOVER_GAP : anchor.x - POPOVER_GAP - POPOVER_WIDTH,
-      top: Math.max(12, anchor.y),
+      top,
     } });
-  }, [getEdges, placePopover, setSelectedNodeId]);
+    // Selected after the camera move: the re-render it causes would cut the glide short.
+    setSelectedNodeId(id);
+  }, [getEdges, placePopover, setSelectedNodeId, dockByDefault]);
 
   // Stable for EntityNode, so opening the editor from a table does not re-render every table node.
   const editTableRef = React.useRef(editTable);
@@ -280,7 +277,7 @@ const ERDViewComponent = ({
     if (!inspector) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.defaultPrevented || !editorActive()) return;
-      const target = event.target as HTMLElement | null;
+      const target = event.target instanceof HTMLElement ? event.target : null;
       if (target?.closest('[role="dialog"], [role="alertdialog"], [role="listbox"], [role="menu"]')) return;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable || target.closest('.cm-editor'))) {
         target.blur();
@@ -506,8 +503,9 @@ const ERDViewComponent = ({
 
   const hasComments = Boolean(comments);
   const styledEdges = React.useMemo(() => styleErdEdges(edges, allSelectedIds, hoveredEdgeId).map(edge => {
+    // The Explorer or table editor focus replaces the selection's active/dimmed classes instead of stacking on them.
     const focused = focus && (focus.edges.has(edge.id) ? 'edge-animated-active' : 'edge-dimmed');
-    const styled = focused ? { ...edge, className: [edge.className, focused].filter(Boolean).join(' ') } : edge;
+    const styled = focused ? { ...edge, className: [...(edge.className ?? '').split(' ').filter(name => name && name !== 'edge-animated-active' && name !== 'edge-dimmed'), focused].join(' ') } : edge;
     return hasComments ? { ...styled, type: 'commentable' } : styled;
   }), [edges, allSelectedIds, hasComments, hoveredEdgeId, focus]);
   const styledDiffEdges = React.useMemo(

@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { useReactFlow, useStoreApi, type Rect } from '@xyflow/react';
 import { ERD_FOCUS_MAX_ZOOM, ERD_FOCUS_MIN_ZOOM } from '@/lib/erd-canvas-focus';
-import { choosePopoverSide, isVisibleBesidePanel, POPOVER_GAP, POPOVER_WIDTH, type PanelRect } from '@/lib/erd-panel-geometry';
+import { choosePopoverSide, EXPLORER_LEFT, isVisibleBesidePanel, POPOVER_GAP, POPOVER_HEIGHT, POPOVER_WIDTH, type PanelRect } from '@/lib/erd-panel-geometry';
 
 const MOVE_MS = 400;
 const PADDING = 48;
@@ -37,11 +37,18 @@ export function useERDCanvasFocus() {
     const fitZoom = Math.min((free - 2 * PADDING) / bounds.width, (height - 2 * PADDING) / bounds.height);
     const zoom = Math.max(ERD_FOCUS_MIN_ZOOM, Math.min(ERD_FOCUS_MAX_ZOOM, Math.min(current, fitZoom)));
     const centerX = coveredLeft + free / 2;
-    await setViewport({
+    const target = {
       x: centerX - (bounds.x + bounds.width / 2) * zoom,
       y: height / 2 - (bounds.y + bounds.height / 2) * zoom,
       zoom,
-    }, { duration: moveDuration() });
+    };
+    const duration = moveDuration();
+    // Not `await setViewport(...)`: a re-render during the glide interrupts it and that promise never settles.
+    // Wait the glide out, then land on the target if it was cut short.
+    void setViewport(target, { duration });
+    if (duration) await new Promise(resolve => window.setTimeout(resolve, duration + 50));
+    const now = getViewport();
+    if (Math.abs(now.x - target.x) > 1 || Math.abs(now.y - target.y) > 1 || Math.abs(now.zoom - target.zoom) > 0.001) await setViewport(target);
   }, [canvasSize, getViewport, setViewport]);
 
   /** Shows tables picked in the Explorer; `coveredLeft` is the width the Explorer hides. */
@@ -52,21 +59,24 @@ export function useERDCanvasFocus() {
   }, [canvasSize, getNodesBounds, moveTo, screenRect]);
 
   /**
-   * Makes room for the floating popover next to `id`, then returns where it goes:
-   * the side and the table's screen rectangle after the (single) camera move.
+   * Makes room for the floating popover next to `id`, then returns where it goes: the side, the table's
+   * screen rectangle after the (single) camera move, and a top that keeps the popover inside the canvas.
    */
   const placePopover = useCallback(async (id: string, relatedIds: string[]) => {
     const canvas = canvasSize();
     const related = () => relatedIds.map(item => screenRect([item]));
     let anchor = screenRect([id]);
-    let side = isVisibleBesidePanel(anchor, canvas, 0) ? choosePopoverSide(anchor, canvas, related()) : null;
+    // The toolbar runs down the left edge, so neither the table nor the popover may sit under it.
+    let side = isVisibleBesidePanel(anchor, canvas, EXPLORER_LEFT) ? choosePopoverSide(anchor, canvas, related(), EXPLORER_LEFT) : null;
     if (!side) {
       // Centre the table in the space left of a popover on its right.
-      await moveTo(getNodesBounds([id]), 0, POPOVER_WIDTH + POPOVER_GAP);
+      await moveTo(getNodesBounds([id]), EXPLORER_LEFT, POPOVER_WIDTH + POPOVER_GAP);
       anchor = screenRect([id]);
-      side = choosePopoverSide(anchor, canvas, related()) ?? 'right';
+      side = choosePopoverSide(anchor, canvas, related(), EXPLORER_LEFT) ?? 'right';
     }
-    return { side, anchor };
+    const height = Math.min(POPOVER_HEIGHT, canvas.height - 24);
+    const top = Math.max(12, Math.min(anchor.y, canvas.height - 12 - height));
+    return { side, anchor, top };
   }, [canvasSize, getNodesBounds, moveTo, screenRect]);
 
   return { reveal, placePopover };
