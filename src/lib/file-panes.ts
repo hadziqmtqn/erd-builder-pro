@@ -41,6 +41,16 @@ export function paneUrl(file: PaneFile) {
   return `/${route}/${encodeURIComponent(file.uid)}?${new URLSearchParams({ pid: file.projectId })}`;
 }
 
+/**
+ * The URL the address bar should switch to, or null to leave it (BUG-049). `shown` is the focused pane's URL that was
+ * put there last. With no focused pane the router's URL comes back only while the bar still shows that pane URL: a
+ * navigation that closed the panes has already pushed its own URL, and the router's location can lag behind it.
+ */
+export function paneAddressUrl(focusedUrl: string | null, shown: string | null, current: string, routerUrl: string) {
+  if (focusedUrl) return focusedUrl === current ? null : focusedUrl;
+  return shown === current && routerUrl !== current ? routerUrl : null;
+}
+
 export function validPaneFile(value: unknown): value is PaneFile {
   const file = value as PaneFile | null;
   return !!file && ['notes', 'erd', 'flowchart', 'drawings'].includes(file.type)

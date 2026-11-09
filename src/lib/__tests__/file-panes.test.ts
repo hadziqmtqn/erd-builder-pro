@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { assertNoCommentDraft, assertNoPendingReview, findPaneDocument, flushChildPanes, focusesPane, loadedPaneTitle, PANE_FLUSH_CHILDREN, paneDocumentTitle, paneKey, paneRequest, paneUrl, validPaneFile, type PaneFile } from '../file-panes';
+import { assertNoCommentDraft, assertNoPendingReview, findPaneDocument, flushChildPanes, focusesPane, loadedPaneTitle, paneAddressUrl, PANE_FLUSH_CHILDREN, paneDocumentTitle, paneKey, paneRequest, paneUrl, validPaneFile, type PaneFile } from '../file-panes';
 
 const note: PaneFile = { type: 'notes', uid: 'a', title: 'Notes', projectId: '1' };
 const erd: PaneFile = { ...note, type: 'erd', uid: 'b', title: 'Schema' };
@@ -100,5 +100,16 @@ describe('BUG-045 pane title follows the loaded document', () => {
     expect(loadedPaneTitle(pane, { id: 9, uid: 'previous', title: 'Previous file' })).toBe('');
     expect(loadedPaneTitle(pane, null)).toBe('');
     expect(loadedPaneTitle(pane, { uid: 'c38fb9dd', name: 'Drawing name' })).toBe('Drawing name');
+  });
+
+  it('BUG-049 never puts the previous file back in the address bar after a file switch', () => {
+    const pane = paneUrl(note);
+    expect(paneAddressUrl(pane, null, '/diagrams/b?pid=1', '/diagrams/b?pid=1')).toBe(pane);
+    expect(paneAddressUrl(pane, pane, pane, '/diagrams/b?pid=1')).toBeNull();
+    // Closing the panes in place hands the address bar back to the router.
+    expect(paneAddressUrl(null, pane, pane, '/diagrams/b?pid=1')).toBe('/diagrams/b?pid=1');
+    // A header tab switch already pushed the new URL while the router still reports the old one.
+    expect(paneAddressUrl(null, null, '/flowcharts/c?pid=1', '/diagrams/b?pid=1')).toBeNull();
+    expect(paneAddressUrl(null, pane, '/flowcharts/c?pid=1', '/diagrams/b?pid=1')).toBeNull();
   });
 });
