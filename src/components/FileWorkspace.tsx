@@ -8,7 +8,7 @@ import type { WorkspaceContextValue } from '@/providers/WorkspaceContext';
 import type { AIActionContextValue } from '@/contexts/AIActionContext';
 import type { FileSessionScope } from '@/contexts/FileSessionContext';
 import { FilePanesContext } from '@/contexts/FilePanesContext';
-import { findPaneDocument, focusesPane, loadedPaneTitle, paneDocumentTitle, paneKey, paneRequest, paneUrl, PANE_FLUSH_CHILDREN, PANE_REQUEST, validPaneFile, type PaneFile } from '@/lib/file-panes';
+import { findPaneDocument, focusesPane, loadedPaneTitle, paneAddressUrl, paneDocumentTitle, paneKey, paneRequest, paneUrl, PANE_FLUSH_CHILDREN, PANE_REQUEST, validPaneFile, type PaneFile } from '@/lib/file-panes';
 import { flushPaneFile } from '@/lib/pane-save';
 import { NativeFileSession, type FileSession } from './NativeFileSession';
 import { ProjectFileTabs } from './ProjectFileTabs';
@@ -178,11 +178,14 @@ export function FileWorkspace({ children, root, mainAI, teamState, discussionTar
   }, [location.pathname, location.search, loaded?.uid, loaded?.projectId, panes, busy, flush, navigate, onFocusedSession]);
   // The address bar shows the focused pane's file, so a copied link or a reload opens that file (BUG-049). It skips the
   // router on purpose: a router navigation would make the root workspace load the file the pane already has open.
-  // With no panes it goes back to the router's URL. Location is left out of the deps so a route change mid-flush is not overwritten.
+  // Location is left out of the deps so a route change mid-flush is not overwritten.
+  const shownUrl = useRef<string | null>(null);
   useEffect(() => {
     const file = panes.find(pane => paneKey(pane) === focused);
-    const url = file ? paneUrl(file) : location.pathname + location.search;
-    if (window.location.pathname + window.location.search !== url) window.history.replaceState(window.history.state, '', url);
+    const focusedUrl = file ? paneUrl(file) : null;
+    const url = paneAddressUrl(focusedUrl, shownUrl.current, window.location.pathname + window.location.search, location.pathname + location.search);
+    if (url) window.history.replaceState(window.history.state, '', url);
+    shownUrl.current = focusedUrl;
   }, [panes, focused]);
   const cancelReplacement = () => {
     if (busy) return;
