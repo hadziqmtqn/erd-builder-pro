@@ -184,7 +184,8 @@ async function ensureDatabaseTables(): Promise<boolean> {
 
 /** Runs schema.sql statement by statement, skipping tables and indexes that already exist. */
 async function applySchemaSql(): Promise<void> {
-  if (!prisma) return;
+  const db = prisma;
+  if (!db) return;
   const sql = fs.readFileSync(schemaSqlPath, "utf8");
   // Strip SQL comments (-- CreateTable, -- CreateIndex) BEFORE splitting by ";"
   // because the schema.sql format puts "-- CreateTable" on the line before each
@@ -198,11 +199,15 @@ async function applySchemaSql(): Promise<void> {
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 
-  let tableCount = 0;
+  // IF NOT EXISTS skips what is already there. Without it each existing table and index raised an error that Prisma
+  // logs as prisma:error, about a hundred lines on every Desktop start (BUG-057).
+  const countObjects = async () => Number(((await db.$queryRawUnsafe(
+    "SELECT count(*) AS n FROM sqlite_master WHERE type IN ('table', 'index')",
+  )) as { n: number | bigint }[])[0]?.n ?? 0);
+  const before = await countObjects();
   for (const stmt of statements) {
     try {
-      await prisma.$executeRawUnsafe(stmt + ";");
-      tableCount++;
+      await db.$executeRawUnsafe(stmt.replace(/^CREATE (UNIQUE INDEX|INDEX|TABLE) /, "CREATE $1 IF NOT EXISTS ") + ";");
     } catch (err: any) {
       // Ignore "already exists" errors for idempotency
       if (err?.message?.includes("already exists")) continue;
@@ -210,7 +215,8 @@ async function applySchemaSql(): Promise<void> {
     }
   }
 
-  if (tableCount) logger.info({ tableCount }, "Database tables and indexes created from schema.sql");
+  const created = (await countObjects()) - before;
+  if (created > 0) logger.info({ created }, "Database tables and indexes created from schema.sql");
 }
 
 // Start the HTTP server immediately so the frontend can connect.
