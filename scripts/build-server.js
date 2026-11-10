@@ -307,10 +307,8 @@ async function main() {
     }
   }
   if (schemaSql) {
-    const oneActiveMemberIndex = 'CREATE UNIQUE INDEX "team_members_one_active_user_key" ON "team_members"("user_id") WHERE "status" = \'active\';';
-    if (!schemaSql.includes('"team_members_one_active_user_key"')) {
-      schemaSql = `${schemaSql}\n\n${oneActiveMemberIndex}`;
-    }
+    // No "one active Team per user" index: startup drops it so a user can be active in several Teams, and
+    // run.ts applies schema.sql on every Desktop and CLI start, which would bring it back (BUG-057).
     writeFileSync(schemaSqlPath, schemaSql + "\n", "utf8");
     console.log(`   → schema.sql (${schemaSql.split("\n").length} lines)`);
   }
