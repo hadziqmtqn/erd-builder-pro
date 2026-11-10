@@ -19,7 +19,20 @@ export function loadDbmlCore(): Promise<DbmlCore> {
 
 export const isDbmlCoreLoaded = () => loaded !== null;
 
-/** Sync access for callers that run after `loadDbmlCore()` resolved (ERD routes await it before rendering). */
+/**
+ * Starts loading the parser once the page is idle (at the latest after 3 s). Compiling 15 MB blocks the main
+ * thread, so an ERD canvas is drawn first instead of waiting behind it (BUG-053).
+ */
+export function preloadDbmlCore(): void {
+  const load = () => { void loadDbmlCore().catch(() => {}); };
+  if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(load, { timeout: 3000 });
+  else window.setTimeout(load, 1000);
+}
+
+/**
+ * Sync access for callers that run after `loadDbmlCore()` resolved. The DB Client route awaits it before rendering;
+ * the ERD canvas does not (BUG-053), so ERD code that parses DBML waits for it first.
+ */
 export function dbmlCore(): DbmlCore {
   if (loaded) return loaded;
   void loadDbmlCore();

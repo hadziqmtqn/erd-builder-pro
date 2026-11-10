@@ -29,6 +29,8 @@ interface DBMLEditorPanelProps {
   onSelectTable?: (tableName: string) => void;
   /** Extra header buttons after the reference button, e.g. closing the DBML drawer. */
   headerActions?: ReactNode;
+  /** False while the DBML parser is still loading; an edit typed meanwhile is applied once it is ready (BUG-053). */
+  parserReady?: boolean;
 }
 
 const APPLY_DEBOUNCE_MS = 1500;
@@ -50,6 +52,7 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({
   edges,
   onSelectTable,
   headerActions,
+  parserReady = true,
 }: DBMLEditorPanelProps) {
   const [helpOpen, setHelpOpen] = useState(false);
   const [suggestions, setSuggestions] = useState<DBMLSuggestion[]>([]);
@@ -220,7 +223,7 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({
   }, [value]);
 
   useEffect(() => {
-    if (!userEditPending.current || !value.trim()) return;
+    if (!parserReady || !userEditPending.current || !value.trim()) return;
     if (value === lastParsedValue.current) {
       userEditPending.current = false;
       return;
@@ -243,7 +246,7 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({
     }, APPLY_DEBOUNCE_MS);
 
     return () => clearTimeout(applyTimer.current);
-  }, [value]);
+  }, [value, parserReady]);
 
   const lastStructureRef = useRef<{ data: Map<string, unknown>; edges: Edge[] } | null>(null);
 

@@ -44,6 +44,7 @@ import { styleErdEdges } from '@/lib/erd-edge-style';
 import { ERD_HISTORY_PREVIEW_EVENT, type ErdHistoryPreview } from '@/lib/history-diagram';
 import { ERD_REPOSITORY_APPLIED_EVENT, ERD_REPOSITORY_PREVIEW_EVENT, type RepositoryPreview } from '@/lib/repository-preview';
 import { erdToDBML } from '@/lib/dbml-converter';
+import { isDbmlCoreLoaded, loadDbmlCore, preloadDbmlCore } from '@/lib/dbml-core';
 import { constrainDbClientChanges, constrainTableChanges, tableSize } from '@/lib/erd-geometry';
 import { ERDRoutedEdge, ERDRoutingContext } from '@/components/diagram/ERDRoutedEdge';
 import { ERDEdgeLabels } from '@/components/diagram/ERDEdgeLabels';
@@ -715,11 +716,27 @@ const ERDViewComponent = ({
     return unregister;
   }, [registerContentHandler, startDiff, isReadOnly, isProductionDb]);
 
+  // The route draws this canvas without the DBML parser (BUG-053). Saves and DBML features of an editable diagram
+  // need it soon, so load it once the diagram has loaded and the page is idle.
+  React.useEffect(() => {
+    if (!isReadOnly && !isProductionDb && !isLoading) preloadDbmlCore();
+  }, [isReadOnly, isProductionDb, isLoading]);
+
+  // Pending schemas need the parser too. Load it when a schema is waiting and take the schema out of storage only
+  // once the parser is ready, or a parse error would lose the schema.
+  const [dbmlParserLoads, setDbmlParserLoads] = React.useState(0);
+  const waitForDbmlParser = React.useCallback(() => {
+    if (isDbmlCoreLoaded()) return false;
+    void loadDbmlCore().then(() => setDbmlParserLoads(count => count + 1), () => {});
+    return true;
+  }, []);
+
   React.useEffect(() => {
     if (isReadOnly || isProductionDb) return;
     const pendingSchema = localStorage.getItem('pending_create_erd_schema')
       || localStorage.getItem('pending_create_erd_ddl');
     if (pendingSchema) {
+      if (waitForDbmlParser()) return;
       localStorage.removeItem('pending_create_erd_schema');
       localStorage.removeItem('pending_create_erd_ddl');
       const result = applyToErdContent(nodesRef.current, edgesRef.current, 'erd-generate-sql', pendingSchema);
@@ -743,7 +760,7 @@ const ERDViewComponent = ({
         }
       }
     }
-  }, [setNodes, setEdges, startDiff, saveDiagram, triggerDebouncedSync, isReadOnly, isProductionDb]);
+  }, [setNodes, setEdges, startDiff, saveDiagram, triggerDebouncedSync, isReadOnly, isProductionDb, waitForDbmlParser, dbmlParserLoads]);
 
   // ─── Handle pending UPDATE schema ──
   // Unlike create, update waits for server data to load first (nodes.length > 0),
@@ -758,6 +775,7 @@ const ERDViewComponent = ({
     // Wait for server data to load — nodes will be empty during navigation,
     // then populated once selectDiagram completes
     if (nodes.length === 0) return;
+    if (waitForDbmlParser()) return;
 
     // Consume the pending schema
     localStorage.removeItem('pending_update_erd_schema');
@@ -771,7 +789,7 @@ const ERDViewComponent = ({
     } else {
       toast.error('Could not parse the schema for diff');
     }
-  }, [nodes, startDiff, pendingErdDiffTrigger, isReadOnly, isProductionDb]);
+  }, [nodes, startDiff, pendingErdDiffTrigger, isReadOnly, isProductionDb, waitForDbmlParser, dbmlParserLoads]);
 
   const content = (
     <div className="flex-1 min-w-0 relative flex flex-col overflow-hidden border rounded-xl bg-muted/20" style={{ contain: 'paint layout' }}>
