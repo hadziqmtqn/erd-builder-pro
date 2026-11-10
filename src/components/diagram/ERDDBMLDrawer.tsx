@@ -10,6 +10,7 @@ import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { useSettledERDCanvas } from '@/contexts/ERDCanvasContext';
 import { dbmlToERD, erdToDBML } from '@/lib/dbml-converter';
 import { mergeDBMLCanvas } from '@/lib/dbml-canvas-merge';
+import { useDbmlCoreReady } from '@/lib/dbml-core';
 import { ERD_REPOSITORY_APPLIED_EVENT } from '@/lib/repository-preview';
 
 function isValidDBMLSource(content: string): boolean {
@@ -67,6 +68,8 @@ export const ERDDBMLDrawer = memo(function ERDDBMLDrawer({ open, onClose }: { op
   const { activeDiagram, saveDiagram, viewportRef, isGuest, triggerDebouncedSync, setNodes, setEdges, takeSnapshot, setSelectedNodeId } = useWorkspace();
   // Settled, not live: re-rendering on every drag frame made dragging slow.
   const { nodes, edges } = useSettledERDCanvas();
+  // The canvas opens before the DBML parser has loaded (BUG-053); opening the drawer loads it if it is not there yet.
+  const parserReady = useDbmlCoreReady(open);
   const [height, setHeight] = useState(48);
   const drawerRef = useRef<HTMLDivElement>(null);
 
@@ -225,6 +228,7 @@ export const ERDDBMLDrawer = memo(function ERDDBMLDrawer({ open, onClose }: { op
       </div>
       <div className="min-h-0 flex-1">
         <DBMLEditorPanel
+          parserReady={parserReady}
           value={dbmlContent}
           onChange={handleDBMLContentChange}
           onApply={handleDBMLApply}
