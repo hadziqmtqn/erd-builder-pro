@@ -35,6 +35,8 @@ interface RelationshipPropertiesPanelProps {
   onFlipEdge: (edgeId: string) => void;
   onDeleteEdge: (id: string) => void;
   moveOnly?: boolean;
+  /** Shows the relationship with every control disabled and no Move or Delete, for a user who cannot edit the file (BUG-051). */
+  readOnly?: boolean;
 }
 
 export default function RelationshipPropertiesPanel({ 
@@ -44,9 +46,10 @@ export default function RelationshipPropertiesPanel({
   onFlipEdge,
   onDeleteEdge,
   moveOnly = false,
+  readOnly = false,
 }: RelationshipPropertiesPanelProps) {
   if (!selectedEdge) return null;
-  if (moveOnly) {
+  if (moveOnly && !readOnly) {
     return (
       <Button
         variant="outline"
@@ -82,6 +85,7 @@ export default function RelationshipPropertiesPanel({
             Relationship Cardinality
           </Label>
           <Select
+            disabled={readOnly}
             value={RELATIONSHIP_TYPES.find(t => t.shortLabel === selectedEdge.label)?.value || RELATIONSHIP_TYPES[1].value}
             onValueChange={(value) => {
               const type = RELATIONSHIP_TYPES.find(t => t.value === value);
@@ -107,6 +111,7 @@ export default function RelationshipPropertiesPanel({
       <div className="space-y-3 rounded-xl border border-border/40 bg-muted/20 p-4">
         <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Foreign Key Actions</Label>
         <Input
+          disabled={readOnly}
           value={relationData.constraint_name || ''}
           placeholder="Constraint name"
           onChange={event => onUpdateEdge(selectedEdge.id, { data: { constraint_name: event.target.value } })}
@@ -118,6 +123,7 @@ export default function RelationshipPropertiesPanel({
               <div key={field} className="space-y-1">
                 <Label className="text-[10px]">{field === 'on_delete' ? 'On delete' : 'On update'}</Label>
                 <Select
+                  disabled={readOnly}
                   value={selectedAction}
                   onValueChange={value => onUpdateEdge(selectedEdge.id, { data: { [field]: normalizeFkAction(value) } })}
                 >
@@ -143,7 +149,7 @@ export default function RelationshipPropertiesPanel({
         </div>
       </div>
 
-      <div className="pt-4">
+      {!readOnly && <div className="pt-4">
         <Button 
           variant="outline" 
           size="sm" 
@@ -162,7 +168,7 @@ export default function RelationshipPropertiesPanel({
           <Trash2 className="w-3.5 h-3.5" />
           Delete Relationship
         </Button>
-      </div>
+      </div>}
     </div>
   );
 }

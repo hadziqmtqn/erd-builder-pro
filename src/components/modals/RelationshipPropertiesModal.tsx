@@ -18,6 +18,7 @@ interface RelationshipPropertiesModalProps {
   handleEdgeFlip: (edgeId: string) => void;
   deleteEdge: (edgeId: string) => void;
   moveOnly?: boolean;
+  readOnly?: boolean;
 }
 
 export const RelationshipPropertiesModal: React.FC<RelationshipPropertiesModalProps> = ({
@@ -29,13 +30,19 @@ export const RelationshipPropertiesModal: React.FC<RelationshipPropertiesModalPr
   handleEdgeFlip,
   deleteEdge,
   moveOnly = false,
+  readOnly = false,
 }) => {
+  const moving = moveOnly && !readOnly;
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>{moveOnly ? 'Move Relationship Connector' : 'Relationship Properties'}</DialogTitle>
-          {moveOnly ? (
+          <DialogTitle>{moving ? 'Move Relationship Connector' : 'Relationship Properties'}</DialogTitle>
+          {readOnly ? (
+            <DialogDescription>
+              The cardinality and foreign key actions between these two tables. You can view them but not change them.
+            </DialogDescription>
+          ) : moving ? (
             <DialogDescription>
               Move this connector without changing its related tables or columns.
             </DialogDescription>
@@ -53,6 +60,7 @@ export const RelationshipPropertiesModal: React.FC<RelationshipPropertiesModalPr
             onFlipEdge={handleEdgeFlip}
             onDeleteEdge={deleteEdge}
             moveOnly={moveOnly}
+            readOnly={readOnly}
           />
         </DialogBody>
       </DialogContent>
