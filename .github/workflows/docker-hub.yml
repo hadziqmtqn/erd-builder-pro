@@ -13,6 +13,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Check that the tag matches package.json
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "${GITHUB_REF_NAME#v}" != "$VERSION" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match version ${VERSION} in package.json. Bump the version before tagging."
+            exit 1
+          fi
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
 

@@ -30,6 +30,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Check that the tag matches package.json
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "${GITHUB_REF_NAME#v}" != "$VERSION" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match version ${VERSION} in package.json. Bump the version before tagging."
+            exit 1
+          fi
+
       - name: Build universal macOS Menu Bar helper
         run: |
           swiftc -O -target arm64-apple-macosx11.0 cli/menubar/ERDBProTray.swift -o /tmp/erdbpro-tray-arm64
