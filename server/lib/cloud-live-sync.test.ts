@@ -110,6 +110,17 @@ describe("Cloud live sync WebSocket", () => {
     expect(client.readyState).toBe(WebSocket.OPEN);
   });
 
+  it("accepts an upgrade that Traefik forwards as ws/wss for the page protocol (BUG-054)", async () => {
+    const https = await connect({ cookie: "token=session-cookie", origin: baseUrl.replace(/^ws:/, "https:"), forwardedProtocol: "wss" });
+    const http = await connect({ cookie: "token=session-cookie", origin: baseUrl.replace(/^ws:/, "http:"), forwardedProtocol: "ws" });
+
+    expect(https.readyState).toBe(WebSocket.OPEN);
+    expect(http.readyState).toBe(WebSocket.OPEN);
+    // A TLS upgrade cannot come from a plain-HTTP page, and another site stays refused.
+    await expect(connect({ cookie: "token=session-cookie", origin: baseUrl.replace(/^ws:/, "http:"), forwardedProtocol: "wss" })).rejects.toThrow();
+    await expect(connect({ cookie: "token=session-cookie", origin: "https://attacker.test", forwardedProtocol: "wss" })).rejects.toThrow();
+  });
+
   it("sends metadata invalidation to a removed member, then denies a new authorization", async () => {
     const origin = baseUrl.replace(/^ws:/, "http:");
     const client = await connect({ cookie: "token=session-cookie", origin });
