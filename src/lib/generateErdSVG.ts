@@ -1,5 +1,5 @@
 import { Edge, Node, Position } from '@xyflow/react';
-import { routeErdEdge } from './erd-routing';
+import { roundedRoutePath, routeErdEdge } from './erd-routing';
 import type { Column, Entity } from '@/types';
 import { formatColumnType } from './column-metadata';
 
@@ -75,7 +75,7 @@ export function generateErdSVG(nodes: Node<Entity>[], edges: Edge[], theme: Them
     const targetPoint = point(target, edge.targetHandle, false);
     const route = routeErdEdge(sourcePoint, targetPoint, sourcePoint.position === Position.Right, targetPoint.position === Position.Right,
       boxes.map(box => ({ ...box.node.position, width: box.width, height: box.height })));
-    const path = route.map((p, i) => `${i ? 'L' : 'M'}${p.x},${p.y}`).join(' ');
+    const path = roundedRoutePath(route);
     return `<path d="${path}" fill="none" stroke="${palette.edge}" stroke-width="2" marker-end="url(#arrow)"/>`;
   }).join('');
 
@@ -92,5 +92,5 @@ export function generateErdSVG(nodes: Node<Entity>[], edges: Edge[], theme: Them
     return `<g transform="translate(${node.position.x} ${node.position.y})"><rect width="${width}" height="${height}" rx="8" fill="${palette.card}" stroke="${color}" stroke-width="2"/><path d="M8 0H${width - 8}Q${width} 0 ${width} 8V${HEADER_HEIGHT}H0V8Q0 0 8 0" fill="${color}" fill-opacity="0.13"/><line x1="0" y1="${HEADER_HEIGHT}" x2="${width}" y2="${HEADER_HEIGHT}" stroke="${color}" stroke-width="2"/><text x="12" y="27" fill="${palette.text}" font-size="14" font-weight="700">${escapeXml(node.data.name)}</text>${rows}</g>`;
   }).join('');
 
-  return `<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" viewBox="${minX} ${minY} ${maxX - minX} ${maxY - minY}" width="${maxX - minX}" height="${maxY - minY}" font-family="Inter, Helvetica, Arial, sans-serif"><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="${palette.edge}"/></marker></defs><rect x="${minX}" y="${minY}" width="${maxX - minX}" height="${maxY - minY}" fill="${palette.background}"/>${edgeSvg}${tableSvg}</svg>`;
+  return `<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" viewBox="${minX} ${minY} ${maxX - minX} ${maxY - minY}" width="${maxX - minX}" height="${maxY - minY}" font-family="Inter, Helvetica, Arial, sans-serif"><defs><marker id="arrow" viewBox="-10 -10 20 20" refX="0" refY="0" markerWidth="10" markerHeight="10" orient="auto"><polyline points="-5,-4 0,0 -5,4" fill="none" stroke="${palette.edge}" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/></marker></defs><rect x="${minX}" y="${minY}" width="${maxX - minX}" height="${maxY - minY}" fill="${palette.background}"/>${edgeSvg}${tableSvg}</svg>`;
 }

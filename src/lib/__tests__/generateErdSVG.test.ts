@@ -32,6 +32,8 @@ describe('generateErdSVG', () => {
     expect(svg).toContain('users &amp; admins');
     expect(svg).toContain('id &lt;primary&gt;');
     expect(svg).toContain('marker-end="url(#arrow)"');
+    // Same open arrow as the canvas (React Flow MarkerType.Arrow), not a filled triangle.
+    expect(svg).toContain('<polyline points="-5,-4 0,0 -5,4" fill="none"');
     expect(svg).toContain('viewBox="-168 -28 676 278"');
   });
 
