@@ -799,6 +799,7 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
             handleEdgeFlip={handleEdgeFlip2}
             deleteEdge={deleteEdge}
             moveOnly={activeDiagramIsProductionDb}
+            readOnly={!canEditActiveDocument}
           />
         )}
 
