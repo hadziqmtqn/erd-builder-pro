@@ -37,8 +37,10 @@ function isSameOrigin(request: import("node:http").IncomingMessage): boolean {
     const url = new URL(origin);
     if (!["http:", "https:"].includes(url.protocol)) return false;
     const forwardedProtocolHeader = request.headers["x-forwarded-proto"];
-    const forwardedProtocol = (typeof forwardedProtocolHeader === "string" ? forwardedProtocolHeader : forwardedProtocolHeader?.[0])?.split(",")[0]?.trim();
-    const expectedProtocol = forwardedProtocol ? `${forwardedProtocol}:` : process.env.NODE_ENV === "production" ? "https:" : "http:";
+    const forwardedProtocol = (typeof forwardedProtocolHeader === "string" ? forwardedProtocolHeader : forwardedProtocolHeader?.[0])?.split(",")[0]?.trim().toLowerCase();
+    // Traefik forwards a WebSocket upgrade as `ws`/`wss`, while the page that opened it is `http`/`https` (BUG-054).
+    const pageProtocol = forwardedProtocol === "wss" ? "https" : forwardedProtocol === "ws" ? "http" : forwardedProtocol;
+    const expectedProtocol = pageProtocol ? `${pageProtocol}:` : process.env.NODE_ENV === "production" ? "https:" : "http:";
     if (url.protocol !== expectedProtocol) return false;
     if (url.host.toLowerCase() === host.toLowerCase()) return true;
     const requestHostname = new URL(`http://${host}`).hostname;
