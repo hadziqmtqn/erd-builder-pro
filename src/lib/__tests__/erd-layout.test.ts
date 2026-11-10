@@ -6,7 +6,7 @@ import { autoLayoutERD } from '../autoLayoutERD';
 import { alignErdHandles, constrainDbClientChanges, constrainTableChanges, separateTables, tableSize, tablesOverlap } from '../erd-geometry';
 import { dbmlToERD } from '../dbml-converter';
 import { parseSQLToERD } from '../sqlParser';
-import { edgeRoutingObstacles, routeErdEdge, segmentBlocked } from '../erd-routing';
+import { edgeRoutingObstacles, roundedRoutePath, routeErdEdge, segmentBlocked } from '../erd-routing';
 import { loadDbmlCore } from '@/lib/dbml-core';
 
 // The parser is ~15 MB; loading it in parallel test workers can exceed the 10 s hook default.
@@ -167,6 +167,13 @@ describe('SH-004 orthogonal routing', () => {
       expect(points[i].x === points[i - 1].x || points[i].y === points[i - 1].y).toBe(true);
       expect(segmentBlocked(points[i - 1], points[i], obstacles)).toBe(false);
     }
+  });
+
+  it('rounds each bend by at most half of the shorter neighbouring segment', () => {
+    expect(roundedRoutePath([{ x: 0, y: 0 }, { x: 16, y: 0 }, { x: 16, y: 40 }, { x: 60, y: 40 }]))
+      .toBe('M0,0 L8,0 Q16,0 16,8 L16,32 Q16,40 24,40 L60,40');
+    expect(roundedRoutePath([{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 40 }], 12)).toBe('M0,0 L28,0 Q40,0 40,12 L40,40');
+    expect(roundedRoutePath([{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 10, y: 0 }])).not.toContain('NaN');
   });
 
   it('routes self-references outside the table', () => {

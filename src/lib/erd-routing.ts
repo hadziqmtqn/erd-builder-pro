@@ -12,6 +12,21 @@ export function segmentBlocked(a: RoutePoint, b: RoutePoint, obstacles: RouteObs
     : a.y > r.y && a.y < r.y + r.height && Math.max(a.x, b.x) > r.x && Math.min(a.x, b.x) < r.x + r.width);
 }
 
+/** SVG path through route points with each bend rounded by up to `radius`, never more than half of either neighbouring segment. */
+export function roundedRoutePath(points: RoutePoint[], radius = 8) {
+  const toward = (from: RoutePoint, to: RoutePoint, distance: number) => {
+    const length = Math.hypot(to.x - from.x, to.y - from.y);
+    return length ? { x: from.x + (to.x - from.x) * distance / length, y: from.y + (to.y - from.y) * distance / length } : from;
+  };
+  return points.map((p, i) => {
+    const prev = points[i - 1], next = points[i + 1];
+    if (!prev || !next) return `${prev ? 'L' : 'M'}${p.x},${p.y}`;
+    const r = Math.min(radius, Math.hypot(p.x - prev.x, p.y - prev.y) / 2, Math.hypot(next.x - p.x, next.y - p.y) / 2);
+    const a = toward(p, prev, r), b = toward(p, next, r);
+    return `L${a.x},${a.y} Q${p.x},${p.y} ${b.x},${b.y}`;
+  }).join(' ');
+}
+
 /** Orthogonal visibility grid around table boundaries, searched by Manhattan distance. */
 export function routeErdEdge(source: RoutePoint, target: RoutePoint, sourceRight: boolean, targetRight: boolean, tables: RouteObstacle[]): RoutePoint[] {
   const start = { x: source.x + (sourceRight ? 16 : -16), y: source.y };

@@ -1,6 +1,6 @@
 import { createContext, useContext, useMemo } from 'react';
 import { BaseEdge, Position, useReactFlow, type EdgeProps, type Node } from '@xyflow/react';
-import { edgeRoutingObstacles, routeErdEdge, type RouteObstacle } from '@/lib/erd-routing';
+import { edgeRoutingObstacles, roundedRoutePath, routeErdEdge, type RouteObstacle } from '@/lib/erd-routing';
 import { tableSize } from '@/lib/erd-geometry';
 import type { Entity } from '@/types';
 import { ERDEdgeLabelsContext } from './ERDEdgeLabels';
@@ -24,7 +24,7 @@ export function ERDRoutedEdge(props: EdgeProps) {
     return { points, obstacles };
   }, [props.source, props.target, props.sourceX, props.sourceY, props.targetX, props.targetY, props.sourcePosition, props.targetPosition, tables, getInternalNode]);
   const { points, obstacles } = routed;
-  const path = points.map((p, i) => `${i ? 'L' : 'M'}${p.x},${p.y}`).join(' ');
+  const path = roundedRoutePath(points);
   const anchor = labels.anchors.get(props.id);
   const position = anchor ? labelPoint(points, anchor, obstacles) : null;
   const visible = position && showErdLabel(props.id, labels.anchors, labels.activeId);
