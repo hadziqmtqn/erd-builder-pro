@@ -528,8 +528,10 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
   const aiShortcut = useMemo(() => ({ label: isMac ? '⌘J' : 'Ctrl+J', ariaKeyShortcuts: isMac ? 'Meta+J' : 'Control+J' }), [isMac]);
   const [aiAnswering, setAIAnswering] = useState(false);
   const toggleAIChat = useCallback(() => setRightPanelMode(rightPanelMode === 'chat' ? 'closed' : 'chat'), [rightPanelMode, setRightPanelMode]);
+  // A file that is still loading counts as editable, so the toggle waits for it; otherwise a read-only file flashes it on load.
+  const showAIToggle = showAIChat && (Boolean(activeDocument) || isActiveDbClient || rightPanelMode === 'chat');
   useEffect(() => {
-    if (!showAIChat) return;
+    if (!showAIToggle) return;
     const onKeyDown = (event: KeyboardEvent) => {
       const modifier = isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
       if (!modifier || event.shiftKey || event.altKey || event.isComposing || event.defaultPrevented || event.key.toLowerCase() !== 'j') return;
@@ -538,7 +540,7 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [showAIChat, toggleAIChat, isMac]);
+  }, [showAIToggle, toggleAIChat, isMac]);
 
   const handleSidebarViewChange = useCallback((...args: Parameters<typeof handleViewChange>) => {
     if (rightPanelMode === 'repository') {
@@ -638,7 +640,7 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
           noteContent={activeNote?.content}
           historyAvailable={Boolean(historyEntityType)}
           discussionPanel={session ? <span ref={setDiscussionTarget} className="contents" /> : discussionPanel}
-          aiAssistant={showAIChat ? { open: rightPanelMode === 'chat', answering: aiAnswering, onToggle: toggleAIChat, shortcut: aiShortcut } : undefined}
+          aiAssistant={showAIToggle ? { open: rightPanelMode === 'chat', answering: aiAnswering, onToggle: toggleAIChat, shortcut: aiShortcut } : undefined}
         /></FileSessionContext.Provider>
 
         <div className="relative flex flex-1 flex-col gap-4 p-4 pt-4 min-h-0 overflow-hidden" style={{ isolation: 'isolate' } as React.CSSProperties}>
