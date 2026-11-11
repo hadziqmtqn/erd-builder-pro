@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { publishProjectAccessChange } from "../../lib/file-live-sync.js";
 import { prisma } from "../../lib/prisma.js";
 import { canManageAccessRole, effectiveRole, GRANTABLE_ROLES, projectRoleFor, type GrantableRole, type ProjectRole } from "../../lib/project-access.js";
 import { currentTeamScope } from "../../lib/team-scope.js";
@@ -78,7 +79,7 @@ export async function setProjectAccess(projectId: number, actorId: string, targe
   if (targetId === project.ownerId && !project.actorIsManager) {
     return { ok: false, status: 400, error: "Only a Team Manager can change the Project creator's access" };
   }
-  await (prisma as any).$transaction(async (tx: any) => {
+  const previousRole = await (prisma as any).$transaction(async (tx: any) => {
     const previous = await tx.projectAccessGrant.findUnique({ where: { projectId_userId: { projectId, userId: targetId } }, select: { role: true } });
     await tx.projectAccessGrant.upsert({
       where: { projectId_userId: { projectId, userId: targetId } },
@@ -95,7 +96,9 @@ export async function setProjectAccess(projectId: number, actorId: string, targe
         metadata: JSON.stringify({ userId: targetId, role, previousRole: previous?.role ?? null }),
       },
     });
+    return previous?.role ?? null;
   });
+  if (previousRole !== role) publishProjectAccessChange(projectId, targetId);
   return { ok: true, data: { userId: targetId, role } };
 }
 
@@ -106,9 +109,9 @@ export async function clearProjectAccess(projectId: number, actorId: string, tar
   if (targetId === project.ownerId && !project.actorIsManager) {
     return { ok: false, status: 400, error: "Only a Team Manager can change the Project creator's access" };
   }
-  await (prisma as any).$transaction(async (tx: any) => {
+  const removed = await (prisma as any).$transaction(async (tx: any) => {
     const previous = await tx.projectAccessGrant.findUnique({ where: { projectId_userId: { projectId, userId: targetId } }, select: { role: true } });
-    if (!previous) return;
+    if (!previous) return false;
     await tx.projectAccessGrant.delete({ where: { projectId_userId: { projectId, userId: targetId } } });
     await tx.teamAuditEvent.create({
       data: {
@@ -120,6 +123,8 @@ export async function clearProjectAccess(projectId: number, actorId: string, tar
         metadata: JSON.stringify({ userId: targetId, role: null, previousRole: previous.role }),
       },
     });
+    return true;
   });
+  if (removed) publishProjectAccessChange(projectId, targetId);
   return { ok: true, data: { userId: targetId } };
 }
