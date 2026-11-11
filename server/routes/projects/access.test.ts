@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => {
     scope: { mode: "team", teamId: "team-1" } as { mode: string; teamId: string | null },
     role: "owner" as string | null,
     tx,
+    publish: vi.fn(),
     prisma: {
       project: { findFirst: vi.fn() },
       teamMember: { findMany: vi.fn(), findFirst: vi.fn() },
@@ -20,6 +21,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("../../lib/prisma.js", () => ({ prisma: mocks.prisma }));
 vi.mock("../../lib/team-scope.js", () => ({ currentTeamScope: () => mocks.scope }));
+vi.mock("../../lib/file-live-sync.js", () => ({ publishProjectAccessChange: mocks.publish }));
 vi.mock("../../lib/project-access.js", async (importActual) => ({
   ...(await importActual<typeof import("../../lib/project-access.js")>()),
   projectRoleFor: async () => mocks.role,
@@ -123,6 +125,26 @@ describe("Project access management (COL-004)", () => {
     expect(await clearProjectAccess(7, "creator", "ed")).toEqual({ ok: true, data: { userId: "ed" } });
     expect(mocks.tx.projectAccessGrant.delete).not.toHaveBeenCalled();
     expect(mocks.tx.teamAuditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("tells the member's open files only when their stored role changed (BUG-061)", async () => {
+    mocks.prisma.teamMember.findFirst.mockResolvedValue({ role: "staff" });
+    mocks.tx.projectAccessGrant.findUnique.mockResolvedValue({ role: "editor" });
+    await setProjectAccess(7, "creator", "ed", "editor");
+    expect(mocks.publish).not.toHaveBeenCalled();
+    await setProjectAccess(7, "creator", "ed", "viewer");
+    expect(mocks.publish).toHaveBeenCalledWith(7, "ed");
+
+    mocks.publish.mockClear();
+    await clearProjectAccess(7, "creator", "ed");
+    expect(mocks.publish).toHaveBeenCalledWith(7, "ed");
+
+    mocks.publish.mockClear();
+    mocks.tx.projectAccessGrant.findUnique.mockResolvedValue(null);
+    await clearProjectAccess(7, "creator", "ed");
+    mocks.prisma.teamMember.findFirst.mockResolvedValue({ role: "manager" });
+    await setProjectAccess(7, "creator", "boss", "viewer");
+    expect(mocks.publish).not.toHaveBeenCalled();
   });
 
   it("accepts only the three grantable roles", () => {
