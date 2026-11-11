@@ -564,9 +564,10 @@ export function WorkspaceProvider({
       description: 'Load the latest version to see their changes. Your unsaved edits are kept as a recovery copy.',
     });
   }, () => {
-    // The user's role on this Project changed (BUG-061). The Project list holds that role, so reloading it turns
-    // the open file read-only or editable without a page reload.
+    // The user's role on this Project changed (BUG-061). The open file carries its own role from the server, which wins
+    // over the Project list, so reload both. An unsynced local draft still wins over the reloaded content.
     void fetchProjects(false, debouncedSearchQuery);
+    void refreshActiveDocument();
     toast.info('Your access to this Project changed.');
   });
 
