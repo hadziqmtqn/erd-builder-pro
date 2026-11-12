@@ -313,7 +313,11 @@ async function main() {
     console.log(`   → schema.sql (${schemaSql.split("\n").length} lines)`);
   }
 
-  // 5. Copy the offline migration script
+  // 5. sql.js is bundled into index.js but loads its WASM from a file next to it (DB Client SQLite, BUG-064)
+  copyFileSync(resolve(ROOT, "node_modules/sql.js/dist/sql-wasm.wasm"), resolve(OUT_DIR, "sql-wasm.wasm"));
+  console.log("   → sql-wasm.wasm");
+
+  // 6. Copy the offline migration script
   const migrateSrc = resolve(ROOT, "scripts/migrate-db.mjs");
   if (existsSync(migrateSrc)) {
     copyFileSync(migrateSrc, resolve(OUT_DIR, "migrate-db.mjs"));
