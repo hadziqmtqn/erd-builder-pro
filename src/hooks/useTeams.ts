@@ -34,9 +34,10 @@ export type TeamSummary = {
   }>;
 };
 
+// The key holds "" once the user picks Personal and is missing before any choice, so a reload keeps Personal (BUG-063).
 function readActiveTeamId(): string | null {
   try {
-    return localStorage.getItem(ACTIVE_TEAM_KEY);
+    return localStorage.getItem(ACTIVE_TEAM_KEY) || null;
   } catch {
     return null;
   }
@@ -44,8 +45,17 @@ function readActiveTeamId(): string | null {
 
 function writeActiveTeamId(teamId: string | null): void {
   try {
-    if (teamId) localStorage.setItem(ACTIVE_TEAM_KEY, teamId);
-    else localStorage.removeItem(ACTIVE_TEAM_KEY);
+    if (teamId === null) localStorage.removeItem(ACTIVE_TEAM_KEY);
+    else localStorage.setItem(ACTIVE_TEAM_KEY, teamId);
+  } catch {
+    // localStorage is optional; the current session still works in memory.
+  }
+}
+
+/** Opens the Team named by /api/me only while this browser has no workspace choice yet. */
+export function seedActiveTeamId(teamId: string | null | undefined): void {
+  try {
+    if (teamId && localStorage.getItem(ACTIVE_TEAM_KEY) === null) localStorage.setItem(ACTIVE_TEAM_KEY, teamId);
   } catch {
     // localStorage is optional; the current session still works in memory.
   }
@@ -81,8 +91,10 @@ export function useTeams(isGuest = false, isSso = false, onActiveTeamUnavailable
         const selected = readActiveTeamId();
         setTeams([]);
         setActiveTeamId(null);
-        writeActiveTeamId(null);
-        if (selected) onUnavailableRef.current?.();
+        if (selected) {
+          writeActiveTeamId(null);
+          onUnavailableRef.current?.();
+        }
         setIsAvailable(false);
         setLicenseRequired(["INSTANCE_LICENSE_REQUIRED", "LICENSE_EXPIRED_OR_INVALID"].includes(body.code || ""));
         return [];
@@ -235,7 +247,7 @@ export function useTeams(isGuest = false, isSso = false, onActiveTeamUnavailable
 
   const selectTeam = useCallback((teamId: string | null) => {
     setActiveTeamId(teamId);
-    writeActiveTeamId(teamId);
+    writeActiveTeamId(teamId ?? "");
   }, []);
 
   const createTeam = useCallback(async (input: { name: string }) => {
