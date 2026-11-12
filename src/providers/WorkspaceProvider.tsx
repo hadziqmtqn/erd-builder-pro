@@ -585,7 +585,7 @@ export function WorkspaceProvider({
   // ── File operations ──
   const {
     handleExportMarkdown, handleImportMarkdown, handleCopyMarkdown,
-    executeImportMarkdown,
+    executeImportMarkdown, executeExportMarkdown,
   } = useFileOperations({
     activeNote, activeNoteUid, activeProjectId, createNote, saveNote,
     setActiveNoteUid, handleNoteChange, setIsExportNoteModalOpen, setIsImportNoteModalOpen,
@@ -1111,7 +1111,7 @@ export function WorkspaceProvider({
   const stableHandlers = useStableHandlers({
     handleViewChange, handleDiagramSelect, handleDrawingSelect, refreshActiveDocument, handleEntityUpdate, handleSidebarDiagramCreate,
     handleSidebarNoteCreate, handleSidebarDrawingCreate, handleSidebarFlowchartCreate, handleSidebarProjectCreate, handleSidebarProjectUpdate, handleSidebarProjectDelete,
-    handleHeaderExportSQL, executeImportMarkdown, executeDuplicate, onConnect, undo, redo,
+    handleHeaderExportSQL, executeImportMarkdown, executeExportMarkdown, executeDuplicate, onConnect, undo, redo,
     addEntity, duplicateEntity, deleteEntity, deleteEdge, handleEdgeUpdate, handleEdgeFlip,
     handleWorkspaceExportSQL, handleTrashRestoreProject, handleTrashRestoreDiagram, handleTrashRestoreNote, handleTrashRestoreDrawing, handleTrashRestoreFlowchart,
     handleTrashRestoreDbClient, confirmPermanentDelete, updateDiagram, updateNote, updateDrawing, updateFlowchart,

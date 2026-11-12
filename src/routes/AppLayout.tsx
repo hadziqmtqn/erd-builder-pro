@@ -142,7 +142,7 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
     handleHeaderDelete, handleHeaderRename, handleHeaderSettingsSaved,
     handleHeaderExportSQL, handleHeaderExportImage,
     handleOpenImportModal, isImportModalOpen, setIsImportModalOpen,
-    handleExportMarkdown, handleCopyMarkdown, handleImportMarkdown, executeImportMarkdown,
+    handleExportMarkdown, handleCopyMarkdown, handleImportMarkdown, executeImportMarkdown, executeExportMarkdown,
     handleDuplicate,
     syncError, isSyncing, isLocalSaving, isRefreshing, hasPendingSyncs, syncDrafts,
     activeFileUid, currentActiveId, initialShareSettings,
@@ -666,7 +666,7 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
           onExport={(format, options, pageSize) => {
             if (activeNote) {
               if (format === 'markdown') {
-                // executeExportMarkdown
+                executeExportMarkdown();
               } else if (format === 'pdf') {
                 NoteExporter.exportToPDF(activeNote, options, pageSize, activeProjectName || undefined);
               } else if (format === 'print') {
