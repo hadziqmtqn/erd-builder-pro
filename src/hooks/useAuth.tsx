@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { ACTIVE_TEAM_KEY, apiFetch, clearAuthToken, isInstalledApp, setAuthToken } from '../lib/api';
+import { seedActiveTeamId } from './useTeams';
 
 type AuthContextValue = {
   isAuthenticated: boolean | null;
@@ -50,11 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setIsAuthenticated(true);
           setIsGuest(false);
           const normalizedUser = normalizeLocalUser(data.user);
-          try {
-            if (normalizedUser?.activeTeamId && !localStorage.getItem(ACTIVE_TEAM_KEY)) {
-              localStorage.setItem(ACTIVE_TEAM_KEY, normalizedUser.activeTeamId);
-            }
-          } catch { /* localStorage may be unavailable */ }
+          seedActiveTeamId(normalizedUser?.activeTeamId);
           setUser(normalizedUser);
           retryRef.current = 0;
           return;

@@ -18,7 +18,7 @@ vi.mock('react', () => ({
 }));
 vi.mock('@/lib/api', () => ({ ACTIVE_TEAM_KEY: 'team', getApiBaseUrl: () => '', apiFetch: vi.fn() }));
 import { apiFetch } from '@/lib/api';
-import { useTeams } from './useTeams';
+import { seedActiveTeamId, useTeams } from './useTeams';
 
 beforeEach(() => {
   hooks.slots = []; hooks.cursor = 0;
@@ -36,4 +36,24 @@ it('does not reload the Team plan when editor focus changes, but still uses the 
   await first.fetchTeams();
   expect(latestHandler).toHaveBeenCalledOnce();
   expect(oldHandler).not.toHaveBeenCalled();
+});
+
+it('keeps a Personal choice across reloads instead of reopening the sign-in Team (BUG-063)', async () => {
+  const store = new Map<string, string>();
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => { store.set(key, value); },
+    removeItem: (key: string) => { store.delete(key); },
+  });
+  seedActiveTeamId('team-1'); // first load after sign-in opens the Team
+  expect(store.get('team')).toBe('team-1');
+  useTeams(false, true).selectTeam(null);
+  expect(store.get('team')).toBe('');
+  vi.mocked(apiFetch).mockResolvedValue({ status: 403, json: async () => ({}) } as Response);
+  hooks.slots = []; hooks.cursor = 0;
+  await useTeams(false, true).fetchTeams(); // a Team-less answer must not erase the choice
+  seedActiveTeamId('team-1'); // reload: /api/me still names the sign-in Team
+  expect(store.get('team')).toBe('');
+  hooks.slots = []; hooks.cursor = 0;
+  expect(useTeams(false, true).activeTeamId).toBeNull();
 });
