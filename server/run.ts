@@ -15,6 +15,7 @@ import { startSelfHostCapacityReportScheduler } from "./lib/self-host-capacity-r
 import { setDbReady, setDbError } from "./lib/db-state.js";
 import { attachCloudLiveSync } from "./lib/cloud-live-sync.js";
 import { missingStaticAsset } from "./lib/missing-static-asset.js";
+import { precompressedAsset } from "./lib/precompressed-asset.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const isProd = process.env.NODE_ENV === "production";
@@ -232,6 +233,7 @@ if (isProd) {
   const distPath = path.join(process.cwd(), "dist");
   if (fs.existsSync(distPath)) {
     logger.info({ dist_path: distPath }, "Serving static files");
+    app.use("/assets", precompressedAsset(path.join(distPath, "assets")));
     app.use(express.static(distPath, { index: false }));
     app.use("/assets", missingStaticAsset);
     app.get("/{*splat}", (req, res, next) => {
