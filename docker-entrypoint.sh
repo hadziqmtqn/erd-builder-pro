@@ -82,6 +82,9 @@ if [ "$SCHEMA_VARIANT" = "sqlite" ]; then
   echo "Running Prisma schema push for sqlite..."
   npx prisma db push --accept-data-loss || echo "WARNING: Schema push failed, continuing anyway"
 elif [ -n "$SCHEMA_VARIANT" ]; then
+  # Changes Prisma will not push without --accept-data-loss on an upgraded database (BUG-057).
+  echo "Preparing schema changes from older releases..."
+  npx prisma db execute --file prisma/pre-push.pg.sql || echo "WARNING: Schema preparation failed, continuing anyway"
   echo "Running Prisma schema push for ${SCHEMA_VARIANT}..."
   npx prisma db push || echo "WARNING: Schema push failed, continuing anyway"
 fi

@@ -1,7 +1,7 @@
 import type { NextFunction, Request as ExpressRequest, Response as ExpressResponse } from "express";
 import type { PrismaClient } from "@prisma/client";
 import { isDesktopMode, isLocalPostgres, isSsoAuthMode } from "./config.js";
-import { canCommentRole, projectRoleFor } from "./project-access.js";
+import { canCommentRole, limitedCreatorRole, projectRoleFor } from "./project-access.js";
 import { RequestError } from "./request-error.js";
 import { currentTeamScope, projectScopeWhere } from "./team-scope.js";
 
@@ -73,9 +73,13 @@ export const resolveNewFileProjectId = async (
 ): Promise<number | null> => {
   if (projectId !== null && projectId !== undefined && projectId !== "" && projectId !== "null") {
     const resolved = await resolveOwnedProjectId(prisma, userId, projectId);
-    // A Viewer reads a Team Project but adds nothing to it (COL-004); the Project reads as missing.
-    if (resolved !== null && currentTeamScope()?.mode === "team" && !canCommentRole(await projectRoleFor(resolved, userId))) {
-      throw new RequestError(404, "Project not found");
+    // A Viewer reads a Team Project but adds nothing to it (COL-004), and neither does a Project creator a Manager
+    // limited, since files they add would be limited too (COL-007); the Project reads as missing.
+    if (resolved !== null && currentTeamScope()?.mode === "team") {
+      const role = await projectRoleFor(resolved, userId);
+      if (!canCommentRole(role) || (role === "commenter" && await limitedCreatorRole(resolved, userId))) {
+        throw new RequestError(404, "Project not found");
+      }
     }
     return resolved;
   }

@@ -9,9 +9,9 @@ vi.mock("./prisma.js", () => ({ prisma: { note: { findFirst: mocks.noteFindFirst
 vi.mock("./config.js", () => ({ isLocalPostgres: () => true }));
 vi.mock("../routes/teams/service.js", () => ({ canAccessTeam: mocks.canAccessTeam }));
 
-const { fileChangeStream, notifyFileChange } = await import("./file-live-sync.js");
+const { fileChangeStream, notifyFileChange, publishProjectAccessChange } = await import("./file-live-sync.js");
 const { runWithTeamScope } = await import("./team-scope.js");
-const NOTE = { id: 7, uid: "note-uid" };
+const NOTE = { id: 7, uid: "note-uid", projectId: 3 };
 
 describe("file change stream", () => {
   let server: Server;
@@ -78,6 +78,25 @@ describe("file change stream", () => {
     await next();
     mocks.canAccessTeam.mockResolvedValue(false);
     await fetch(`${base}/notes/${NOTE.uid}`, { method: "PUT", headers: { "x-user": "editor" } });
+    expect(await next()).toBe("");
+  });
+
+  it("tells only the member whose role changed on the file's Project (BUG-061)", async () => {
+    const { next } = await open();
+    await next();
+    publishProjectAccessChange(3, "someone-else");
+    publishProjectAccessChange(4, "viewer");
+    publishProjectAccessChange(3, "viewer");
+    expect(await next()).toBe("event: access\ndata: {}\n\n");
+    expect(mocks.noteFindFirst).toHaveBeenCalledTimes(2);
+  });
+
+  it("closes the stream after the access signal when the file is no longer readable", async () => {
+    const { next } = await open();
+    await next();
+    mocks.noteFindFirst.mockResolvedValue(null);
+    publishProjectAccessChange(3, "viewer");
+    expect(await next()).toBe("event: access\ndata: {}\n\n");
     expect(await next()).toBe("");
   });
 });

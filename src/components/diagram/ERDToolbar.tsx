@@ -1,22 +1,22 @@
 import type { ReactElement } from 'react';
-import type { Node } from '@xyflow/react';
-import { Plus, Upload, Undo2, Redo2, LayoutGrid, RefreshCw, Database, Download, FolderGit2 } from 'lucide-react';
-import type { Entity } from '@/types';
+import { Plus, Upload, Undo2, Redo2, LayoutGrid, RefreshCw, Database, Download, FolderGit2, ListTree } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { JumpToNode } from '@/components/JumpToNode';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { isInstalledApp } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 interface ERDToolbarProps {
-  nodes: Node<Entity>[];
   isReadOnly: boolean;
   isProductionDb: boolean;
   addEntity: () => void;
   onImportSQL?: () => void;
   onAutoLayout?: () => void;
-  setRightPanelMode: (mode: 'dbml' | 'repository') => void;
+  explorerOpen: boolean;
+  explorerShortcut: { label: string; ariaKeyShortcuts: string };
+  onToggleExplorer: () => void;
+  onOpenDBML: () => void;
+  onOpenRepository: () => void;
   handleSync: () => void;
   isSyncing: boolean;
   handleExportImage: () => void;
@@ -26,10 +26,13 @@ interface ERDToolbarProps {
   canRedo?: boolean;
 }
 
-export function ERDToolbar({ nodes, isReadOnly, isProductionDb, addEntity, onImportSQL, onAutoLayout,
-  setRightPanelMode, handleSync, isSyncing, handleExportImage,
+export function ERDToolbar({ isReadOnly, isProductionDb, addEntity, onImportSQL, onAutoLayout,
+  explorerOpen, explorerShortcut, onToggleExplorer, onOpenDBML, onOpenRepository, handleSync, isSyncing, handleExportImage,
   undo, redo, canUndo, canRedo }: ERDToolbarProps) {
   const isMobile = useIsMobile();
+  const isMac = typeof navigator !== 'undefined' && /mac|iphone|ipad|ipod/i.test(navigator.platform || navigator.userAgent);
+  const undoLabel = `Undo (${isMac ? '⌘Z' : 'Ctrl+Z'})`;
+  const redoLabel = `Redo (${isMac ? '⇧⌘Z' : 'Ctrl+Y'})`;
   const action = (label: string, button: ReactElement<{ disabled?: boolean }>) => isMobile ? button : <Tooltip>
     <TooltipTrigger render={button.props.disabled ? <span className="inline-flex">{button}</span> : button} />
     <TooltipContent side="right">{label}</TooltipContent>
@@ -42,7 +45,11 @@ export function ERDToolbar({ nodes, isReadOnly, isProductionDb, addEntity, onImp
     isMobile ? 'top-6 inset-x-0 justify-center px-3' : 'top-4 left-4 bottom-28 items-start')}>
     <div role="group" aria-label="ERD tools" className={cn('flex gap-1.5 p-1.5 bg-background/95 backdrop-blur-md border border-border/50 rounded-2xl shadow-2xl pointer-events-auto no-scrollbar',
       isMobile ? 'items-center max-w-full overflow-x-auto' : 'flex-col items-center max-h-full overflow-y-auto')}>
-      <JumpToNode nodes={nodes} label="Table" iconOnly={!isMobile} findShortcut={!isProductionDb} />
+      {action(`Explorer (${explorerShortcut.label})`, <Button onClick={onToggleExplorer} variant={explorerOpen ? 'secondary' : 'outline'} size={isMobile ? 'sm' : 'icon-lg'}
+        aria-label="Explorer: tables and relationships" aria-pressed={explorerOpen} aria-keyshortcuts={isProductionDb ? undefined : explorerShortcut.ariaKeyShortcuts}
+        className={isMobile ? mobileButton : undefined}>
+        <ListTree className={iconClass} />{label('Explorer')}
+      </Button>)}
       {!isReadOnly && <div className={cn('bg-border shrink-0', isMobile ? 'w-px h-6 mx-0.5' : 'h-px w-6 my-0.5')} />}
       {!isReadOnly && action('Add Table', <Button onClick={addEntity} size={isMobile ? 'sm' : 'icon-lg'} aria-label="Add Table"
         className={isMobile ? 'h-9 px-3 sm:px-4 font-bold shadow-lg shadow-primary/20 cursor-pointer' : undefined}>
@@ -51,10 +58,10 @@ export function ERDToolbar({ nodes, isReadOnly, isProductionDb, addEntity, onImp
       {!isReadOnly && action('Import SQL', <Button onClick={onImportSQL} variant="outline" size={isMobile ? 'sm' : 'icon-lg'} aria-label="Import SQL" className={isMobile ? mobileButton : undefined}>
         <Upload className={iconClass} />{label('Import SQL')}
       </Button>)}
-      {!isProductionDb && !isReadOnly && action('DBML', <Button onClick={() => setRightPanelMode('dbml')} variant="outline" size={isMobile ? 'sm' : 'icon-lg'} aria-label="DBML" className={isMobile ? mobileButton : undefined}>
+      {!isProductionDb && !isReadOnly && action('DBML', <Button onClick={onOpenDBML} variant="outline" size={isMobile ? 'sm' : 'icon-lg'} aria-label="DBML" className={isMobile ? mobileButton : undefined}>
         <Database className={iconClass} />{label('DBML')}
       </Button>)}
-      {!isReadOnly && !isProductionDb && isInstalledApp() && action('Repository', <Button onClick={() => setRightPanelMode('repository')} variant="outline" size={isMobile ? 'sm' : 'icon-lg'} aria-label="Repository" className={isMobile ? mobileButton : undefined}>
+      {!isReadOnly && !isProductionDb && isInstalledApp() && action('Repository', <Button onClick={onOpenRepository} variant="outline" size={isMobile ? 'sm' : 'icon-lg'} aria-label="Repository" className={isMobile ? mobileButton : undefined}>
         <FolderGit2 className={iconClass} />{label('Repository')}
       </Button>)}
       {onAutoLayout && (!isReadOnly || isProductionDb) && action('Auto Layout', <Button onClick={onAutoLayout} variant="outline" size={isMobile ? 'sm' : 'icon-lg'} aria-label="Auto Layout" className={isMobile ? mobileButton : undefined}>
@@ -68,10 +75,10 @@ export function ERDToolbar({ nodes, isReadOnly, isProductionDb, addEntity, onImp
         <Download className={iconClass} />{label('Export SVG')}
       </Button>)}
       {!isReadOnly && <div className={cn('flex gap-0.5', isMobile ? 'items-center ml-auto' : 'flex-col items-center')}>
-        {action('Undo (Ctrl+Z)', <Button variant="ghost" size="icon" onClick={undo} disabled={!canUndo} aria-label="Undo (Ctrl+Z)" title={isMobile ? 'Undo (Ctrl+Z)' : undefined} className={isMobile ? 'h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-30' : undefined}>
+        {action(undoLabel, <Button variant="ghost" size="icon" onClick={undo} disabled={!canUndo} aria-label={undoLabel} title={isMobile ? undoLabel : undefined} className={isMobile ? 'h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-30' : undefined}>
           <Undo2 className="size-4" />
         </Button>)}
-        {action('Redo (Ctrl+Y)', <Button variant="ghost" size="icon" onClick={redo} disabled={!canRedo} aria-label="Redo (Ctrl+Y)" title={isMobile ? 'Redo (Ctrl+Y)' : undefined} className={isMobile ? 'h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-30' : undefined}>
+        {action(redoLabel, <Button variant="ghost" size="icon" onClick={redo} disabled={!canRedo} aria-label={redoLabel} title={isMobile ? redoLabel : undefined} className={isMobile ? 'h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-30' : undefined}>
           <Redo2 className="size-4" />
         </Button>)}
       </div>}

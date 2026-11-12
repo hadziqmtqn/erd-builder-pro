@@ -293,6 +293,12 @@
   marker-end: none !important;
 }
 
+/* The table(s) the Explorer or the table editor points at (ERD-004). The other tables stay solid. */
+.react-flow__node.erd-node-focus .erd-node-container {
+  border-color: rgb(59 130 246) !important;
+  box-shadow: 0 0 0 4px rgb(59 130 246 / 0.35);
+}
+
 @keyframes edge_dash_draw {
   from {
     stroke-dashoffset: 20;

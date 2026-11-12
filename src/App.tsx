@@ -29,8 +29,10 @@ import { LegacyTableRedirect, ProjectFilesRoute } from './routes/ProjectFilesRou
 import { loadDbmlCore } from './lib/dbml-core';
 
 const NoteEditorRoute = lazy(() => import('./routes/NoteEditorRoute').then(module => ({ default: module.NoteEditorRoute })));
-// ERD editors parse DBML synchronously, so their chunk waits for the lazily loaded parser (BUG-032).
-const DiagramEditorRoute = lazy(() => Promise.all([import('./routes/DiagramEditorRoute'), loadDbmlCore()]).then(([module]) => ({ default: module.DiagramEditorRoute })));
+// The ERD canvas draws saved tables without the 15 MB DBML parser, so the route does not wait for it: ERDView
+// loads it once the canvas is drawn (BUG-053), and DBML features and saves load it themselves (BUG-032).
+const DiagramEditorRoute = lazy(() => import('./routes/DiagramEditorRoute').then(module => ({ default: module.DiagramEditorRoute })));
+// The DB Client editor parses DBML synchronously, so its chunk waits for the lazily loaded parser (BUG-032).
 const DbClientEditorRoute = lazy(() => Promise.all([import('./routes/DbClientEditorRoute'), loadDbmlCore()]).then(([module]) => ({ default: module.DbClientEditorRoute })));
 const DrawingEditorRoute = lazy(() => import('./routes/DrawingEditorRoute').then(module => ({ default: module.DrawingEditorRoute })));
 const FlowchartEditorRoute = lazy(() => import('./routes/FlowchartEditorRoute').then(module => ({ default: module.FlowchartEditorRoute })));

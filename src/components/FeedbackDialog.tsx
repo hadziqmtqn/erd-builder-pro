@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+import { apiFetch } from "@/lib/api";
 
 const DEFAULT_FEEDBACK_ENDPOINT = "https://api.erdbuilderpro.com/api/feedback";
 
@@ -17,9 +18,12 @@ function getFeedbackEndpoint(): string {
 export function FeedbackDialog({
   open,
   onOpenChange,
+  isCloud = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Cloud sends through its own server, which adds the signed-in user and Team (CLD-013). */
+  isCloud?: boolean;
 }) {
   const [loading, setLoading] = React.useState(false);
   const [content, setContent] = React.useState("");
@@ -32,7 +36,13 @@ export function FeedbackDialog({
 
     setLoading(true);
     try {
-      const response = await fetch(getFeedbackEndpoint(), {
+      const response = isCloud
+        ? await apiFetch("/api/feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content, category, page_path: window.location.pathname }),
+        })
+        : await fetch(getFeedbackEndpoint(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "omit",
@@ -96,11 +106,11 @@ export function FeedbackDialog({
                   placeholder="Tuliskan masukan Anda di sini..."
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
-                  maxLength={3000}
+                  maxLength={isCloud ? 2000 : 3000}
                   required
                 />
               </div>
-              <div className="grid gap-2">
+              {!isCloud && <div className="grid gap-2">
                 <Label htmlFor="email" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email (Opsional)</Label>
                 <Input
                   id="email"
@@ -111,7 +121,7 @@ export function FeedbackDialog({
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
-              </div>
+              </div>}
             </DialogBody>
             <DialogFooter className="gap-3">
               <Button 

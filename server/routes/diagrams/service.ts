@@ -1,6 +1,6 @@
 import { prisma } from "../../lib/prisma.js";
 import { createPersonalFile } from "../../lib/personal-file-quota.js";
-import { creatorFileIdentifierWhere, editableFileIdentifierWhere, fileIdentifierWhere, fileScopeWhere } from "../../lib/team-scope.js";
+import { ownFileIdentifierWhere, editableFileIdentifierWhere, fileIdentifierWhere, fileScopeWhere } from "../../lib/team-scope.js";
 import { isForeignProjectMove } from "../../lib/project-access.js";
 import { logger } from "../../lib/logger.js";
 import { deleteEntityRevisions } from "../../lib/entity-history.js";
@@ -12,7 +12,7 @@ function uidWhere(uid: string, userId: string) {
 }
 
 function creatorUidWhere(uid: string, userId: string) {
-  return creatorFileIdentifierWhere(uid, userId);
+  return ownFileIdentifierWhere(uid, userId);
 }
 
 function editableUidWhere(uid: string, userId: string) {

@@ -16,6 +16,18 @@ describe('SH-004 cardinality label placement', () => {
     expect(styleErdEdges(edges)[0]).not.toHaveProperty('zIndex');
     expect(styled.map(e => e.label)).toEqual(['1:N', '1:1']);
   });
+
+  it('raises the selected relationship above overlapping paths, below the hovered one', () => {
+    const edges = [{ id: 'a', source: 'one', target: 'two', zIndex: 20 },
+      { id: 'b', source: 'two', target: 'one', selected: true },
+      { id: 'c', source: 'one', target: 'three' }];
+    const styled = styleErdEdges(edges);
+    expect(styled[1].zIndex).toBeGreaterThan(20);
+    expect(styled[0].zIndex).toBe(20);
+    expect(styled[2]).not.toHaveProperty('zIndex');
+    expect(edges[1]).not.toHaveProperty('zIndex');
+    expect(styleErdEdges(edges, [], 'c')[2].zIndex).toBeGreaterThan(styled[1].zIndex!);
+  });
   it('places text inside a straight segment, away from its corners', () => {
     const edge = route('a', [[0, 0], [200, 0], [200, 200]]);
     const anchors = placeErdLabels([edge], []);

@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("./prisma.js", () => ({ prisma: mocks }));
 vi.mock("./team-scope.js", () => ({ currentTeamScope: () => mocks.scope }));
 
-import { canCommentRole, canEditRole, canManageAccessRole, effectiveRole, fileAccessRole, isForeignProjectMove, projectRoleFor, projectRolesFor } from "./project-access.js";
+import { canCommentRole, canEditRole, canManageAccessRole, effectiveRole, fileAccessRole, isForeignProjectMove, limitedCreatorRole, projectRoleFor, projectRolesFor } from "./project-access.js";
 
 function project(overrides: { userId?: string; manager?: boolean; grant?: string }) {
   return {
@@ -101,9 +101,25 @@ describe("Project roles for a list", () => {
 });
 
 describe("File role", () => {
-  it("makes the file creator its owner without a lookup", async () => {
+  it("makes the file creator its owner, including a Staff creator with a role on someone else's Project", async () => {
+    mocks.project.findFirst.mockResolvedValue(project({ userId: "creator", grant: "viewer" }));
     expect(await fileAccessRole({ userId: "member", projectId: 7 }, "member")).toBe("owner");
-    expect(mocks.project.findFirst).not.toHaveBeenCalled();
+    mocks.project.findFirst.mockResolvedValue(project({ userId: "member" }));
+    expect(await fileAccessRole({ userId: "member", projectId: 7 }, "member")).toBe("owner");
+    expect(await fileAccessRole({ userId: "member", projectId: null }, "member")).toBe("owner");
+  });
+
+  it("limits the Project creator on their own file once a Manager stores Viewer or Commenter (COL-007)", async () => {
+    for (const grant of ["viewer", "commenter"]) {
+      mocks.project.findFirst.mockResolvedValue(project({ userId: "member", grant }));
+      expect(await fileAccessRole({ userId: "member", projectId: 7 }, "member")).toBe(grant);
+      expect(await limitedCreatorRole(7, "member")).toBe(grant);
+    }
+    mocks.project.findFirst.mockResolvedValue(project({ userId: "member", grant: "editor" }));
+    expect(await fileAccessRole({ userId: "member", projectId: 7 }, "member")).toBe("owner");
+    expect(await limitedCreatorRole(7, "member")).toBeNull();
+    mocks.project.findFirst.mockResolvedValue(project({ userId: "member", grant: "viewer", manager: true }));
+    expect(await limitedCreatorRole(7, "member")).toBeNull();
   });
 
   it("inherits the Project role for another member's file", async () => {

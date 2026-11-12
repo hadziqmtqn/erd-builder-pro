@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
-import { type Node, useReactFlow } from '@xyflow/react';
+import { useMemo, useRef } from 'react';
+import type { Node } from '@xyflow/react';
 import { MapPin, Pencil, Search } from 'lucide-react';
 import type { Entity } from '@/types';
+import { useScrollActiveRowIntoView } from '@/hooks/useScrollActiveRowIntoView';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -12,40 +13,47 @@ export function filterERDTables(nodes: Node<Entity>[], search: string) {
     .sort((a, b) => a.data.name.localeCompare(b.data.name));
 }
 
-export function ERDTableListPanel({ nodes, onEdit }: { nodes: Node<Entity>[]; onEdit: (id: string) => void }) {
-  const { fitView } = useReactFlow();
-  const [search, setSearch] = useState('');
-  const tables = useMemo(() => filterERDTables(nodes, search), [nodes, search]);
+interface ERDTableListPanelProps {
+  nodes: Node<Entity>[];
+  search: string;
+  onSearchChange: (search: string) => void;
+  activeId: string | null;
+  /** Row click: the Explorer highlights the table on the canvas. */
+  onSelect: (id: string) => void;
+  /** Opens the table editor; left out when the diagram is read-only. */
+  onEdit?: (id: string) => void;
+}
 
-  const jumpToTable = (id: string) => {
-    void fitView({ nodes: [{ id }], duration: 0, padding: 1.5, minZoom: 1.2, maxZoom: 1.2 });
-  };
-  const editTable = (id: string) => { jumpToTable(id); onEdit(id); };
+export function ERDTableListPanel({ nodes, search, onSearchChange, activeId, onSelect, onEdit }: ERDTableListPanelProps) {
+  const tables = useMemo(() => filterERDTables(nodes, search), [nodes, search]);
+  const listRef = useRef<HTMLDivElement>(null);
+  useScrollActiveRowIntoView(listRef);
+
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="shrink-0 space-y-3 border-b p-4">
         <div>
           <h3 className="text-sm font-semibold">Tables</h3>
-          <p className="text-xs text-muted-foreground">Find a table or open its properties.</p>
+          <p className="text-xs text-muted-foreground">{onEdit ? 'Find a table or open its properties.' : 'Find a table on the canvas.'}</p>
         </div>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search tables..." className="pl-9" autoFocus />
+          <Input value={search} onChange={event => onSearchChange(event.target.value)} placeholder="Search tables..." className="pl-9" autoFocus />
         </div>
         <p className="text-[11px] text-muted-foreground">Showing {tables.length} of {nodes.length} tables</p>
       </div>
-      <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
+      <div ref={listRef} className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
         {tables.map(node => (
-          <div key={node.id} className="group flex items-center gap-1 rounded-md border border-transparent px-1 hover:border-border hover:bg-muted/50">
-            <button type="button" onClick={() => jumpToTable(node.id)} className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2.5 text-left" title={`Jump to ${node.data.name}`}>
+          <div key={node.id} className="group flex items-center gap-1 rounded-md border border-transparent px-1 hover:border-border hover:bg-muted/50 has-[[aria-current=true]]:bg-muted has-[[aria-current=true]]:shadow-[inset_2px_0_0_var(--primary)]">
+            <button type="button" onClick={() => onSelect(node.id)} aria-current={node.id === activeId ? 'true' : undefined} className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2.5 text-left" title={`Jump to ${node.data.name}`}>
               <MapPin className="size-3.5 shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1 truncate text-sm font-medium">{node.data.name}</span>
               <span className="text-[10px] text-muted-foreground">{node.data.columns.length}</span>
             </button>
-            <Button type="button" variant="ghost" size="icon-sm" onClick={() => editTable(node.id)} title={`Edit ${node.data.name} properties`} aria-label={`Edit ${node.data.name} properties`}>
+            {onEdit && <Button type="button" variant="ghost" size="icon-sm" onClick={() => onEdit(node.id)} title={`Edit ${node.data.name} properties`} aria-label={`Edit ${node.data.name} properties`}>
               <Pencil className="size-3.5" />
-            </Button>
+            </Button>}
           </div>
         ))}
         {tables.length === 0 && <div className="px-3 py-10 text-center text-sm text-muted-foreground">No matching tables found.</div>}

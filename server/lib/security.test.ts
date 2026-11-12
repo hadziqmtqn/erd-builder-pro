@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   isLocalPostgres: vi.fn(() => false),
   isSsoAuthMode: vi.fn(() => false),
   projectRole: vi.fn(),
+  limitedCreator: vi.fn(),
 }));
 
 vi.mock("./config.js", () => ({
@@ -19,6 +20,7 @@ vi.mock("./team-scope.js", () => ({
 vi.mock("./project-access.js", () => ({
   canCommentRole: (role: string | null) => role !== null && role !== "viewer",
   projectRoleFor: mocks.projectRole,
+  limitedCreatorRole: mocks.limitedCreator,
 }));
 
 import { currentTeamScope } from "./team-scope.js";
@@ -51,6 +53,7 @@ describe("resolveNewFileProjectId with Project roles (COL-004)", () => {
   beforeEach(() => {
     prisma.project.findFirst.mockResolvedValue({ id: 7 });
     mocks.projectRole.mockReset();
+    mocks.limitedCreator.mockReset().mockResolvedValue(null);
   });
 
   it.each(["owner", "manager", "editor", "commenter"])("lets a %s add a file to a Team Project", async (role) => {
@@ -65,6 +68,13 @@ describe("resolveNewFileProjectId with Project roles (COL-004)", () => {
       mocks.projectRole.mockResolvedValue(role);
       await expect(resolveNewFileProjectId(prisma, "member", 7)).rejects.toMatchObject({ status: 404, message: "Project not found" });
     }
+  });
+
+  it("treats a Team Project as missing for its creator once a Manager limited them to Commenter (COL-007)", async () => {
+    vi.mocked(currentTeamScope).mockReturnValue({ mode: "team", teamId: "team-1" });
+    mocks.projectRole.mockResolvedValue("commenter");
+    mocks.limitedCreator.mockResolvedValue("commenter");
+    await expect(resolveNewFileProjectId(prisma, "member", 7)).rejects.toMatchObject({ status: 404, message: "Project not found" });
   });
 
   it("answers a missing Project with 404 and a Team file without a Project with 400", async () => {

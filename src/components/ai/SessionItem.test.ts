@@ -19,3 +19,18 @@ describe('SH-002 conversation list controls', () => {
     expect(html).toContain('Delete session');
   });
 });
+
+describe('BUG-050 answering marker', () => {
+  it('replaces the time with a small spinner while the AI answers', () => {
+    const html = renderToStaticMarkup(createElement(SessionItem, { session: { ...session, updated_at: new Date().toISOString() }, isActive: false, answering: true, onClick: vi.fn() }));
+    expect(html).toContain('title="AI is answering"');
+    expect(html).toContain('animate-spin');
+    expect(html).not.toContain('just now');
+  });
+
+  it('shows the time when nothing is being answered', () => {
+    const html = renderToStaticMarkup(createElement(SessionItem, { session: { ...session, updated_at: new Date().toISOString() }, isActive: false, onClick: vi.fn() }));
+    expect(html).toContain('just now');
+    expect(html).not.toContain('AI is answering');
+  });
+});

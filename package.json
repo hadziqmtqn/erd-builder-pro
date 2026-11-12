@@ -1,7 +1,7 @@
 {
   "name": "erd-builder-pro",
   "private": true,
-  "version": "3.4.7-rc.51",
+  "version": "3.4.7-rc.69",
   "type": "module",
   "scripts": {
     "dev": "npm run db:generate:pg && cross-env NODE_ENV=development NODE_USE_SYSTEM_CA=1 tsx watch server/dev.ts",
@@ -16,6 +16,7 @@
     "preview": "vite preview",
     "postinstall": "npm run db:generate:supabase && npm run db:generate:pg",
     "reset-password": "tsx scripts/reset-password.ts",
+    "bench:erd-routing": "tsx scripts/bench-erd-routing.ts",
     "db:seed:team-isolation": "cross-env DB_VARIANT=pg prisma generate && cross-env DB_VARIANT=pg tsx scripts/seed-team-isolation.ts",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",

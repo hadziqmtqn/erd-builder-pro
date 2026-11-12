@@ -126,11 +126,22 @@ CSS variables from shadcn (`var(--popover)`, `var(--popover-foreground)`) used i
 - `styledNodes`/`styledEdges` preserve references — only create new objects for nodes whose selected state changed.
 - Filter `type: 'select'` changes before forwarding to React Flow.
 - `defaultEdgeOptions` memoized.
+- Edge routing (BUG-040): while an endpoint table is dragging, `ERDRoutedEdge` uses `routeErdEdgeWhileDragging` (direct, then boundary lane, then the plain route that may cross a table). It skips the A* grid search and never uses the outside lane (SH-004). The drop flips `dragging` and routes fully with `routeErdEdge`. Measure with `npm run bench:erd-routing`.
 
 ### Schema Diff & Merge
 - `computeSchemaDiff` matches tables by name (lowercase). Diff overlay on canvas with green/amber/red borders.
 - Merge panel: approve/reject per table. `handleApplyMerge` explicitly calls `saveDiagram` + `triggerDebouncedSync` after merge.
 - `isDiffMode` flag blocks all editing (double-click, dropdown, delete) during diff review.
+
+### Explorer, table editor and DBML drawer (ERD-004)
+- All three belong to one ERD pane and live in its `ERDView` state, so split panes keep their own; they render inside the pane's `ReactFlowProvider` and move the camera with `useERDCanvasFocus()` directly.
+- **Explorer** (`ERDExplorer`): floating Tables/Relationships panel left of the canvas, opened from the toolbar or ⇧⌘F (`useJumpToTableShortcut`; replaces the Jump to table dialog in ERD). Its tab, searches, last clicked rows and relationship editor are `ERDExplorerState` held by `useERDPanels`, so reopening it keeps them. Opening the table editor closes it and it stays closed when the editor closes; `‹ Tables` reopens it. A click on the empty canvas or a table closes it. Read-only and DB Client get it without edit buttons.
+- Row click highlights the item: the table (or both tables of a relationship) gets the `erd-node-focus` ring and its lines `edge-animated-active`; every other table stays solid (the owner asked for no dimming). The camera moves only when `isVisibleBesidePanel` says the target is not fully visible in the area the Explorer leaves free (`src/lib/erd-panel-geometry.ts`).
+- Clicking a relationship line in an editable diagram opens its editor in the Explorer; `AppLayout`'s `RelationshipPropertiesModal` now opens only for read-only and DB Client views.
+- **Table editor** (`ERDTablePopover`, wraps `PropertiesPanel`; its DBML tab is read-only with Copy): opened by Edit in the table menu, double-click, or ✎ in the Explorer (`useEditERDTable()` from table nodes, a stable function). Floating (384 px) next to the table on the side `choosePopoverSide` picks (away from related tables), after at most one camera move; pan, zoom and drag are locked until Esc, an empty-area click or close. Clicking another table moves it. Pin docks it beside the canvas; by default it docks when the pane is at least `DOCK_MIN_WIDTH` (1100 px) wide, and on phones.
+- **DBML drawer** (`ERDDBMLDrawer`): the full editable schema at the bottom of the canvas, height resizable (20–85 %), mounted while closed so an unapplied draft survives.
+- Relationship rows put the FK side first using the `is_pk` rule from `onConnect` (`src/lib/erd-relationship-list.ts`). Canvas-drawn edges are not normalized, so `edge.source` can be the PK.
+- The app-wide right panel (`rightPanelMode`: AI Chat, History, Repository) is an overlay drawer below the header; it no longer narrows the panes or collapses the sidebar. AI Chat opens from the "AI Assistant" toggle at the end of `MainHeader` or Cmd/Ctrl+J (no floating button); `AIChatPanel` has its own close button.
 
 ## Flowchart Architecture
 
@@ -210,6 +221,9 @@ Local web development uses `npm run dev:pg:local` and `npm run test:pg`. `DB_VAR
 | Login second round-trip | Login page stays visible after success | Use `handleLogin(userData)` synchronous — no `checkAuth()` call |
 | Edge reconnect preserves old edge | Edge snaps back to original | Use atomic `reconnectEdge()` from `@xyflow/system`, not filter + connect |
 | Base-UI select focus-out close | Column type dropdown closes mid-typing | `eventDetails.cancel()` on `'focus-out'` reason |
+| Right panel `fitView` in split view | A panel outside the pane moves nothing or the other pane | Keep canvas controls inside the pane (ERD-004 Explorer and table editor live in `ERDView`) |
+| `fitView()` does nothing on the ERD canvas | Canvas stays put until some other node change | React Flow 12 queues `fitView` behind a no-op nodes update that `ERDView` drops; use `getViewportForBounds` + `setViewport`/`setCenter` |
+| Selected ERD edge hidden | Orange line stays under overlapping lines | `elevateEdgesOnSelect` is off; `styleErdEdges` raises `edge.selected` (hover stays above) |
 
 ## Notable Conventions
 

@@ -20,6 +20,14 @@ export function publishFileChange(model: LiveFileModel, identifier: string, acto
   changes.emit(model, String(identifier), String(actorId));
 }
 
+/**
+ * Signals that a member's role on a Project changed (BUG-061). Their open streams for files in that Project tell the
+ * client to reload its Project access, so the file turns read-only or editable without a reload.
+ */
+export function publishProjectAccessChange(projectId: number, userId: string): void {
+  changes.emit("project-access", String(projectId), String(userId));
+}
+
 /** Route middleware for content writes: publishes once the response succeeded. */
 export function notifyFileChange(model: LiveFileModel) {
   return (req: Request, res: Response, next: NextFunction) => {
@@ -38,7 +46,7 @@ export function fileChangeStream(model: LiveFileModel) {
     const scope = currentTeamScope();
     const readable = async () => {
       if (scope?.mode === "team" && (!scope.teamId || !(await canAccessTeam(scope.teamId, user.id, Boolean(user.isSuperAdmin))))) return null;
-      return (prisma as any)?.[model].findFirst({ where: fileIdentifierWhere(req.params.uid, user.id), select: { id: true, uid: true } });
+      return (prisma as any)?.[model].findFirst({ where: fileIdentifierWhere(req.params.uid, user.id), select: { id: true, uid: true, projectId: true } });
     };
     const inScope = <T>(callback: () => Promise<T>) => scope ? runWithTeamScope(scope, callback) : callback();
     const file = await readable().catch(() => null);
@@ -53,6 +61,7 @@ export function fileChangeStream(model: LiveFileModel) {
       closed = true;
       clearInterval(heartbeat); clearTimeout(expiry);
       changes.off(model, onChange);
+      changes.off("project-access", onAccess);
       res.end();
     };
     const onChange = (identifier: string, actorId: string) => {
@@ -63,9 +72,18 @@ export function fileChangeStream(model: LiveFileModel) {
         else res.write("event: change\ndata: {}\n\n");
       }, close);
     };
+    const onAccess = (projectId: string, userId: string) => {
+      if (file.projectId == null || projectId !== String(file.projectId) || userId !== String(user.id)) return;
+      void inScope(readable).then(current => {
+        if (closed) return;
+        res.write("event: access\ndata: {}\n\n");
+        if (!current) close();
+      }, close);
+    };
     const heartbeat = setInterval(() => res.write(": ping\n\n"), HEARTBEAT_MS);
     const expiry = setTimeout(close, MAX_STREAM_MS);
     changes.on(model, onChange);
+    changes.on("project-access", onAccess);
     req.on("close", close);
   };
 }

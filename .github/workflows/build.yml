@@ -28,6 +28,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      # The app reports the version in the bumped files, so a tag without the bump makes the updater offer it forever.
+      - name: Check that the tag matches package.json
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "${GITHUB_REF_NAME#v}" != "$VERSION" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match version ${VERSION} in package.json. Bump the version before tagging."
+            exit 1
+          fi
+
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:

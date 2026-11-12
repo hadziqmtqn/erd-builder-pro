@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Sparkles, Plus, Loader2, Search, ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react';
+import { Sparkles, Plus, Loader2, Search, ChevronLeft, ChevronRight, ArrowLeft, X } from 'lucide-react';
 import { useAIChat, EntityContext } from '@/hooks/useAIChat';
 import { AIAction, getActionsForView, grillMeAction, ViewType } from '@/components/ai/AIActions';
 import { useAIAction, type AIActionContextValue } from '@/contexts/AIActionContext';
@@ -42,9 +42,12 @@ interface AIChatPanelProps {
   activeNoteContent?: string;
   /** AI scope of a file open in a side-by-side pane, keyed `${viewType}:${uid}`; undefined once that pane closes. */
   getPaneAI?: (key: string) => AIActionContextValue | undefined;
+  /** Told whether the AI is answering, so the header toggle can show it while the drawer is closed (BUG-050). */
+  onAnsweringChange?: (answering: boolean) => void;
 }
 
 export const AIChatPanel = ({
+  onClose,
   entityType,
   entityUid,
   entityTitle,
@@ -61,6 +64,7 @@ export const AIChatPanel = ({
   drawings = [],
   activeNoteContent,
   getPaneAI,
+  onAnsweringChange,
 }: AIChatPanelProps) => {
   const entityContext: EntityContext | null =
     entityType && entityUid ? { entityType, entityUid } : null;
@@ -109,6 +113,7 @@ export const AIChatPanel = ({
     isSessionsLoading,
     isMessagesLoading,
     isStreaming,
+    streamingSessionUid,
     canManageSession,
     createSession,
     selectSession,
@@ -120,6 +125,10 @@ export const AIChatPanel = ({
     loadMoreMessages,
   } = useAIChat(entityContext, effectiveEntityContextText, onStreamComplete, projectId, currentViewType);
   const canWriteCurrentSession = !currentSession || canManageSession(currentSession);
+  useEffect(() => {
+    onAnsweringChange?.(isStreaming);
+    return () => onAnsweringChange?.(false);
+  }, [isStreaming, onAnsweringChange]);
 
   const [lastActionId, setLastActionId] = useState<string | null>(null);
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
@@ -414,6 +423,13 @@ export const AIChatPanel = ({
   const hasMessages = messages.length > 0;
   const hasSessions = sessions.length > 0;
 
+  // The drawer has no tab bar of its own any more (ERD-004), so the panel closes itself.
+  const closeButton = (
+    <Button variant="ghost" size="icon" className="size-8" onClick={onClose} aria-label="Close AI Assistant" title="Close">
+      <X className="size-4" />
+    </Button>
+  );
+
   return (
     <Tooltip.Provider>
       <div
@@ -433,6 +449,7 @@ export const AIChatPanel = ({
                 <Button variant="ghost" size="icon" className="size-8" onClick={handleNewSession} title="New Chat">
                   <Plus className="size-4" />
                 </Button>
+                {closeButton}
               </div>
             </div>
 
@@ -469,6 +486,7 @@ export const AIChatPanel = ({
                       key={session.uid ?? session.id}
                       session={session}
                       isActive={currentSession?.uid === session.uid}
+                      answering={streamingSessionUid === String(session.uid ?? session.id)}
                       onClick={() => {
                         selectSession(session.uid);
                         setPage('chat');
@@ -516,6 +534,7 @@ export const AIChatPanel = ({
                 </button>
                 <span className="text-sm font-medium truncate">{currentSession?.title || 'AI Assistant'}</span>
               </div>
+              {closeButton}
             </div>
 
             {/* ── Messages ────────────────────────────── */}

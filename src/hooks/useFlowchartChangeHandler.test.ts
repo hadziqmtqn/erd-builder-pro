@@ -46,3 +46,28 @@ it('does not save the stored data again when a file is opened', async () => {
   await vi.advanceTimersByTimeAsync(1500);
   expect(saveFlowchart).not.toHaveBeenCalled();
 });
+
+it('writes the local draft at once so a reload before the upload keeps the last edit (BUG-047)', async () => {
+  vi.useFakeTimers();
+  const full = '{"nodes":[{"id":"a"}],"edges":[]}';
+  const flowcharts = { current: [{ id: 1, uid: 'flow', title: 'Clear, Undo, Redo', data: full }] };
+  const saveFlowchart = vi.fn().mockResolvedValue(true);
+  const sync = vi.fn();
+  const handler = useFlowchartChangeHandler({
+    activeFlowchartId: 'flow', isIncomingSyncRef: { current: false }, flowchartsRef: flowcharts,
+    lastLoadedFlowchartIdRef: { current: 'flow' }, lastSaveCallRef: { current: 0 },
+    setIsLocalSaving: vi.fn(), saveFlowchart,
+    setFlowcharts: update => { flowcharts.current = typeof update === 'function' ? update(flowcharts.current) : update; },
+    broadcastMessage: vi.fn(), triggerDebouncedSync: sync,
+    isRefreshing: false, isFlowchartItemLoading: false,
+  });
+  handler.handleFlowchartChange([], []);
+  handler.handleFlowchartChange([{ id: 'a' }], []);
+  handler.handleFlowchartChange([], []);
+  expect(saveFlowchart).toHaveBeenCalledTimes(3);
+  expect(saveFlowchart).toHaveBeenLastCalledWith(expect.objectContaining({ uid: 'flow', data: '{"nodes":[],"edges":[]}' }));
+  expect(sync).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(1500);
+  expect(saveFlowchart).toHaveBeenLastCalledWith(expect.objectContaining({ uid: 'flow', data: '{"nodes":[],"edges":[]}' }));
+  expect(sync).toHaveBeenCalledOnce();
+});

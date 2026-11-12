@@ -1,6 +1,6 @@
 import * as React from "react"
 import { useState } from "react"
-import { ExternalLink, Folder, LayoutDashboard, Library, Shield, UsersRound } from "lucide-react"
+import { ExternalLink, Folder, LayoutDashboard, Library, MoreHorizontal, Shield, UsersRound } from "lucide-react"
 import { useLocation, useNavigate } from "react-router-dom"
 
 import { NavUser } from "@/components/nav-user"
@@ -9,6 +9,7 @@ import { TeamSwitcher, type SwitcherTeam } from "@/components/team-switcher"
 import { SpotlightSearch } from "@/components/sidebar/SpotlightSearch"
 import { WorkspaceSidebarPanel } from "@/components/sidebar/WorkspaceSidebarPanel"
 import { AddTeamDialog } from "@/components/team/AddTeamDialog"
+import { TeamLicenseDialog, teamLicenseIssue, type TeamLicenseIssue } from "@/components/team/TeamLicenseDialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,7 +28,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { isInstalledApp } from "@/lib/api"
+import { apiFetch, isInstalledApp } from "@/lib/api"
 import type { Project, AppView } from "../types"
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
@@ -55,6 +56,7 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onTeamManage: (team: SwitcherTeam) => void;
   onTeamCreate: (input: { name: string }) => Promise<unknown>;
   onTeamCreated: (team: any) => void;
+  onOpenLicenseSettings: () => void;
   ssoPortalUrl?: string | null;
 }
 
@@ -84,6 +86,7 @@ export const AppSidebar = React.memo(({
   onTeamManage,
   onTeamCreate,
   onTeamCreated,
+  onOpenLicenseSettings,
   ssoPortalUrl,
   ...props
 }: AppSidebarProps) => {
@@ -91,6 +94,25 @@ export const AppSidebar = React.memo(({
   const navigate = useNavigate();
   const { isMobile } = useSidebar();
   const [isTeamCreateOpen, setIsTeamCreateOpen] = useState(false);
+  const [licenseIssue, setLicenseIssue] = useState<TeamLicenseIssue | null>(null);
+  // Add Team checks the license first so an unlicensed SuperAdmin sees why, not an empty form (SH-007).
+  const openAddTeam = async (fallback?: TeamLicenseIssue) => {
+    try {
+      const response = await apiFetch("/api/license/status");
+      const issue = response.ok ? teamLicenseIssue(await response.json()) : null;
+      if (issue || fallback) {
+        setLicenseIssue(issue || fallback || null);
+        return;
+      }
+    } catch {
+      // The server still enforces the license when the Team is created.
+    }
+    setIsTeamCreateOpen(true);
+  };
+  const handleLicenseIssue = (code: string) => {
+    if (code === "LICENSE_SYNC_REQUIRED") setLicenseIssue({ kind: "sync" });
+    else void openAddTeam({ kind: "invalid" });
+  };
   const showDbClient = isInstalledApp();
   const isSelfHosted = !showDbClient && !user?.isSso && (user?.isSuperAdmin !== undefined || user?.is_super_admin !== undefined);
   const canManageInstance = Boolean(user?.isSuperAdmin || user?.is_super_admin);
@@ -112,11 +134,11 @@ export const AppSidebar = React.memo(({
           <TeamSwitcher
             teams={teams}
             activeTeamId={activeTeamId}
-            enabled={teamsAvailable || teams.length > 0}
+            enabled={teamsAvailable || teams.length > 0 || (canManageInstance && licenseRequired)}
             canManageTeams={canManageInstance}
             onOpen={onTeamsRefresh}
             onSelect={onTeamSelect}
-            onAdd={() => setIsTeamCreateOpen(true)}
+            onAdd={() => { void openAddTeam(); }}
             onManage={onTeamManage}
           />
           <SpotlightSearch
@@ -140,6 +162,36 @@ export const AppSidebar = React.memo(({
                     <span>Dashboard</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+                {isSelfHosted && canManageInstance && (
+                  <SidebarMenuItem>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={
+                          <SidebarMenuButton
+                            // No `tooltip`: its Tooltip wrapper swallows the first click on a menu trigger; `title` keeps the hint when collapsed.
+                            title="Instance Administration"
+                            aria-label="Instance Administration"
+                            isActive={location.pathname === "/team-workspaces" || location.pathname === "/users"}
+                          >
+                            <Shield aria-hidden="true" />
+                            <span>Instance Administration</span>
+                            <MoreHorizontal aria-hidden="true" className="ml-auto text-muted-foreground group-data-[collapsible=icon]:hidden" />
+                          </SidebarMenuButton>
+                        }
+                      />
+                      <DropdownMenuContent side={isMobile ? "bottom" : "right"} align="start" sideOffset={8}>
+                        <DropdownMenuItem onClick={() => navigate("/team-workspaces")}>
+                          <Folder aria-hidden="true" />
+                          Team
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => navigate("/users")}>
+                          <UsersRound aria-hidden="true" />
+                          Users
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </SidebarMenuItem>
+                )}
                 {user?.isSso && ssoPortalUrl && (
                   <SidebarMenuItem>
                     <SidebarMenuButton tooltip="Manage account & billing" onClick={openSaaS}>
@@ -182,35 +234,6 @@ export const AppSidebar = React.memo(({
               <SponsorCarousel />
             </div>
           )}
-          {isSelfHosted && canManageInstance && (
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={
-                      <SidebarMenuButton
-                        tooltip="Instance Administration"
-                        isActive={location.pathname === "/team-workspaces" || location.pathname === "/users"}
-                      >
-                        <Shield aria-hidden="true" />
-                        <span>Instance Administration</span>
-                      </SidebarMenuButton>
-                    }
-                  />
-                  <DropdownMenuContent side={isMobile ? "bottom" : "right"} align="end" sideOffset={8}>
-                    <DropdownMenuItem onClick={() => navigate("/team-workspaces")}>
-                      <Folder aria-hidden="true" />
-                      Team
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => navigate("/users")}>
-                      <UsersRound aria-hidden="true" />
-                      Users
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          )}
           <NavUser
             user={user}
             onLogout={onLogout}
@@ -226,6 +249,14 @@ export const AppSidebar = React.memo(({
         onOpenChange={setIsTeamCreateOpen}
         onCreate={onTeamCreate}
         onCreated={onTeamCreated}
+        onLicenseIssue={handleLicenseIssue}
+      />
+      <TeamLicenseDialog
+        issue={licenseIssue}
+        onOpenChange={(open) => { if (!open) setLicenseIssue(null); }}
+        onOpenLicenseSettings={onOpenLicenseSettings}
+        onManageTeams={() => navigate("/team-workspaces")}
+        onRetry={() => { void openAddTeam(); }}
       />
     </>
   );

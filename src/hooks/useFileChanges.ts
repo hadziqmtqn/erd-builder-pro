@@ -5,10 +5,13 @@ import { apiFetch } from '@/lib/api';
  * Calls `onChange` when the server signals that the file at `path` was saved (BUG-023).
  * Uses fetch rather than EventSource so the request carries the Team header like every other file call.
  * A reconnect after a dropped stream also calls `onChange`, because a save may have happened while disconnected.
+ * Calls `onAccess` when the user's role on the file's Project changed (BUG-061).
  */
-export function useFileChanges(path: string | null, onChange: () => void) {
+export function useFileChanges(path: string | null, onChange: () => void, onAccess?: () => void) {
   const latest = useRef(onChange);
   latest.current = onChange;
+  const latestAccess = useRef(onAccess);
+  latestAccess.current = onAccess;
   useEffect(() => {
     if (!path) return;
     const controller = new AbortController();
@@ -28,6 +31,7 @@ export function useFileChanges(path: string | null, onChange: () => void) {
             const events = (buffer + chunk.value).split('\n\n');
             buffer = events.pop() ?? '';
             if (events.some(event => event.startsWith('event: change'))) latest.current();
+            if (events.some(event => event.startsWith('event: access'))) latestAccess.current?.();
           }
         } catch {
           if (controller.signal.aborted) return;

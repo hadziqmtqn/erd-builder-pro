@@ -147,6 +147,9 @@ Key capabilities:
   }
 }
 
+// Find schema.sql relative to this script (bundled in dist-server/)
+const schemaSqlPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "schema.sql");
+
 /**
  * For desktop mode (SQLite): if the offline migration didn't run (e.g. first
  * launch before the fix), ensure tables exist by applying schema.sql directly
@@ -171,16 +174,19 @@ async function ensureDatabaseTables(): Promise<boolean> {
     logger.info("Users table not found — attempting to create from schema.sql");
   }
 
-  // Find schema.sql relative to this script (bundled in dist-server/)
-  const __dir = path.dirname(fileURLToPath(import.meta.url));
-  const schemaPath = path.resolve(__dir, "schema.sql");
-
-  if (!fs.existsSync(schemaPath)) {
-    logger.warn({ schemaPath }, "schema.sql not found — cannot create tables");
+  if (!fs.existsSync(schemaSqlPath)) {
+    logger.warn({ schemaPath: schemaSqlPath }, "schema.sql not found — cannot create tables");
     return false;
   }
+  await applySchemaSql();
+  return true;
+}
 
-  const sql = fs.readFileSync(schemaPath, "utf8");
+/** Runs schema.sql statement by statement, skipping tables and indexes that already exist. */
+async function applySchemaSql(): Promise<void> {
+  const db = prisma;
+  if (!db) return;
+  const sql = fs.readFileSync(schemaSqlPath, "utf8");
   // Strip SQL comments (-- CreateTable, -- CreateIndex) BEFORE splitting by ";"
   // because the schema.sql format puts "-- CreateTable" on the line before each
   // CREATE TABLE statement. Splitting first then filtering by startsWith("--")
@@ -193,11 +199,15 @@ async function ensureDatabaseTables(): Promise<boolean> {
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 
-  let tableCount = 0;
+  // IF NOT EXISTS skips what is already there. Without it each existing table and index raised an error that Prisma
+  // logs as prisma:error, about a hundred lines on every Desktop start (BUG-057).
+  const countObjects = async () => Number(((await db.$queryRawUnsafe(
+    "SELECT count(*) AS n FROM sqlite_master WHERE type IN ('table', 'index')",
+  )) as { n: number | bigint }[])[0]?.n ?? 0);
+  const before = await countObjects();
   for (const stmt of statements) {
     try {
-      await prisma.$executeRawUnsafe(stmt + ";");
-      tableCount++;
+      await db.$executeRawUnsafe(stmt.replace(/^CREATE (UNIQUE INDEX|INDEX|TABLE) /, "CREATE $1 IF NOT EXISTS ") + ";");
     } catch (err: any) {
       // Ignore "already exists" errors for idempotency
       if (err?.message?.includes("already exists")) continue;
@@ -205,8 +215,8 @@ async function ensureDatabaseTables(): Promise<boolean> {
     }
   }
 
-  logger.info({ tableCount }, "Database tables created via fallback schema apply");
-  return true;
+  const created = (await countObjects()) - before;
+  if (created > 0) logger.info({ created }, "Database tables and indexes created from schema.sql");
 }
 
 // Start the HTTP server immediately so the frontend can connect.
@@ -287,6 +297,11 @@ async function startup(): Promise<void> {
     // Schema migrations must finish before /api/me lets the UI load. Prisma
     // already expects these columns, so background ALTERs can race first load.
     await applySchemaMigrations();
+
+    // ensureDatabaseTables() skips schema.sql once the users table exists, so a database created by an older release
+    // never got the tables and indexes added since (BUG-057). Apply it again now that the migrations above have
+    // added the columns those indexes use. Docker images have no schema.sql: their entrypoint runs prisma db push.
+    if (isDesktopMode() && fs.existsSync(schemaSqlPath)) await applySchemaSql();
 
     // Seed only after schema self-heal; fresh Desktop databases otherwise have
     // no ai_providers table when this first runs.

@@ -293,7 +293,7 @@ export function WorkspaceProvider({
     undo, redo, canUndo, canRedo, takeSnapshot, isItemLoading: isERDItemLoading, saveCounter,
     onNodeDragStop, onMoveEnd,
     extractColumnIdFromHandle, getRelationKey, dedupeEdgesByRelation,
-  } = useERDSession(isPublicView, isGuest, isAuthenticated, () => {}, erdOptions);
+  } = useERDSession(isPublicView, isGuest, isAuthenticated, () => {}, erdOptions, view === 'erd');
 
   // Effective ID for realtime sync
   const effectiveDiagramId = isPublicView ? publicData?.id : activeDiagramId;
@@ -563,6 +563,12 @@ export function WorkspaceProvider({
       title: 'Someone else saved this file',
       description: 'Load the latest version to see their changes. Your unsaved edits are kept as a recovery copy.',
     });
+  }, () => {
+    // The user's role on this Project changed (BUG-061). The open file carries its own role from the server, which wins
+    // over the Project list, so reload both. An unsynced local draft still wins over the reloaded content.
+    void fetchProjects(false, debouncedSearchQuery);
+    void refreshActiveDocument();
+    toast.info('Your access to this Project changed.');
   });
 
   // URL routing for /drawings/:uid

@@ -62,9 +62,11 @@ interface TableCodePanelProps {
   entity: Entity;
   mode: TableCodeMode;
   onUpdateEntity: (entity: Entity) => void;
+  /** DBML is shown to read and copy only; the full schema is edited in the DBML drawer (ERD-004). */
+  dbmlReadOnly?: boolean;
 }
 
-export default function TableCodePanel({ entity, mode, onUpdateEntity }: TableCodePanelProps) {
+export default function TableCodePanel({ entity, mode, onUpdateEntity, dbmlReadOnly = false }: TableCodePanelProps) {
   const { resolvedTheme } = useWorkspace();
   const [activeCategory, setActiveCategory] = React.useState(CATEGORIES[0].id);
   const [activeFormat, setActiveFormat] = React.useState(CATEGORIES[0].formats[0].id);
@@ -111,7 +113,7 @@ export default function TableCodePanel({ entity, mode, onUpdateEntity }: TableCo
   }, [currentLanguage, mode, resolvedTheme]);
 
   const copyCode = async () => {
-    await navigator.clipboard.writeText(currentCode);
+    await navigator.clipboard.writeText(mode === 'dbml' ? generatedDbml : currentCode);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2000);
   };
@@ -169,12 +171,14 @@ export default function TableCodePanel({ entity, mode, onUpdateEntity }: TableCo
       <div className="flex h-full min-h-0 flex-col">
         <div className="shrink-0 border-b border-border px-4 py-3">
           <p className="text-sm font-semibold">Table DBML</p>
-          <p className="mt-1 text-xs text-muted-foreground">Only the DBML for “{entity.name}” can be edited.</p>
+          <p className="mt-1 text-xs text-muted-foreground">{dbmlReadOnly ? 'Read only. Edit the full schema from DBML in the toolbar.' : `Only the DBML for “${entity.name}” can be edited.`}</p>
         </div>
         <div className="min-h-0 flex-1 overflow-hidden bg-muted">
           <CodeMirror
-            value={dbmlValue}
+            value={dbmlReadOnly ? generatedDbml : dbmlValue}
             onChange={setDbmlValue}
+            editable={!dbmlReadOnly}
+            readOnly={dbmlReadOnly}
             extensions={extensions}
             theme={resolvedTheme === 'dark' ? oneDark : undefined}
             height="100%"
@@ -182,11 +186,20 @@ export default function TableCodePanel({ entity, mode, onUpdateEntity }: TableCo
             className="h-full text-[13px] text-foreground/90"
           />
         </div>
-        <div className="min-h-8 px-4 py-2 text-xs text-destructive">{dbmlValidation.error}</div>
-        <div className="flex shrink-0 justify-end gap-2 border-t border-border bg-muted/20 p-3">
-          <Button variant="outline" onClick={() => setDbmlValue(generatedDbml)}>Reset</Button>
-          <Button onClick={applyDbml} disabled={!!dbmlValidation.error || !hasChanges}>Apply DBML</Button>
-        </div>
+        {dbmlReadOnly ? (
+          <div className="flex shrink-0 justify-end border-t border-border bg-muted/20 p-3">
+            <Button variant="outline" onClick={copyCode}>
+              {copied ? <Check className="mr-2 size-3.5 text-green-500" /> : <Copy className="mr-2 size-3.5" />}
+              {copied ? 'Copied' : 'Copy'}
+            </Button>
+          </div>
+        ) : <>
+          <div className="min-h-8 px-4 py-2 text-xs text-destructive">{dbmlValidation.error}</div>
+          <div className="flex shrink-0 justify-end gap-2 border-t border-border bg-muted/20 p-3">
+            <Button variant="outline" onClick={() => setDbmlValue(generatedDbml)}>Reset</Button>
+            <Button onClick={applyDbml} disabled={!!dbmlValidation.error || !hasChanges}>Apply DBML</Button>
+          </div>
+        </>}
       </div>
     );
   }

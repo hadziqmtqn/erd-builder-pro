@@ -46,14 +46,21 @@ export function creatorFileIdentifierWhere(identifier: string, userId: string): 
 
 /**
  * Who keeps full access to a Team file whatever a Project grant says: its creator, Team Managers, and the Project
- * creator until a Manager stores a role for them (COL-004, COL-007).
+ * creator until a Manager stores a role for them (COL-004, COL-007). A Project creator a Manager limited to Viewer
+ * or Commenter loses it on their own files in that Project too (COL-007).
  */
 function fullAccessWhere(userId: string): Record<string, unknown>[] {
   return [
-    { userId },
+    { userId, NOT: { project: { userId, accessGrants: { some: { userId, role: { in: ["viewer", "commenter"] } } } } } },
     { project: { userId, accessGrants: { none: { userId } } } },
     { project: { team: { members: { some: { userId, role: "manager", status: "active" } } } } },
   ];
+}
+
+/** File identifier constrained to its creator for delete, restore and share; in a Team the creator also needs full access. */
+export function ownFileIdentifierWhere(identifier: string, userId: string): Record<string, unknown> {
+  if (currentTeamScope()?.mode !== "team") return creatorFileIdentifierWhere(identifier, userId);
+  return { AND: [fileIdentifierWhere(identifier, userId), { userId }, { OR: fullAccessWhere(userId) }] };
 }
 
 /** File identifier constrained to people who may change its content: full access, or an Editor grant on its Project. */

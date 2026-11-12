@@ -523,6 +523,11 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
     },
   });
 
+  // useEditor keeps the `editable` it was created with, and the role can change while the note is open (BUG-061).
+  useEffect(() => {
+    if (editor && !editor.isDestroyed && editor.isEditable === isReadOnly) editor.setEditable(!isReadOnly, false);
+  }, [editor, isReadOnly]);
+
   const insertGeneratedCompanion = React.useCallback((type: 'erd' | 'flowchart', file: any) => {
     if (!editor) return;
     const at = conversionPosition === undefined

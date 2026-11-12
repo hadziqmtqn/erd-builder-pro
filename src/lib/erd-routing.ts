@@ -12,27 +12,53 @@ export function segmentBlocked(a: RoutePoint, b: RoutePoint, obstacles: RouteObs
     : a.y > r.y && a.y < r.y + r.height && Math.max(a.x, b.x) > r.x && Math.min(a.x, b.x) < r.x + r.width);
 }
 
-/** Orthogonal visibility grid around table boundaries, searched by Manhattan distance. */
-export function routeErdEdge(source: RoutePoint, target: RoutePoint, sourceRight: boolean, targetRight: boolean, tables: RouteObstacle[]): RoutePoint[] {
-  const start = { x: source.x + (sourceRight ? 16 : -16), y: source.y };
-  const end = { x: target.x + (targetRight ? 16 : -16), y: target.y };
-  const obstacles = tables.map(r => ({ x: r.x - 8, y: r.y - 8, width: r.width + 16, height: r.height + 16 }));
-  if (source.x === target.x && source.y === target.y) {
-    const outside = start.x + (sourceRight ? 16 : -16);
-    return [source, start, { x: start.x, y: start.y - 24 }, { x: outside, y: start.y - 24 }, { x: outside, y: target.y }, target];
-  }
+/** SVG path through route points with each bend rounded by up to `radius`, never more than half of either neighbouring segment. */
+export function roundedRoutePath(points: RoutePoint[], radius = 8) {
+  const toward = (from: RoutePoint, to: RoutePoint, distance: number) => {
+    const length = Math.hypot(to.x - from.x, to.y - from.y);
+    return length ? { x: from.x + (to.x - from.x) * distance / length, y: from.y + (to.y - from.y) * distance / length } : from;
+  };
+  return points.map((p, i) => {
+    const prev = points[i - 1], next = points[i + 1];
+    if (!prev || !next) return `${prev ? 'L' : 'M'}${p.x},${p.y}`;
+    const r = Math.min(radius, Math.hypot(p.x - prev.x, p.y - prev.y) / 2, Math.hypot(next.x - p.x, next.y - p.y) / 2);
+    const a = toward(p, prev, r), b = toward(p, next, r);
+    return `L${a.x},${a.y} Q${p.x},${p.y} ${b.x},${b.y}`;
+  }).join(' ');
+}
+
+type RoutePorts = { start: RoutePoint; end: RoutePoint; obstacles: RouteObstacle[] };
+
+function routePorts(source: RoutePoint, target: RoutePoint, sourceRight: boolean, targetRight: boolean, tables: RouteObstacle[]): RoutePorts {
+  return {
+    start: { x: source.x + (sourceRight ? 16 : -16), y: source.y },
+    end: { x: target.x + (targetRight ? 16 : -16), y: target.y },
+    obstacles: tables.map(r => ({ x: r.x - 8, y: r.y - 8, width: r.width + 16, height: r.height + 16 })),
+  };
+}
+
+const routeIsClear = (points: RoutePoint[], obstacles: RouteObstacle[]) => points.slice(1).every((p, i) => !segmentBlocked(points[i], p, obstacles));
+
+function selfReferenceRoute(source: RoutePoint, target: RoutePoint, sourceRight: boolean, start: RoutePoint): RoutePoint[] {
+  const outside = start.x + (sourceRight ? 16 : -16);
+  return [source, start, { x: start.x, y: start.y - 24 }, { x: outside, y: start.y - 24 }, { x: outside, y: target.y }, target];
+}
+
+/** The two single-turn routes, or null when both cross a table. */
+function directRoute(source: RoutePoint, target: RoutePoint, { start, end, obstacles }: RoutePorts): RoutePoint[] | null {
   const simple = [
     [start, { x: end.x, y: start.y }, end],
     [start, { x: start.x, y: end.y }, end],
-  ].find(points => points.slice(1).every((p, i) => !segmentBlocked(points[i], p, obstacles)));
-  if (simple) return [source, ...simple, target];
-  const outsideLane = () => {
-    const y = Math.min(source.y, target.y, ...obstacles.map(r => r.y)) - 24;
-    return [source, start, { x: start.x, y }, { x: end.x, y }, end, target];
-  };
-  // An enclosed port has no valid first/last segment; do not exhaust the entire visibility grid.
-  if ([start, end].some(p => obstacles.some(r => p.x > r.x && p.x < r.x + r.width && p.y > r.y && p.y < r.y + r.height))) return outsideLane();
-  // Try nearby table-boundary lanes before building a quadratic visibility grid for every FK.
+  ].find(points => routeIsClear(points, obstacles));
+  return simple ? [source, ...simple, target] : null;
+}
+
+// An enclosed port has no valid first/last segment; do not exhaust the entire visibility grid.
+const portEnclosed = ({ start, end, obstacles }: RoutePorts) =>
+  [start, end].some(p => obstacles.some(r => p.x > r.x && p.x < r.x + r.width && p.y > r.y && p.y < r.y + r.height));
+
+/** Shortest clear two-turn route along a table boundary, or null. */
+function boundaryLaneRoute(source: RoutePoint, target: RoutePoint, { start, end, obstacles }: RoutePorts): RoutePoint[] | null {
   const lanes = [
     ...new Set(obstacles.flatMap(r => [r.y, r.y + r.height])),
   ].map(y => [start, { x: start.x, y }, { x: end.x, y }, end]).concat(
@@ -41,8 +67,38 @@ export function routeErdEdge(source: RoutePoint, target: RoutePoint, sourceRight
   );
   const length = (points: RoutePoint[]) => points.slice(1).reduce((sum, p, i) => sum + Math.abs(p.x - points[i].x) + Math.abs(p.y - points[i].y), 0);
   lanes.sort((a, b) => length(a) - length(b));
-  const lane = lanes.find(points => points.slice(1).every((p, i) => !segmentBlocked(points[i], p, obstacles)));
-  if (lane) return [source, ...lane, target];
+  const lane = lanes.find(points => routeIsClear(points, obstacles));
+  return lane ? [source, ...lane, target] : null;
+}
+
+/**
+ * Route for an edge whose table is being dragged: the grid search is skipped to keep each frame cheap.
+ * When no direct or boundary-lane route is clear, the plain route may cross a table until the drop,
+ * where `routeErdEdge` routes it fully; it never jumps to a far outside lane mid-drag (SH-004).
+ */
+export function routeErdEdgeWhileDragging(source: RoutePoint, target: RoutePoint, sourceRight: boolean, targetRight: boolean, tables: RouteObstacle[]): RoutePoint[] {
+  const ports = routePorts(source, target, sourceRight, targetRight, tables);
+  if (source.x === target.x && source.y === target.y) return selfReferenceRoute(source, target, sourceRight, ports.start);
+  return directRoute(source, target, ports)
+    ?? (portEnclosed(ports) ? null : boundaryLaneRoute(source, target, ports))
+    ?? [source, ports.start, { x: ports.end.x, y: ports.start.y }, ports.end, target];
+}
+
+/** Orthogonal visibility grid around table boundaries, searched by Manhattan distance. */
+export function routeErdEdge(source: RoutePoint, target: RoutePoint, sourceRight: boolean, targetRight: boolean, tables: RouteObstacle[]): RoutePoint[] {
+  const ports = routePorts(source, target, sourceRight, targetRight, tables);
+  const { start, end, obstacles } = ports;
+  if (source.x === target.x && source.y === target.y) return selfReferenceRoute(source, target, sourceRight, start);
+  const simple = directRoute(source, target, ports);
+  if (simple) return simple;
+  const outsideLane = () => {
+    const y = Math.min(source.y, target.y, ...obstacles.map(r => r.y)) - 24;
+    return [source, start, { x: start.x, y }, { x: end.x, y }, end, target];
+  };
+  if (portEnclosed(ports)) return outsideLane();
+  // Try nearby table-boundary lanes before building a quadratic visibility grid for every FK.
+  const lane = boundaryLaneRoute(source, target, ports);
+  if (lane) return lane;
   const xs = [...new Set([start.x, end.x, ...obstacles.flatMap(r => [r.x, r.x + r.width])])].sort((a, b) => a - b);
   const ys = [...new Set([start.y, end.y, ...obstacles.flatMap(r => [r.y, r.y + r.height])])].sort((a, b) => a - b);
   const key = (x: number, y: number) => y * xs.length + x;

@@ -1,4 +1,4 @@
-import { MessageSquare, Trash2 } from 'lucide-react';
+import { Loader2, MessageSquare, Trash2 } from 'lucide-react';
 import { AIChatSession } from '@/types';
 
 function relativeTime(dateStr?: string): string {
@@ -19,11 +19,14 @@ function relativeTime(dateStr?: string): string {
 export function SessionItem({
   session,
   isActive,
+  answering = false,
   onClick,
   onDelete,
 }: {
   session: AIChatSession;
   isActive: boolean;
+  /** The AI is still answering this conversation (BUG-050). */
+  answering?: boolean;
   onClick: () => void;
   onDelete?: () => void;
 }) {
@@ -61,7 +64,12 @@ export function SessionItem({
             `}>
               {session.title || 'New Conversation'}
             </span>
-            {time && (
+            {answering ? (
+              <span title="AI is answering" className="shrink-0 text-primary">
+                <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                <span className="sr-only">AI is answering</span>
+              </span>
+            ) : time && (
               <span className="shrink-0 text-[10px] text-muted-foreground/50 font-medium">
                 {time}
               </span>
