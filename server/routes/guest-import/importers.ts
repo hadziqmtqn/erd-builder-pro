@@ -22,10 +22,9 @@ export async function importProjects(
 
     const name = String(item.name);
     const nameLower = name.toLowerCase();
-    const guestId = String(item.uid || item.id || "");
-
-    if (guestId) {
-      guestIdToName.set(guestId, nameLower);
+    // Server exports point files at the numeric project id, guest exports at the uid (BUG-066).
+    for (const key of [item.uid, item.id]) {
+      if (key != null && key !== "") guestIdToName.set(String(key), nameLower);
     }
 
     const existing = await prisma!.project.findFirst({
