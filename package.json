@@ -8,7 +8,7 @@
     "dev:api": "npm run db:generate:pg && cross-env NODE_ENV=development NODE_USE_SYSTEM_CA=1 tsx watch server/run.ts",
     "dev:pg:local": "npm run db:push:pg:local && npm run db:generate:pg:local && cross-env NODE_ENV=development NODE_USE_SYSTEM_CA=1 tsx watch server/dev.ts",
     "dev:client": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/precompress-assets.js",
     "build:server": "node scripts/build-server.js",
     "build:cli": "bash scripts/build-cli.sh",
     "build:desktop": "npm rebuild better-sqlite3 && cross-env DB_VARIANT=sqlite prisma generate && node --input-type=module -e \"import { PrismaClient } from '@prisma/client'; if (typeof PrismaClient !== 'function') process.exit(1)\" && npm run build:server && node -e \"try{require('./dist-server/node_modules/better-sqlite3')}catch(e){console.error('BUILD FAIL: better-sqlite3 load error:',e.message);process.exit(1)}\" && node scripts/download-node.js && node scripts/build-mcp-launcher.js && rm -rf dist && cross-env VITE_SINGLE_BUNDLE=true vite build",
