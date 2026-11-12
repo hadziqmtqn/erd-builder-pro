@@ -53,6 +53,7 @@
       "../dist-server/mcp.js": "dist-server/mcp.js",
       "../dist-server/migrate-db.mjs": "dist-server/migrate-db.mjs",
       "../dist-server/schema.sql": "dist-server/schema.sql",
+      "../dist-server/sql-wasm.wasm": "dist-server/sql-wasm.wasm",
       "../dist-server/node_modules": "dist-server/node_modules",
       "../dist-server/prisma": "dist-server/prisma",
       "../dist-server/node-bin": "dist-server/node-bin",

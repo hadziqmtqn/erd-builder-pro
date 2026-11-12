@@ -1,4 +1,6 @@
 import fs from "node:fs";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 import initSqlJs from "sql.js";
 import type { ConnectionInfo, ConnectorClient, TableSchema, DbConnector } from "./types.js";
 
@@ -7,8 +9,17 @@ type CachedDatabase = { db: any; signature: string; refs: number };
 const databases = new Map<string, CachedDatabase>();
 let sqlPromise: ReturnType<typeof initSqlJs> | null = null;
 
+// The bundled server (Desktop, CLI) ships the WASM next to index.js; source runs read it from node_modules.
+function sqlWasmPath() {
+  const bundled = fileURLToPath(new URL("sql-wasm.wasm", import.meta.url));
+  return fs.existsSync(bundled) ? bundled : createRequire(import.meta.url).resolve("sql.js/dist/sql-wasm.wasm");
+}
+
 function getSql() {
-  return sqlPromise || (sqlPromise = initSqlJs());
+  // Reading the WASM here makes a missing file a normal rejection; sql.js's own loader aborts the process (BUG-064).
+  return sqlPromise || (sqlPromise = Promise.resolve()
+    .then(() => initSqlJs({ wasmBinary: fs.readFileSync(sqlWasmPath()) }))
+    .catch((err) => { sqlPromise = null; throw err; }));
 }
 
 function fileSignature(path: string) {
