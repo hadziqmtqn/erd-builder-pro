@@ -52,7 +52,8 @@ export function separateTables(nodes: Node<Entity>[]): Node<Entity>[] {
 
 export function constrainTableChanges(changes: NodeChange<Node<Entity>>[], nodes: Node<Entity>[]) {
   const next = applyNodeChanges(changes, nodes);
-  const moving = new Set(changes.flatMap(c => c.type === 'position' ? [c.id] : []));
+  // BUG-043: a table may overlap others while the mouse is down; it is separated on the drop (dragging false).
+  const moving = new Set(changes.flatMap(c => c.type === 'position' && !c.dragging ? [c.id] : []));
   const safe = moving.size ? separateMovedTables(next, moving)
     : changes.some(c => c.type === 'dimensions') ? separateTables(next) : next;
   const corrections: NodeChange<Node<Entity>>[] = safe.flatMap((n, i) => n.position.x !== next[i].position.x || n.position.y !== next[i].position.y
