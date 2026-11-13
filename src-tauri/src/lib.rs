@@ -455,10 +455,10 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
             &format!("  Using bundled Node.js: {}", bundled_node.display()),
         );
 
-        // On Linux/macOS, the resource directory may be mounted noexec
+        // On Linux the resource directory may be mounted noexec
         // (e.g. AppImage mounts on /tmp which can be mounted with noexec).
         // Copy the bundled node binary to a writable + executable location.
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
         let node_bin = {
             use std::os::unix::fs::PermissionsExt;
             let cache_node = app_cache_dir.join("node-bin").join("node");
@@ -471,17 +471,17 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
             };
             if needs_copy {
                 let _ = std::fs::create_dir_all(cache_node.parent().unwrap());
-                if let Err(e) = std::fs::copy(&bundled_node, &cache_node) {
+                // Copy beside the cache and rename over it, so a copy that is running is never
+                // rewritten in place (BUG-067). The pid keeps the app and the MCP launcher apart.
+                let tmp = cache_node.with_extension(format!("tmp-{}", std::process::id()));
+                let replaced = std::fs::copy(&bundled_node, &tmp)
+                    .and_then(|_| std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755)))
+                    .and_then(|_| std::fs::rename(&tmp, &cache_node));
+                if let Err(e) = replaced {
+                    let _ = std::fs::remove_file(&tmp);
                     startup_log(&log_dir, &format!(
                         "  WARN: Failed to copy node to cache (will try direct): {}",
                         e
-                    ));
-                } else if let Err(e) = std::fs::set_permissions(
-                    &cache_node,
-                    std::fs::Permissions::from_mode(0o755),
-                ) {
-                    startup_log(&log_dir, &format!(
-                        "  WARN: Failed to chmod node in cache: {}", e
                     ));
                 }
             }
@@ -494,6 +494,14 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
             } else {
                 win_path(&bundled_node)
             }
+        };
+        // macOS runs the bundled binary in place, as run_mcp_stdio does. After the 3.5.0 update
+        // macOS killed the overwritten cached copy at launch and the server never started
+        // (BUG-067), so the old cache is removed instead of reused.
+        #[cfg(target_os = "macos")]
+        let node_bin = {
+            let _ = std::fs::remove_file(app_cache_dir.join("node-bin").join("node"));
+            win_path(&bundled_node)
         };
         #[cfg(target_os = "windows")]
         let node_bin = win_path(&bundled_node);
