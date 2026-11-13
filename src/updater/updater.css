@@ -1,0 +1,96 @@
+:root {
+  color-scheme: dark light;
+  --bg: #141416;
+  --panel: #0f0f11;
+  --border: #27272a;
+  --text: #fafafa;
+  --muted: #a1a1aa;
+  --track: #27272a;
+  --primary-bg: #fafafa;
+  --primary-text: #09090b;
+  --secondary-bg: #18181b;
+  --secondary-border: #3f3f46;
+  --link: #a5c4ff;
+  --warn: #fbbf24;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #ffffff;
+    --panel: #f4f4f5;
+    --border: #e4e4e7;
+    --text: #09090b;
+    --muted: #52525b;
+    --track: #e4e4e7;
+    --primary-bg: #18181b;
+    --primary-text: #fafafa;
+    --secondary-bg: #ffffff;
+    --secondary-border: #d4d4d8;
+    --link: #1d4ed8;
+    --warn: #b45309;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+}
+
+main {
+  padding: 22px 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+header { display: flex; gap: 12px; align-items: flex-start; }
+header svg { flex-shrink: 0; margin-top: 1px; color: var(--warn); }
+h1 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+p { margin: 0; color: var(--muted); font-size: 12px; }
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.versions { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.versions strong { color: var(--text); }
+
+.row { display: flex; align-items: center; gap: 12px; }
+.row + .row { border-top: 1px solid var(--border); padding-top: 10px; }
+.row div { flex-grow: 1; display: flex; flex-direction: column; gap: 2px; }
+.row span:last-child { font-size: 12px; color: var(--muted); }
+
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+button {
+  min-height: 32px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font: inherit;
+  cursor: pointer;
+}
+button:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+button:disabled { opacity: 0.6; cursor: default; }
+.primary { border: 0; background: var(--primary-bg); color: var(--primary-text); font-weight: 600; }
+.secondary { border: 1px solid var(--secondary-border); background: var(--secondary-bg); color: var(--text); }
+.link { margin-left: auto; border: 0; background: none; padding: 0; color: var(--link); font-size: 12px; }
+
+.track { height: 8px; border-radius: 4px; background: var(--track); overflow: hidden; }
+.fill { height: 8px; width: 0; border-radius: 4px; background: var(--text); transition: width 0.2s; }
+.progress-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+
+.steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; color: var(--muted); }
+.steps li::before { content: "○"; display: inline-block; width: 18px; }
+.steps li.active { color: var(--text); }
+.steps li.active::before { content: "●"; }
+.steps li.done::before { content: "✓"; }

@@ -1,5 +1,7 @@
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use tauri::Emitter;
 use tauri::Manager;
 use tauri_plugin_window_state::StateFlags;
@@ -37,6 +39,59 @@ fn suppress_window(cmd: &mut Command) {
 
 /// Holds the Node.js server child process so it can be killed on exit.
 struct ServerProcess(Mutex<Option<Child>>);
+
+/// True once the local server listens on 3099. Until then the updater window replaces the
+/// in-app update toast, which needs the dashboard (OPS-009).
+static BACKEND_READY: AtomicBool = AtomicBool::new(false);
+/// How long a start may take before the updater window opens. A slow first start (migration,
+/// a busy Mac) stays well under it; a server that exits opens the window at once.
+const BACKEND_START_TIMEOUT: Duration = Duration::from_secs(90);
+
+/// Opens (or focuses) the updater window, a separate page that works without the local server.
+fn open_updater_window(app: &tauri::AppHandle, reason: &str) {
+    if let Some(window) = app.get_webview_window("updater") {
+        let _ = window.show();
+        let _ = window.set_focus();
+        return;
+    }
+    let script = format!("window.__ERD_UPDATER_REASON__ = {:?};", reason);
+    if let Err(e) = tauri::WebviewWindowBuilder::new(app, "updater", tauri::WebviewUrl::App("updater.html".into()))
+        .title("ERD Builder Pro Updater")
+        // The page resizes the window to its content once it renders.
+        .inner_size(460.0, 220.0)
+        .resizable(false)
+        .center()
+        .initialization_script(&script)
+        .build()
+    {
+        log::error!("Failed to open the updater window: {}", e);
+    }
+}
+
+/// Waits for the local server; if it exits or never listens, opens the updater window so a
+/// release whose server cannot start can still be updated (OPS-009).
+fn watch_backend(app: tauri::AppHandle, spawned: bool) {
+    let deadline = Instant::now() + BACKEND_START_TIMEOUT;
+    while spawned && Instant::now() < deadline {
+        if std::net::TcpStream::connect_timeout(&([127, 0, 0, 1], 3099).into(), Duration::from_millis(500)).is_ok() {
+            BACKEND_READY.store(true, Ordering::SeqCst);
+            return;
+        }
+        let exited = app
+            .try_state::<ServerProcess>()
+            .and_then(|state| state.0.lock().ok().map(|mut child| match child.as_mut() {
+                Some(child) => matches!(child.try_wait(), Ok(Some(_))),
+                None => true,
+            }))
+            .unwrap_or(true);
+        if exited {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    log::warn!("Backend server is not reachable on port 3099; opening the updater window");
+    open_updater_window(&app, "server-failed");
+}
 
 fn stop_backend_server(app_handle: &tauri::AppHandle) {
     if let Some(state) = app_handle.try_state::<ServerProcess>() {
@@ -190,7 +245,8 @@ pub fn run() {
             // The server handles API requests (Express + Prisma + SQLite).
             // Errors here must NEVER panic — they would crash the GUI on launch.
             if cfg!(not(debug_assertions)) {
-                if let Err(e) = start_backend_server(app) {
+                let spawned = start_backend_server(app);
+                if let Err(e) = &spawned {
                     log::error!(
                         "Backend server failed to start (continuing without it): {}",
                         e
@@ -207,6 +263,12 @@ pub fn run() {
                         );
                     }
                 }
+                let handle = app.handle().clone();
+                let spawned = spawned.is_ok();
+                std::thread::spawn(move || watch_backend(handle, spawned));
+            } else {
+                // Debug builds use the dev server started outside the app.
+                BACKEND_READY.store(true, Ordering::SeqCst);
             }
 
             Ok(())
@@ -218,7 +280,12 @@ pub fn run() {
                     let _ = app_handle.emit("menu-about", ());
                 }
                 "check_update" => {
-                    let _ = app_handle.emit("menu-check-update", ());
+                    // The in-app update toast lives in the dashboard; without a server use the updater window.
+                    if BACKEND_READY.load(Ordering::SeqCst) {
+                        let _ = app_handle.emit("menu-check-update", ());
+                    } else {
+                        open_updater_window(app_handle, "menu");
+                    }
                 }
                 "settings" => {
                     let _ = app_handle.emit("menu-settings", ());
