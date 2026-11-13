@@ -127,6 +127,7 @@ CSS variables from shadcn (`var(--popover)`, `var(--popover-foreground)`) used i
 - Filter `type: 'select'` changes before forwarding to React Flow.
 - `defaultEdgeOptions` memoized.
 - Edge routing (BUG-040): while an endpoint table is dragging, `ERDRoutedEdge` uses `routeErdEdgeWhileDragging` (direct, then boundary lane, then the plain route that may cross a table). It skips the A* grid search and never uses the outside lane (SH-004). The drop flips `dragging` and routes fully with `routeErdEdge`. Measure with `npm run bench:erd-routing`.
+- Table overlap (BUG-043): `constrainTableChanges` ignores position changes with `dragging: true`, so a dragged table follows the cursor over other tables; React Flow's final `dragging: false` change (sent before `onNodeDragStop`) separates it, so the saved position is the separated one. It covers `ERDView`, `NotesCompanionPane` and `constrainDbClientChanges`. Do not take a history snapshot on drop: the only one is in `handleNodeDragStartLocal`, so Undo restores the pre-drag positions in one step.
 
 ### Schema Diff & Merge
 - `computeSchemaDiff` matches tables by name (lowercase). Diff overlay on canvas with green/amber/red borders.

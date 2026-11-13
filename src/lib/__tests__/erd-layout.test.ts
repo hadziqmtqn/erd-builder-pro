@@ -90,23 +90,25 @@ describe('SH-004 table collision handling', () => {
     Object.defineProperty(measured.data, 'columns', { get: () => { throw new Error('unnecessary column scan'); } });
     expect(tableSize(measured)).toEqual({ width: 220, height: 150 });
   });
-  it('does not rearrange a DB Client catalog on initial measurement, but constrains a real drag', () => {
+  it('does not rearrange a DB Client catalog on initial measurement, but constrains a real drag on drop', () => {
     const nodes = Array.from({ length: 100 }, (_, i) => node(String(i), (i % 4) * 240, Math.floor(i / 4) * 200));
     const measurements = nodes.map(n => ({ type: 'dimensions' as const, id: n.id, dimensions: { width: 350, height: 800 } }));
     expect(constrainDbClientChanges(measurements, nodes)).toBe(measurements);
     const small = [node('fixed', 0, 0), node('moved', 400, 0)];
     const drag = [{ type: 'position' as const, id: 'moved', position: { x: 5, y: 5 }, dragging: true }];
-    noOverlap(applyNodeChanges(constrainDbClientChanges(drag, small), small));
+    // BUG-043: overlap is allowed while the mouse is down and resolved on the drop.
+    expect(constrainDbClientChanges(drag, small)).toBe(drag);
+    noOverlap(applyNodeChanges(constrainDbClientChanges([{ ...drag[0], dragging: false }], small), small));
   });
-  it('separates a whole dragged group without moving other tables or changing group offsets', () => {
+  it('separates a whole dragged group on drop without moving other tables or changing group offsets', () => {
     const initial = [node('fixed', 100, 100), node('a', 500, 100), node('b', 500, 350)];
-    const changes = [{ type: 'position' as const, id: 'a', position: { x: 120, y: 110 }, dragging: true },
-      { type: 'position' as const, id: 'b', position: { x: 120, y: 360 }, dragging: true }];
+    const changes = [{ type: 'position' as const, id: 'a', position: { x: 120, y: 110 }, dragging: false },
+      { type: 'position' as const, id: 'b', position: { x: 120, y: 360 }, dragging: false }];
     const next = applyNodeChanges(constrainTableChanges(changes, initial), initial);
     noOverlap(next);
     expect(next[0]).toBe(initial[0]);
     expect(next[2].position.y - next[1].position.y).toBe(250);
-    expect(next[1].dragging).toBe(true);
+    expect(next[1].dragging).toBe(false);
   });
 
   it('handles measured growth, repeated insertions and unchanged non-overlapping canvases', () => {
