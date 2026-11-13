@@ -34,12 +34,13 @@ fn app_data_dir() -> Result<PathBuf, String> {
 fn executable_node(resource_dir: &Path, bundled: &Path) -> Result<PathBuf, String> {
     use std::os::unix::fs::PermissionsExt;
 
-    let cache_root = if cfg!(target_os = "macos") {
-        home_dir()?.join("Library/Caches")
-    } else {
-        env::var_os("XDG_CACHE_HOME").map(PathBuf::from)
-            .unwrap_or(home_dir()?.join(".cache"))
-    };
+    // macOS runs the bundled binary in place, like the app (BUG-067); only Linux AppImages need
+    // a copy outside a noexec mount.
+    if cfg!(target_os = "macos") {
+        return Ok(bundled.to_path_buf());
+    }
+    let cache_root = env::var_os("XDG_CACHE_HOME").map(PathBuf::from)
+        .unwrap_or(home_dir()?.join(".cache"));
     let cached = cache_root.join("com.erdbuilderpro.app/node-bin/node");
     let should_copy = !cached.exists()
         || fs::metadata(resource_dir.join("dist-server/node-bin/node")).and_then(|m| m.modified()).ok()
@@ -47,8 +48,13 @@ fn executable_node(resource_dir: &Path, bundled: &Path) -> Result<PathBuf, Strin
 
     if should_copy {
         fs::create_dir_all(cached.parent().unwrap()).map_err(|e| e.to_string())?;
-        fs::copy(bundled, &cached).map_err(|e| e.to_string())?;
-        fs::set_permissions(&cached, fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
+        // Copy beside the cache and rename over it, so a copy that is running is never
+        // rewritten in place. The pid keeps the app and this launcher apart.
+        let tmp = cached.with_extension(format!("tmp-{}", std::process::id()));
+        fs::copy(bundled, &tmp)
+            .and_then(|_| fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755)))
+            .and_then(|_| fs::rename(&tmp, &cached))
+            .map_err(|e| { let _ = fs::remove_file(&tmp); e.to_string() })?;
     }
     Ok(cached)
 }
