@@ -99,7 +99,7 @@ npm run lint
 
 ## License
 
-This repository uses the [Elastic License 2.0](./LICENSE) (ELv2). The licensor is PT Bekenweb Karya Digital.
+This repository uses the [Elastic License 2.0](./LICENSE.md) (ELv2). The licensor is PT Bekenweb Karya Digital.
 
 - You may use, deploy, and modify ERD Builder Pro for yourself or inside your organization, including for-profit organizations.
 - You may not provide it to third parties as a hosted or managed service, circumvent or remove the license key functionality, or remove licensing notices.
