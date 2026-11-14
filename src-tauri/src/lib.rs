@@ -199,6 +199,21 @@ fn remove_service_worker(app_local_data: &std::path::Path) {
     }
 }
 
+/// Runs `run` again while Windows refuses it because the file is in use (os error 32), up to `timeout`.
+/// After an update the installer starts the app before it has released the new node.exe (BUG-070).
+fn retry_while_locked<T>(timeout: Duration, mut run: impl FnMut() -> std::io::Result<T>) -> std::io::Result<T> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match run() {
+            // ERROR_SHARING_VIOLATION. On Unix errno 32 is EPIPE, which is not retried.
+            Err(error) if cfg!(windows) && error.raw_os_error() == Some(32) && Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(250));
+            }
+            result => return result,
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let context = tauri::generate_context!();
@@ -667,13 +682,24 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
     let mut cmd = Command::new(&node_bin);
     cmd.arg("-v");
     suppress_window(&mut cmd);
+    // The first run of node waits for the installer, so every later step finds node.exe free.
+    let mut tries = 0;
     let node_version = String::from_utf8_lossy(
-        &cmd.output()
-            .map(|o| o.stdout)
-            .unwrap_or_default(),
+        &retry_while_locked(Duration::from_secs(20), || {
+            tries += 1;
+            cmd.output()
+        })
+        .map(|o| o.stdout)
+        .unwrap_or_default(),
     )
     .trim()
     .to_string();
+    if tries > 1 {
+        startup_log(
+            &log_dir,
+            &format!("  node.exe was in use by another process (os error 32); ran after {} tries", tries),
+        );
+    }
     startup_log(&log_dir, &format!("  node -v: {}", node_version));
 
     // Get the user's NODE_MODULE_VERSION
@@ -1209,7 +1235,7 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
     #[cfg(target_os = "windows")]
     cmd.creation_flags(CREATE_NO_WINDOW);
 
-    let child = cmd.spawn().map_err(|e| {
+    let child = retry_while_locked(Duration::from_secs(20), || cmd.spawn()).map_err(|e| {
         let msg = format!("Failed to spawn '{}': {}", node_bin, e);
         startup_log(&log_dir, &format!("FATAL: {}", msg));
         msg
@@ -1262,5 +1288,21 @@ mod tests {
 
         super::remove_service_worker(&base); // nothing left to remove
         std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn retry_while_locked_retries_only_the_windows_sharing_violation() {
+        let mut calls = 0;
+        let result = super::retry_while_locked(std::time::Duration::from_secs(5), || {
+            calls += 1;
+            if calls < 3 { Err(std::io::Error::from_raw_os_error(32)) } else { Ok(calls) }
+        });
+        if cfg!(windows) {
+            assert_eq!(result.unwrap(), 3);
+        } else {
+            // errno 32 is EPIPE on Unix: returned at once.
+            assert!(result.is_err());
+            assert_eq!(calls, 1);
+        }
     }
 }
