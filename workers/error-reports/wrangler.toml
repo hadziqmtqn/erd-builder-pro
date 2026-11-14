@@ -4,11 +4,11 @@ main = "src/index.ts"
 compatibility_date = "2026-11-01"
 workers_dev = false
 
-# Fill in after `wrangler d1 create erdbpro-error-reports`.
+# Created with `wrangler d1 create erdbpro-error-reports` (APAC).
 [[d1_databases]]
 binding = "DB"
 database_name = "erdbpro-error-reports"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "5b9e8651-b6c9-4dff-b3b6-703f3047484e"
 
 # A loose filter per Cloudflare location, not strict abuse prevention.
 [[ratelimits]]
