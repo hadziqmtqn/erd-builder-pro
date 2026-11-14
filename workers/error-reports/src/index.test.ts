@@ -63,6 +63,14 @@ describe('Desktop error report Worker (OPS-010)', () => {
     ]);
   });
 
+  it('stops alerting after 20 new combinations a day but keeps counting', async () => {
+    const { env, rows } = sqliteEnv();
+    for (let patch = 0; patch < 25; patch++) await post(env, { ...report, app_version: `9.9.${patch}` });
+    expect(rows()).toHaveLength(25);
+    expect(telegram).toHaveBeenCalledTimes(21);
+    expect(JSON.parse(telegram.mock.calls[20][1].body).text).toContain('No more alerts today');
+  });
+
   it('rejects anything outside the contract and stores nothing', async () => {
     const { env, rows } = sqliteEnv();
     for (const body of [
