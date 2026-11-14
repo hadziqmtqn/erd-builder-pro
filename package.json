@@ -208,6 +208,6 @@
     "@prisma/adapter-better-sqlite3": {
       "better-sqlite3": "$better-sqlite3"
     },
-    "@hono/node-server": "^2.1.5"
+    "@hono/node-server": "^2.1.8"
   }
 }
