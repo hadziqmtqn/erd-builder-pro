@@ -40,8 +40,8 @@ fn suppress_window(cmd: &mut Command) {
 /// Holds the Node.js server child process so it can be killed on exit.
 struct ServerProcess(Mutex<Option<Child>>);
 
-/// True once the local server listens on 3099. Until then the updater window replaces the
-/// in-app update toast, which needs the dashboard (OPS-009).
+/// True while the local server is up. Otherwise the updater window replaces the in-app update
+/// toast, which needs the dashboard (OPS-009).
 static BACKEND_READY: AtomicBool = AtomicBool::new(false);
 /// How long a start may take before the updater window opens. A slow first start (migration,
 /// a busy Mac) stays well under it; a server that exits opens the window at once.
@@ -68,29 +68,47 @@ fn open_updater_window(app: &tauri::AppHandle, reason: &str) {
     }
 }
 
+/// None once the app has stopped the server (on exit), otherwise whether the server process exited.
+fn server_exited(app: &tauri::AppHandle) -> Option<bool> {
+    let state = app.try_state::<ServerProcess>()?;
+    let mut guard = state.0.lock().ok()?;
+    Some(matches!(guard.as_mut()?.try_wait(), Ok(Some(_))))
+}
+
 /// Waits for the local server; if it exits or never listens, opens the updater window so a
-/// release whose server cannot start can still be updated (OPS-009).
+/// release whose server cannot start can still be updated (OPS-009). After the start it keeps
+/// watching, so a server that exits later opens the window too.
 fn watch_backend(app: tauri::AppHandle, spawned: bool) {
     let deadline = Instant::now() + BACKEND_START_TIMEOUT;
+    let mut ready = false;
     while spawned && Instant::now() < deadline {
         if std::net::TcpStream::connect_timeout(&([127, 0, 0, 1], 3099).into(), Duration::from_millis(500)).is_ok() {
-            BACKEND_READY.store(true, Ordering::SeqCst);
-            return;
+            ready = true;
+            break;
         }
-        let exited = app
-            .try_state::<ServerProcess>()
-            .and_then(|state| state.0.lock().ok().map(|mut child| match child.as_mut() {
-                Some(child) => matches!(child.try_wait(), Ok(Some(_))),
-                None => true,
-            }))
-            .unwrap_or(true);
-        if exited {
+        if server_exited(&app).unwrap_or(true) {
             break;
         }
         std::thread::sleep(Duration::from_millis(500));
     }
-    log::warn!("Backend server is not reachable on port 3099; opening the updater window");
-    open_updater_window(&app, "server-failed");
+    if !ready {
+        log::warn!("Backend server is not reachable on port 3099; opening the updater window");
+        open_updater_window(&app, "server-failed");
+        return;
+    }
+    BACKEND_READY.store(true, Ordering::SeqCst);
+    loop {
+        std::thread::sleep(Duration::from_secs(1));
+        match server_exited(&app) {
+            Some(false) => continue,
+            Some(true) => break,
+            // The app stopped the server because it is quitting.
+            None => return,
+        }
+    }
+    BACKEND_READY.store(false, Ordering::SeqCst);
+    log::warn!("Backend server exited after it started; opening the updater window");
+    open_updater_window(&app, "server-stopped");
 }
 
 fn stop_backend_server(app_handle: &tauri::AppHandle) {

@@ -10,9 +10,11 @@ import './updater.css';
 // The Desktop app opens this window when its local server does not start (OPS-009), so it must
 // work without that server and without the app bundle.
 const REPO = 'https://github.com/hadziqmtqn/erd-builder-pro';
-const FAILED_TITLE = 'The local server didn’t start';
-// Set by the Rust side when it opens the window: "server-failed" or "menu".
-const serverFailed = (window as unknown as { __ERD_UPDATER_REASON__?: string }).__ERD_UPDATER_REASON__ !== 'menu';
+// Set by the Rust side when it opens the window: "server-failed", "server-stopped" or "menu".
+const reason = (window as unknown as { __ERD_UPDATER_REASON__?: string }).__ERD_UPDATER_REASON__;
+const serverFailed = reason !== 'menu';
+const serverStopped = reason === 'server-stopped';
+const FAILED_TITLE = serverStopped ? 'The local server stopped' : 'The local server didn’t start';
 const root = document.getElementById('updater') as HTMLElement;
 const WARN_ICON = '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
 
@@ -66,7 +68,7 @@ async function showLogs() {
 const downloadPage = () => openUrl(`${REPO}/releases/latest`);
 
 function report(version: string) {
-  const query = new URLSearchParams({ template: 'bug_report.yml', title: '[Bug]: Desktop server did not start', 'app-version': version });
+  const query = new URLSearchParams({ template: 'bug_report.yml', title: `[Bug]: Desktop server ${serverStopped ? 'stopped' : 'did not start'}`, 'app-version': version });
   return openUrl(`${REPO}/issues/new?${query}`);
 }
 
