@@ -697,7 +697,7 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
     if tries > 1 {
         startup_log(
             &log_dir,
-            &format!("  node.exe was in use by another process (os error 32); ran after {} tries", tries),
+            &format!("  node.exe was in use by another process (os error 32); tried {} times", tries),
         );
     }
     startup_log(&log_dir, &format!("  node -v: {}", node_version));
