@@ -187,8 +187,31 @@ fn run_mcp_stdio(app: &tauri::App) -> Result<i32, Box<dyn std::error::Error>> {
     Ok(status.code().unwrap_or(1))
 }
 
+/// Removes the WebView2 service worker data (registrations and caches) of the app's local data dir.
+/// A worker registered by an older version kept serving that version's page after an update (BUG-069).
+#[cfg(any(windows, test))]
+fn remove_service_worker(app_local_data: &std::path::Path) {
+    let dir = app_local_data.join("EBWebView").join("Default").join("Service Worker");
+    if dir.exists() {
+        if let Err(error) = std::fs::remove_dir_all(&dir) {
+            eprintln!("Could not remove old service worker data at {}: {}", dir.display(), error);
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let context = tauri::generate_context!();
+
+    // The main window from tauri.conf.json is created before setup runs, so clear it here.
+    // The --mcp process runs next to an open app and must not touch its WebView data.
+    #[cfg(windows)]
+    if !std::env::args().any(|arg| arg == "--mcp") {
+        if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+            remove_service_worker(&std::path::Path::new(&local).join(&context.config().identifier));
+        }
+    }
+
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
@@ -342,7 +365,7 @@ pub fn run() {
                 _ => {}
             }
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building tauri application");
 
     // Run the event loop — on exit, kill the backend server process.
@@ -1221,4 +1244,23 @@ fn copy_dir_recursive(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn remove_service_worker_keeps_the_rest_of_the_webview_profile() {
+        let base = std::env::temp_dir().join(format!("erd-bug069-{}", std::process::id()));
+        let profile = base.join("EBWebView").join("Default");
+        std::fs::create_dir_all(profile.join("Service Worker").join("CacheStorage")).unwrap();
+        std::fs::write(profile.join("Service Worker").join("CacheStorage").join("index.txt"), "old page").unwrap();
+        std::fs::create_dir_all(profile.join("Local Storage")).unwrap();
+
+        super::remove_service_worker(&base);
+        assert!(!profile.join("Service Worker").exists());
+        assert!(profile.join("Local Storage").exists());
+
+        super::remove_service_worker(&base); // nothing left to remove
+        std::fs::remove_dir_all(&base).unwrap();
+    }
 }

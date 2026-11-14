@@ -42,10 +42,12 @@ window.fetch = async (...args) => {
   return response;
 };
 
-// Register Service Worker for Offline Assets Caching (production only)
+// Register Service Worker for Offline Assets Caching (web production only).
+// Desktop serves its files locally, and on Windows (http://tauri.localhost) a worker kept serving
+// the previous version's page after an update (BUG-069), so Desktop never registers one.
 if ('serviceWorker' in navigator) {
   const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  if (isDev) {
+  if (isDev || '__TAURI_INTERNALS__' in window) {
     navigator.serviceWorker.getRegistrations().then(registrations => {
       registrations.forEach(r => r.unregister());
     });
