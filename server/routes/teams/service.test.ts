@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   ssoMode: vi.fn(() => false),
+  localPostgres: vi.fn(() => true),
   provisionedTeam: false,
   provisionedMembership: vi.fn((member: { teamId: string }) => false),
   database: {
@@ -23,7 +24,7 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../../lib/config.js", () => ({ isLocalPostgres: () => true, isSsoAuthMode: mocks.ssoMode }));
+vi.mock("../../lib/config.js", () => ({ isLocalPostgres: mocks.localPostgres, isSsoAuthMode: mocks.ssoMode }));
 vi.mock("../../lib/prisma.js", () => ({ prisma: mocks.database }));
 vi.mock("../../lib/team-provisioning.js", () => ({
   isProvisionedTeam: () => mocks.provisionedTeam,
@@ -42,6 +43,7 @@ const teams = await import("./service.js");
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.ssoMode.mockReturnValue(false);
+  mocks.localPostgres.mockReturnValue(true);
   mocks.provisionedTeam = false;
   mocks.provisionedMembership.mockReturnValue(false);
   mocks.license.getStored.mockReturnValue({ lastCheckedAt: new Date().toISOString() });
@@ -80,6 +82,20 @@ describe("Team integrity", () => {
     expect(mocks.database.team.findMany).toHaveBeenCalledOnce();
 
     mocks.ssoMode.mockReturnValue(false);
+  });
+
+  it("answers Self-host only before asking for a license on Desktop and CLI (BUG-068)", async () => {
+    mocks.localPostgres.mockReturnValue(false);
+    mocks.license.getStored.mockReturnValue(null);
+
+    await expect(teams.listTeams("desktop-admin", true)).rejects.toMatchObject({ code: "SELF_HOST_ONLY", status: 404 });
+    expect(mocks.license.getStored).not.toHaveBeenCalled();
+  });
+
+  it("still asks an unlicensed Self-host for a license (SH-007)", async () => {
+    mocks.license.getStored.mockReturnValue(null);
+
+    await expect(teams.listTeams("self-host-admin", true)).rejects.toMatchObject({ code: "INSTANCE_LICENSE_REQUIRED", status: 403 });
   });
 
   it("does not let a Manager deactivate their own Team membership", async () => {
