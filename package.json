@@ -191,7 +191,7 @@
     },
     "brace-expansion": "^5.0.12",
     "fast-uri": "^3.1.8",
-    "hono": "^4.13.12",
+    "hono": "^4.13.18",
     "immutable": "^4.3.9",
     "ip-address": "^10.7.2",
     "katex": "^0.18.2",
@@ -208,6 +208,9 @@
     "@prisma/adapter-better-sqlite3": {
       "better-sqlite3": "$better-sqlite3"
     },
-    "@hono/node-server": "^2.1.5"
+    "@hono/node-server": "^2.1.8",
+    "@ts-morph/common": {
+      "minimatch": "^11.0.1"
+    }
   }
 }
