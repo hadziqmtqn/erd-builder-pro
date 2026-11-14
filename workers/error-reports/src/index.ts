@@ -28,6 +28,8 @@ export interface DesktopErrorReport {
 }
 
 const MAX_BODY_BYTES = 2048;
+// The rate limit is loose, so fake versions could still make many "new" combinations; cap the alerts.
+const MAX_ALERTS_PER_DAY = 20;
 const FIELDS = ['app_version', 'os', 'arch', 'event', 'step', 'exit_code'];
 const OS = ['macos', 'windows', 'linux'];
 const ARCH = ['x86_64', 'aarch64', 'x86', 'arm'];
@@ -78,6 +80,12 @@ async function count(db: D1Like, day: string, report: DesktopErrorReport): Promi
   return row?.count ?? 0;
 }
 
+/** How many combinations have shown up on this day, the new one included. */
+async function combinations(db: D1Like, day: string): Promise<number> {
+  const row = await db.prepare('SELECT COUNT(*) AS n FROM daily_reports WHERE day = ?').bind(day).first<{ n: number }>();
+  return row?.n ?? 0;
+}
+
 export function telegramText(day: string, report: DesktopErrorReport): string {
   const code = report.exit_code === null ? '' : ` · code ${report.exit_code}`;
   return [
@@ -121,7 +129,13 @@ export async function handle(request: Request, env: Env, ctx: Context, now = new
   if (!report) return json(400, { error: 'invalid_report' });
 
   const day = now.toISOString().slice(0, 10);
-  if ((await count(env.DB, day, report)) === 1) ctx.waitUntil(notify(env, telegramText(day, report)));
+  if ((await count(env.DB, day, report)) === 1) {
+    const seen = await combinations(env.DB, day);
+    if (seen <= MAX_ALERTS_PER_DAY) ctx.waitUntil(notify(env, telegramText(day, report)));
+    else if (seen === MAX_ALERTS_PER_DAY + 1) {
+      ctx.waitUntil(notify(env, `ERD Builder Pro Desktop · more than ${MAX_ALERTS_PER_DAY} new error combinations on ${day} (UTC). No more alerts today; the reports are still counted in D1.`));
+    }
+  }
   return json(202, { status: 'accepted' });
 }
 
