@@ -5,13 +5,18 @@ import { openUrl, revealItemInDir } from '@tauri-apps/plugin-opener';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import { progressText } from './format';
+import { errorReport, sendReport, type ErrorReport } from './report';
 import './updater.css';
 
 // The Desktop app opens this window when its local server does not start (OPS-009), so it must
 // work without that server and without the app bundle.
 const REPO = 'https://github.com/hadziqmtqn/erd-builder-pro';
-// Set by the Rust side when it opens the window: "server-failed", "server-stopped" or "menu".
-const reason = (window as unknown as { __ERD_UPDATER_REASON__?: string }).__ERD_UPDATER_REASON__;
+// Set by the Rust side when it opens the window. reason: "server-failed", "server-stopped" or "menu";
+// step and exitCode say what failed (OPS-010).
+const info = (window as unknown as {
+  __ERD_UPDATER__?: { reason?: string; step?: string | null; exitCode?: number | null; os?: string; arch?: string };
+}).__ERD_UPDATER__ ?? {};
+const reason = info.reason ?? 'server-failed';
 const serverFailed = reason !== 'menu';
 const serverStopped = reason === 'server-stopped';
 const FAILED_TITLE = serverStopped ? 'The local server stopped' : 'The local server didn’t start';
@@ -54,9 +59,11 @@ async function fitWindow() {
   await win.setSize(new LogicalSize(460, content + chrome));
 }
 
+const refit = () => requestAnimationFrame(() => { void fitWindow().catch(() => {}); });
+
 function render(...nodes: Child[]) {
   root.replaceChildren(...nodes.filter((node): node is Node | string => Boolean(node)));
-  requestAnimationFrame(() => { void fitWindow().catch(() => {}); });
+  refit();
 }
 
 async function showLogs() {
@@ -67,13 +74,30 @@ async function showLogs() {
 
 const downloadPage = () => openUrl(`${REPO}/releases/latest`);
 
-function report(version: string) {
+function reportOnGitHub(version: string) {
   const query = new URLSearchParams({ template: 'bug_report.yml', title: `[Bug]: Desktop server ${serverStopped ? 'stopped' : 'did not start'}`, 'app-version': version });
   return openUrl(`${REPO}/issues/new?${query}`);
 }
 
 function row(title: string, text: string, action: HTMLButtonElement): HTMLElement {
   return h('div', { class: 'row' }, h('div', {}, h('span', {}, title), h('span', {}, text)), action);
+}
+
+// Nothing is sent on its own: the user sees every field and sends with one click (OPS-010).
+function reportRows(report: ErrorReport): HTMLElement[] {
+  const status = h('p', { class: 'status', role: 'status' });
+  const send: HTMLButtonElement = button('Send', async () => {
+    send.disabled = true;
+    send.textContent = 'Sending…';
+    const sent = await sendReport(report);
+    send.textContent = sent ? 'Sent' : 'Try Again';
+    send.disabled = sent;
+    status.textContent = sent ? 'Thank you, the report was sent.' : 'The report could not be sent. You can report it on GitHub instead.';
+    refit();
+  });
+  const details = h('details', {}, h('summary', {}, 'What is sent'), h('pre', {}, JSON.stringify(report, null, 2)));
+  details.addEventListener('toggle', refit);
+  return [row('Send an error report', 'Shares the version, the system and the failed step. No files or project data.', send), details, status];
 }
 
 function renderAvailable(update: Update) {
@@ -107,11 +131,15 @@ async function install(update: Update) {
 
   let total = 0;
   let downloaded = 0;
+  let finished = false;
   try {
     await update.downloadAndInstall((event) => {
       if (event.event === 'Started') total = event.data.contentLength ?? 0;
       if (event.event === 'Progress') downloaded += event.data.chunkLength;
-      if (event.event === 'Finished') setStep(1);
+      if (event.event === 'Finished') {
+        finished = true;
+        setStep(1);
+      }
       const { percent, label } = progressText(downloaded, total);
       fill.style.width = `${percent ?? 0}%`;
       if (percent !== null) track.setAttribute('aria-valuenow', String(percent));
@@ -121,8 +149,10 @@ async function install(update: Update) {
     setStep(2);
     await relaunch();
   } catch (error) {
+    const failure = errorReport(update.currentVersion, info.os, info.arch, 'update-failed', finished ? 'install' : 'download', null);
     render(
       header('The update could not be installed', String(error), true),
+      failure && h('section', { class: 'card', 'aria-label': 'Error report' }, ...reportRows(failure)),
       h('div', { class: 'actions' },
         button('Try Again', () => renderAvailable(update), 'primary'),
         button('Show Logs', showLogs),
@@ -132,13 +162,18 @@ async function install(update: Update) {
 }
 
 function renderLatest(version: string) {
+  const failure = serverFailed ? errorReport(version, info.os, info.arch, reason, info.step, info.exitCode) : null;
   render(
     header(serverFailed ? FAILED_TITLE : 'You’re up to date', `You’re on ${version}, the latest version.`, serverFailed),
     h('section', { class: 'card', 'aria-label': 'What you can do' },
       row('Restart ERD Builder Pro', 'Starts the local server again. Useful after the computer was busy or asleep.', button('Restart', relaunch, 'primary')),
       row('Open the logs', 'server-startup.log shows the step that failed.', button('Show Logs', showLogs)),
-      row('Report the problem', 'Opens a GitHub issue with the app version filled in.', button('Report', () => report(version)))),
-    h('div', { class: 'actions' }, button('Download the app again from GitHub', downloadPage, 'link')),
+      ...(failure
+        ? reportRows(failure)
+        : [row('Report the problem', 'Opens a GitHub issue with the app version filled in.', button('Report', () => reportOnGitHub(version)))])),
+    h('div', { class: 'actions' },
+      failure && button('Report on GitHub', () => reportOnGitHub(version), 'link'),
+      button('Download the app again from GitHub', downloadPage, 'link')),
   );
 }
 

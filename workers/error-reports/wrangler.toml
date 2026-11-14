@@ -1,0 +1,24 @@
+# Desktop error reports (OPS-010). Separate from the root wrangler.toml, which deploys the app itself.
+name = "erdbpro-error-reports"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+workers_dev = false
+
+# Fill in after `wrangler d1 create erdbpro-error-reports`.
+[[d1_databases]]
+binding = "DB"
+database_name = "erdbpro-error-reports"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+
+# A loose filter per Cloudflare location, not strict abuse prevention.
+[[ratelimits]]
+name = "LIMITER"
+namespace_id = "1010"
+simple = { limit = 5, period = 60 }
+
+# The app has this address built in, so keep it on our own domain.
+[[routes]]
+pattern = "reports.erdbuilderpro.com"
+custom_domain = true
+
+# TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are secrets: `wrangler secret put <NAME>`.
