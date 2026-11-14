@@ -1,0 +1,14 @@
+{
+  "name": "erdbpro-error-reports",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker that receives Desktop error reports (OPS-010)",
+  "scripts": {
+    "dev": "wrangler dev",
+    "db:init": "wrangler d1 execute erdbpro-error-reports --remote --file=schema.sql",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.36.0"
+  }
+}

@@ -48,13 +48,21 @@ static BACKEND_READY: AtomicBool = AtomicBool::new(false);
 const BACKEND_START_TIMEOUT: Duration = Duration::from_secs(90);
 
 /// Opens (or focuses) the updater window, a separate page that works without the local server.
-fn open_updater_window(app: &tauri::AppHandle, reason: &str) {
+/// `step` and `exit_code` say what failed; the window can send them as an error report (OPS-010).
+fn open_updater_window(app: &tauri::AppHandle, reason: &str, step: Option<&str>, exit_code: Option<i64>) {
     if let Some(window) = app.get_webview_window("updater") {
         let _ = window.show();
         let _ = window.set_focus();
         return;
     }
-    let script = format!("window.__ERD_UPDATER_REASON__ = {:?};", reason);
+    let info = serde_json::json!({
+        "reason": reason,
+        "step": step,
+        "exitCode": exit_code,
+        "os": std::env::consts::OS,
+        "arch": std::env::consts::ARCH,
+    });
+    let script = format!("window.__ERD_UPDATER__ = {};", info);
     if let Err(e) = tauri::WebviewWindowBuilder::new(app, "updater", tauri::WebviewUrl::App("updater.html".into()))
         .title("ERD Builder Pro Updater")
         // The page resizes the window to its content once it renders.
@@ -68,11 +76,28 @@ fn open_updater_window(app: &tauri::AppHandle, reason: &str) {
     }
 }
 
-/// None once the app has stopped the server (on exit), otherwise whether the server process exited.
-fn server_exited(app: &tauri::AppHandle) -> Option<bool> {
+/// None once the app has stopped the server (on quit or restart); Some(None) while it runs;
+/// Some(Some(status)) after it exited by itself.
+fn server_status(app: &tauri::AppHandle) -> Option<Option<std::process::ExitStatus>> {
     let state = app.try_state::<ServerProcess>()?;
     let mut guard = state.0.lock().ok()?;
-    Some(matches!(guard.as_mut()?.try_wait(), Ok(Some(_))))
+    Some(guard.as_mut()?.try_wait().unwrap_or(None))
+}
+
+/// The exit code for a report: a Unix signal becomes 128 + signal, as a shell shows it (SIGKILL = 137).
+fn exit_code(status: std::process::ExitStatus) -> Option<i64> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(signal) = status.signal() {
+            return Some(128 + i64::from(signal));
+        }
+    }
+    // Windows codes are unsigned (0xC0000005), so report them as such.
+    #[cfg(windows)]
+    return status.code().map(|code| i64::from(code as u32));
+    #[cfg(not(windows))]
+    status.code().map(i64::from)
 }
 
 /// Waits for the local server; if it exits or never listens, opens the updater window so a
@@ -80,35 +105,41 @@ fn server_exited(app: &tauri::AppHandle) -> Option<bool> {
 /// watching, so a server that exits later opens the window too.
 fn watch_backend(app: tauri::AppHandle, spawned: bool) {
     let deadline = Instant::now() + BACKEND_START_TIMEOUT;
+    let mut failed = if spawned { ("timeout", None) } else { ("spawn", None) };
     let mut ready = false;
     while spawned && Instant::now() < deadline {
         if std::net::TcpStream::connect_timeout(&([127, 0, 0, 1], 3099).into(), Duration::from_millis(500)).is_ok() {
             ready = true;
             break;
         }
-        if server_exited(&app).unwrap_or(true) {
-            break;
+        match server_status(&app) {
+            Some(None) => {}
+            Some(Some(status)) => {
+                failed = ("exit", exit_code(status));
+                break;
+            }
+            // The app stopped the server because it is quitting.
+            None => return,
         }
         std::thread::sleep(Duration::from_millis(500));
     }
     if !ready {
-        log::warn!("Backend server is not reachable on port 3099; opening the updater window");
-        open_updater_window(&app, "server-failed");
+        log::warn!("Backend server is not reachable on port 3099 ({} {:?}); opening the updater window", failed.0, failed.1);
+        open_updater_window(&app, "server-failed", Some(failed.0), failed.1);
         return;
     }
     BACKEND_READY.store(true, Ordering::SeqCst);
-    loop {
+    let status = loop {
         std::thread::sleep(Duration::from_secs(1));
-        match server_exited(&app) {
-            Some(false) => continue,
-            Some(true) => break,
-            // The app stopped the server because it is quitting.
+        match server_status(&app) {
+            Some(None) => continue,
+            Some(Some(status)) => break status,
             None => return,
         }
-    }
+    };
     BACKEND_READY.store(false, Ordering::SeqCst);
-    log::warn!("Backend server exited after it started; opening the updater window");
-    open_updater_window(&app, "server-stopped");
+    log::warn!("Backend server exited after it started ({:?}); opening the updater window", exit_code(status));
+    open_updater_window(&app, "server-stopped", Some("exit"), exit_code(status));
 }
 
 fn stop_backend_server(app_handle: &tauri::AppHandle) {
@@ -302,7 +333,7 @@ pub fn run() {
                     if BACKEND_READY.load(Ordering::SeqCst) {
                         let _ = app_handle.emit("menu-check-update", ());
                     } else {
-                        open_updater_window(app_handle, "menu");
+                        open_updater_window(app_handle, "menu", None, None);
                     }
                 }
                 "settings" => {
