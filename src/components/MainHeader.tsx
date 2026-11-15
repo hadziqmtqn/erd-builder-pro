@@ -65,6 +65,8 @@ interface MainHeaderProps {
   canManage?: boolean;
   onRefresh?: () => void;
   discussionPanel?: React.ReactNode;
+  /** The notification bell (NOT-001.2) on every page; left out for guests, public links, Desktop and CLI. */
+  notificationBell?: React.ReactNode;
   tabsRef?: (element: HTMLDivElement | null) => void;
   /** The AI Assistant toggle at the end of the header (ERD-004); left out where AI Chat is not available. */
   aiAssistant?: { open: boolean; answering?: boolean; onToggle: () => void; shortcut: { label: string; ariaKeyShortcuts: string } };
@@ -107,6 +109,7 @@ export const MainHeader = React.memo(({
   canManage = true,
   onRefresh,
   discussionPanel,
+  notificationBell,
   tabsRef,
   aiAssistant,
 }: MainHeaderProps) => {
@@ -272,6 +275,7 @@ export const MainHeader = React.memo(({
 
           </div>
         )}
+        {notificationBell}
         {aiAssistant && (
           <Button
             type="button"
