@@ -194,6 +194,11 @@ export function useTeams(isGuest = false, isSso = false, onActiveTeamUnavailable
         let event: { teamId?: unknown; eventType?: unknown; revision?: unknown };
         try { event = JSON.parse(message.data); }
         catch { return; }
+        // A notification for this user from any workspace (NOT-001.3): the bell refetches; no content travels here.
+        if (event.eventType === "notification.created" && typeof event.revision === "string" && event.revision) {
+          window.dispatchEvent(new CustomEvent("notification-created"));
+          return;
+        }
         if (event.teamId !== activeTeamId || event.eventType !== "cloud.workspace.sync" || typeof event.revision !== "string" || !event.revision) return;
         void fetchTeams();
         window.dispatchEvent(new CustomEvent("cloud-workspace-sync", { detail: event }));

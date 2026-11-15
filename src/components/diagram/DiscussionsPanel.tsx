@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ComponentProps, type FormEvent } from "react";
 import { formatDistanceToNowStrict } from "date-fns";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Check, CheckCircle2, Database, FileText, MessageCircle, MessageSquareText, MoreHorizontal, Network, PenTool, Pencil, Plus, RotateCcw, Send, Trash2, X, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -321,6 +322,18 @@ function mergeLiveMessages(current: MessageHistoryState, incoming: DiscussionMes
   };
 }
 
+/** A notification link `?thread=<id>` (NOT-001.3) belongs to the file in the URL path, so only that file's panel opens it. */
+export function linkedThreadId(search: string, pathname: string, fileId: string): string | null {
+  const threadId = new URLSearchParams(search).get("thread")?.trim();
+  const segment = pathname.split("/").filter(Boolean).at(-1);
+  if (!threadId || !segment) return null;
+  try {
+    return decodeURIComponent(segment) === fileId ? threadId : null;
+  } catch {
+    return null;
+  }
+}
+
 type ActiveDetailRefreshTarget =
   | { kind: "thread"; threadId: string }
   | { kind: "anchor"; anchor: DiscussionAnchor; threadId: string | null };
@@ -449,6 +462,9 @@ export function DiscussionsPanel({
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [draft, setDraft] = useState("");
   const [pendingCommentOpen, setPendingCommentOpen] = useState<PendingCommentOpen | null>(null);
+  const [pendingThreadOpen, setPendingThreadOpen] = useState<string | null>(null);
+  const location = useLocation();
+  const [, setSearchParams] = useSearchParams();
   const [composeAnchor, setComposeAnchor] = useState<DiscussionAnchor | null>(null);
   const [activeCommentAnchor, setActiveCommentAnchor] = useState<DiscussionAnchor | null>(null);
   const messages = messageHistory.messages;
@@ -734,6 +750,28 @@ export function DiscussionsPanel({
     })();
     return () => { cancelled = true; };
   }, [activeTab, loadAnchor, loadThreads, pendingCommentOpen]);
+
+  useEffect(() => {
+    const threadId = linkedThreadId(location.search, location.pathname, fileContext.fileId);
+    if (!threadId) return;
+    // Open once, then drop the parameter so a reload or the next file switch does not reopen it.
+    setSearchParams((params) => { params.delete("thread"); return params; }, { replace: true });
+    clearThreadView();
+    setPendingCommentOpen(null);
+    setActiveTab("discussions");
+    setOpen(true);
+    setPendingThreadOpen(threadId);
+  }, [clearThreadView, fileContext.fileId, location.pathname, location.search, setSearchParams]);
+
+  useEffect(() => {
+    if (activeTab !== "discussions" || !pendingThreadOpen) return;
+    const threadId = pendingThreadOpen;
+    setPendingThreadOpen(null);
+    setScreen("thread");
+    setSelectedThreadId(threadId);
+    // The detail request re-authorizes; a thread the user can no longer open shows the panel's load error.
+    void loadThread(threadId, true);
+  }, [activeTab, loadThread, pendingThreadOpen]);
 
   const hasUnsavedText = ((screen === "thread" || screen === "compose") && draft.trim() !== "")
     || (editingMessageId !== null && editDraft !== editOriginalBody);

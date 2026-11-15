@@ -7,6 +7,7 @@ import { canCommentRole, projectRoleFor } from "../../lib/project-access.js";
 import { currentTeamScope } from "../../lib/team-scope.js";
 import { handleError } from "../../lib/utils.js";
 import { resolveCommentAnchorLabel, type CommentFeature } from "./comment-anchors.js";
+import { notifyDiscussionReply } from "./discussion-notifications.js";
 
 const router = Router({ mergeParams: true });
 const notFound = { error: "Resource not found" };
@@ -198,6 +199,20 @@ async function scopedFeatureContext(featureType: FeatureType, fileId: string, pr
     LIMIT 1
   `, fileId, projectId, teamId);
   return rows[0] ? { ...rows[0], featureType } : null;
+}
+
+/** The file a discussion was started on (its first context), still in this Project and Team; null for a Project-only thread. */
+async function threadOriginFile(threadId: string, projectId: number | bigint, teamId: string): Promise<ScopedFile | null> {
+  if (!prisma) return null;
+  const rows = await prisma.$queryRawUnsafe<Array<{ featureType: string; fileId: string }>>(`
+    SELECT c."feature_type" AS "featureType", c."file_id" AS "fileId"
+    FROM "discussion_contexts" c WHERE c."thread_id" = $1
+    ORDER BY c."created_at" ASC, c."id" ASC LIMIT 1
+  `, threadId);
+  const origin = rows[0];
+  return origin && origin.featureType in featureTables
+    ? scopedFeatureContext(origin.featureType as FeatureType, origin.fileId, projectId, teamId)
+    : null;
 }
 
 /** Resolves the Project or file a request targets; a Viewer reads but gets the generic not-found on every write (COL-004). */
@@ -765,6 +780,19 @@ router.post("/:threadId/messages", async (req, res) => {
     });
     if (result === "missing") { res.status(404).json(notFound); return; }
     if (result === "resolved") { res.status(409).json({ error: "Reopen this thread before replying" }); return; }
+    if (kind === "discussion") {
+      // NOT-001.3: the rows exist before the Team sync event, so a bell that refetches on that event sees them.
+      const file = await threadOriginFile(req.params.threadId, resource.projectId, actor.teamId).catch(() => null);
+      await notifyDiscussionReply({
+        threadId: req.params.threadId,
+        messageId,
+        actorId: actor.id,
+        teamId: actor.teamId,
+        projectId: Number(resource.projectId),
+        projectName: resource.projectName,
+        file: file ? { featureType: file.featureType, id: file.id, uid: file.uid, label: file.label } : null,
+      });
+    }
     notifyTeam(actor.teamId);
     res.status(201).json({ id: messageId });
   } catch (error) {

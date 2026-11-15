@@ -18,7 +18,7 @@ vi.mock("./prisma.js", () => ({ prisma: {
 } }));
 vi.mock("../routes/teams/service.js", () => ({ canAccessTeam: mocks.canAccessTeam }));
 
-const { attachCloudLiveSync, publishCloudWorkspaceSync } = await import("./cloud-live-sync.js");
+const { attachCloudLiveSync, publishCloudUserNotification, publishCloudWorkspaceSync } = await import("./cloud-live-sync.js");
 const TEAM_ID = "9d7fdad2-d555-4aab-a917-39fb5bac9160";
 
 describe("Cloud live sync WebSocket", () => {
@@ -135,5 +135,26 @@ describe("Cloud live sync WebSocket", () => {
     expect(await closed).toBe(1000);
     await expect(connect({ cookie: "token=session-cookie", origin })).rejects.toThrow();
     expect(mocks.canAccessTeam).toHaveBeenCalledWith(TEAM_ID, "cloud-user", false);
+  });
+
+  it("sends a metadata-only notification event to the recipient's sockets only (NOT-001.3)", async () => {
+    const origin = baseUrl.replace(/^ws:/, "http:");
+    const client = await connect({ cookie: "token=session-cookie", origin });
+    const messages: string[] = [];
+    client.on("message", (data) => messages.push(data.toString()));
+
+    await publishCloudUserNotification(["someone-else"]);
+    await publishCloudUserNotification([]);
+    // A socket open for the Team that also sends its own sync event is left to that event.
+    await publishCloudUserNotification(["cloud-user"], TEAM_ID);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(messages).toEqual([]);
+
+    const closed = new Promise<number>((resolve) => client.once("close", (code) => resolve(code)));
+    await publishCloudUserNotification(["cloud-user"]);
+
+    expect(await closed).toBe(1000);
+    expect(messages).toHaveLength(1);
+    expect(JSON.parse(messages[0])).toEqual({ eventType: "notification.created", revision: expect.any(String) });
   });
 });

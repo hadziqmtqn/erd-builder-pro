@@ -1,5 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { getActiveDetailRefreshTarget, isCommentAnchorForFeature } from "./DiscussionsPanel";
+import { getActiveDetailRefreshTarget, isCommentAnchorForFeature, linkedThreadId } from "./DiscussionsPanel";
+
+describe("notification links (NOT-001.3)", () => {
+  const uid = "1eb51217-906c-4fed-822d-80b5c058832d";
+
+  it("opens the linked thread in the panel of the file in the URL path", () => {
+    expect(linkedThreadId("?thread=thread-1", `/diagrams/${uid}`, uid)).toBe("thread-1");
+    expect(linkedThreadId("?thread=thread-1&feature=x", `/diagrams/${encodeURIComponent(uid)}`, uid)).toBe("thread-1");
+  });
+
+  it("leaves the link to that file's panel and ignores a missing thread", () => {
+    expect(linkedThreadId("?thread=thread-1", "/diagrams/other-file", uid)).toBeNull();
+    expect(linkedThreadId("", `/diagrams/${uid}`, uid)).toBeNull();
+    expect(linkedThreadId("?thread=", `/diagrams/${uid}`, uid)).toBeNull();
+    expect(linkedThreadId("?thread=t", "/diagrams/%E0%A4%A", uid)).toBeNull();
+  });
+});
 
 describe("comment anchors by feature type", () => {
   it.each([

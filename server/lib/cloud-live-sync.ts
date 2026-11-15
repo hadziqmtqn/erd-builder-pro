@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Server } from "node:http";
 import WebSocket, { WebSocketServer } from "ws";
 
@@ -13,10 +14,15 @@ export type CloudWorkspaceSyncEvent = {
   revision: string;
 };
 
+/** NOT-001.3: tells one user's sockets, whatever Team they are open for, to refetch notifications. No content. */
+export type CloudNotificationEvent = { eventType: "notification.created"; revision: string };
+
 type CloudSession = { token: string; userId: string; teamId: string };
 type Publisher = (event: CloudWorkspaceSyncEvent) => Promise<void>;
+type UserPublisher = (userIds: ReadonlySet<string>, event: CloudNotificationEvent, exceptTeamId?: string) => Promise<void>;
 
 const publishers = new Set<Publisher>();
+const userPublishers = new Set<UserPublisher>();
 
 function sessionToken(cookieHeader: string | string[] | undefined = ""): string | null {
   const header = Array.isArray(cookieHeader) ? cookieHeader.join(";") : cookieHeader || "";
@@ -93,9 +99,9 @@ export function attachCloudLiveSync(server: Server): () => void {
     }).catch(() => reject(socket));
   };
 
-  const publish: Publisher = async (event) => {
-    await Promise.all([...sockets].map(async ([client, session]) => {
-      if (session.teamId !== event.teamId || client.readyState !== WebSocket.OPEN) return;
+  const deliver = (matches: (session: CloudSession) => boolean, event: object, reason: string) =>
+    Promise.all([...sockets].map(async ([client, session]) => {
+      if (!matches(session) || client.readyState !== WebSocket.OPEN) return;
       try {
         const current = await getSession(session.token);
         if (!current || current.userId !== session.userId) {
@@ -106,14 +112,20 @@ export function attachCloudLiveSync(server: Server): () => void {
         // must still deliver one metadata-only invalidation so the client refetches
         // and its normal Team APIs deny access, then the connection is closed.
         client.send(JSON.stringify(event));
-        client.close(1000, "Workspace updated");
+        client.close(1000, reason);
       } catch {
         client.close(1011, "Workspace refresh required");
       }
     }));
+  const publish: Publisher = async (event) => {
+    await deliver((session) => session.teamId === event.teamId, event, "Workspace updated");
+  };
+  const publishToUsers: UserPublisher = async (userIds, event, exceptTeamId) => {
+    await deliver((session) => userIds.has(session.userId) && session.teamId !== exceptTeamId, event, "Notification created");
   };
 
   publishers.add(publish);
+  userPublishers.add(publishToUsers);
   server.on("upgrade", onUpgrade);
   let closed = false;
   const cleanup = () => {
@@ -122,6 +134,7 @@ export function attachCloudLiveSync(server: Server): () => void {
     server.off("upgrade", onUpgrade);
     server.off("close", cleanup);
     publishers.delete(publish);
+    userPublishers.delete(publishToUsers);
     for (const client of sockets.keys()) client.close(1001, "Server shutting down");
     wss.close();
   };
@@ -131,4 +144,16 @@ export function attachCloudLiveSync(server: Server): () => void {
 
 export async function publishCloudWorkspaceSync(event: CloudWorkspaceSyncEvent): Promise<void> {
   await Promise.all([...publishers].map((publish) => publish(event).catch(() => {})));
+}
+
+/**
+ * Sends `notification.created` to these users' open sockets; Self-host has no publisher yet (NOT-001.5). Sockets open
+ * for `exceptTeamId` are skipped because that Team's own sync event already reaches them, and closing them first would
+ * drop it.
+ */
+export async function publishCloudUserNotification(userIds: Iterable<string>, exceptTeamId?: string): Promise<void> {
+  const recipients = new Set(userIds);
+  if (!recipients.size) return;
+  const event: CloudNotificationEvent = { eventType: "notification.created", revision: randomUUID() };
+  await Promise.all([...userPublishers].map((publish) => publish(recipients, event, exceptTeamId).catch(() => {})));
 }

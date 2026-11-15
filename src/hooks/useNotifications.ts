@@ -40,11 +40,13 @@ export function useNotifications(enabled: boolean) {
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("cloud-live-sync-reconnected", onChange);
     window.addEventListener("cloud-workspace-sync", onChange);
+    window.addEventListener("notification-created", onChange);
     return () => {
       window.removeEventListener("focus", onChange);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("cloud-live-sync-reconnected", onChange);
       window.removeEventListener("cloud-workspace-sync", onChange);
+      window.removeEventListener("notification-created", onChange);
     };
   }, [enabled, refresh]);
 
