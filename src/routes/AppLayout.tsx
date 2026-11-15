@@ -450,6 +450,9 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
       if (context.featureType === 'diagram' && context.anchorType !== 'general' && context.anchorId) {
         handleDiscussionAnchorSelected(context.anchorType as 'table' | 'relationship', context.anchorId);
       }
+      if (context.featureType === 'flowchart' && context.anchorType === 'shape' && context.anchorId) {
+        window.dispatchEvent(new CustomEvent('flowchart-comment-anchor-selected', { detail: { fileId: discussionFileContext.fileId, id: context.anchorId } }));
+      }
       return;
     }
     const collections: Record<string, any[]> = {

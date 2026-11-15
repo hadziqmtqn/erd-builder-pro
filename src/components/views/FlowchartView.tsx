@@ -116,7 +116,7 @@ const FlowchartCanvas = React.memo(({
   const isParsingFromDataRef = React.useRef(false);
   const isDraggingRef = React.useRef(false);
   const pendingContentAppliedRef = React.useRef(false);
-  const { fitView, screenToFlowPosition } = useReactFlow();
+  const { fitView, screenToFlowPosition, getInternalNode, getViewport, setCenter } = useReactFlow();
   const canvasRef = React.useRef<HTMLDivElement>(null);
   const lastFlowchartIdRef = React.useRef(activeFlowchartId);
   const isEditingEdgeRef = React.useRef(false);
@@ -454,6 +454,20 @@ const FlowchartCanvas = React.memo(({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedNodeId, selectedEdgeId, isReadOnly]);
+
+  // NOT-001.4: opening a symbol's comment centres the symbol; one deleted since then leaves the view as it is.
+  useEffect(() => {
+    const onCommentAnchorSelected = (event: Event) => {
+      const detail = (event as CustomEvent<{ fileId?: string; id?: string }>).detail;
+      if (!detail?.id || detail.fileId !== String(activeFlowchart?.uid ?? activeFlowchart?.id)) return;
+      const node = getInternalNode(detail.id);
+      if (!node) return;
+      const { x, y } = node.internals.positionAbsolute;
+      void setCenter(x + (node.measured.width ?? 0) / 2, y + (node.measured.height ?? 0) / 2, { zoom: getViewport().zoom, duration: 0 });
+    };
+    window.addEventListener('flowchart-comment-anchor-selected', onCommentAnchorSelected);
+    return () => window.removeEventListener('flowchart-comment-anchor-selected', onCommentAnchorSelected);
+  }, [activeFlowchart?.uid, activeFlowchart?.id, getInternalNode, getViewport, setCenter]);
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId);
   const selectedEdge = edges.find((e) => e.id === selectedEdgeId);
