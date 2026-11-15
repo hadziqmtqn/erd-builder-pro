@@ -197,6 +197,12 @@ Local web development uses `npm run dev:pg:local` and `npm run test:pg`. `DB_VAR
 - `err.message` never leaked to client; generic error messages only
 - Frontend Supabase client fully removed — all calls via `apiFetch` → Express → Prisma
 
+### Notifications (NOT-001)
+- One `notifications` row per recipient. Producers call `createNotifications()` (`server/lib/notifications.ts`) after the main mutation commits, with metadata only, never message or document content. Event, scope and feature types are allowlists; a repeated `sourceEventId` for the same recipient is skipped, and an actor never notifies themselves.
+- `link` must be an app-relative path such as `/diagrams/<uid>?thread=<id>`; anything else is dropped. A link is never proof of access: the target route re-authorizes.
+- `GET /api/notifications` lists the session user's rows across every workspace. Items from a Team the user can no longer open keep only the Team name and event type. The read endpoints answer the generic not-found for another user's id.
+- The daily storage maintenance deletes read rows after `NOTIFICATION_READ_RETENTION_DAYS` (90) and every row after `NOTIFICATION_RETENTION_DAYS` (180). Desktop and CLI hide the bell.
+
 ## Account Update — Mode-Aware
 
 | Mode | Behavior |
