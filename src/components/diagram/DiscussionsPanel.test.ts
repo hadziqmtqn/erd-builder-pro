@@ -1,19 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { getActiveDetailRefreshTarget, isCommentAnchorForFeature, linkedThreadId } from "./DiscussionsPanel";
+import { getActiveDetailRefreshTarget, isCommentAnchorForFeature, linkedThread } from "./DiscussionsPanel";
 
-describe("notification links (NOT-001.3)", () => {
+describe("notification links (NOT-001.3, NOT-001.4)", () => {
   const uid = "1eb51217-906c-4fed-822d-80b5c058832d";
 
-  it("opens the linked thread in the panel of the file in the URL path", () => {
-    expect(linkedThreadId("?thread=thread-1", `/diagrams/${uid}`, uid)).toBe("thread-1");
-    expect(linkedThreadId("?thread=thread-1&feature=x", `/diagrams/${encodeURIComponent(uid)}`, uid)).toBe("thread-1");
+  it("opens the linked discussion or comment in the panel of the file in the URL path", () => {
+    expect(linkedThread("?thread=thread-1", `/diagrams/${uid}`, uid)).toEqual({ kind: "discussion", threadId: "thread-1" });
+    expect(linkedThread("?thread=thread-1&feature=x", `/diagrams/${encodeURIComponent(uid)}`, uid)).toEqual({ kind: "discussion", threadId: "thread-1" });
+    expect(linkedThread("?comment=comment-1", `/flowcharts/${uid}`, uid)).toEqual({ kind: "comment", threadId: "comment-1" });
   });
 
   it("leaves the link to that file's panel and ignores a missing thread", () => {
-    expect(linkedThreadId("?thread=thread-1", "/diagrams/other-file", uid)).toBeNull();
-    expect(linkedThreadId("", `/diagrams/${uid}`, uid)).toBeNull();
-    expect(linkedThreadId("?thread=", `/diagrams/${uid}`, uid)).toBeNull();
-    expect(linkedThreadId("?thread=t", "/diagrams/%E0%A4%A", uid)).toBeNull();
+    expect(linkedThread("?thread=thread-1", "/diagrams/other-file", uid)).toBeNull();
+    expect(linkedThread("?comment=comment-1", "/diagrams/other-file", uid)).toBeNull();
+    expect(linkedThread("", `/diagrams/${uid}`, uid)).toBeNull();
+    expect(linkedThread("?thread=&comment=", `/diagrams/${uid}`, uid)).toBeNull();
+    expect(linkedThread("?thread=t", "/diagrams/%E0%A4%A", uid)).toBeNull();
   });
 });
 

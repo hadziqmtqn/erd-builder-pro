@@ -51,7 +51,8 @@ type MessageCursor = { createdAt: string; id: string };
 type MessageHistoryPage = { hasMore: boolean; nextCursor: MessageCursor | null };
 type MessageHistoryState = MessageHistoryPage & { messages: DiscussionMessageData[] };
 type PendingDelete = { type: "thread"; threadId: string } | { type: "message"; threadId: string; message: DiscussionMessageData };
-type PendingCommentOpen = { type: DiscussionAnchor["type"]; id: string };
+type PendingCommentOpen = { type: DiscussionAnchor["type"]; id: string; threadId?: string };
+export type LinkedThread = { kind: "discussion" | "comment"; threadId: string };
 type RawRecord = Record<string, unknown>;
 
 function resizeDiscussionTextarea(element: HTMLTextAreaElement, maxHeight = 144): void {
@@ -322,13 +323,20 @@ function mergeLiveMessages(current: MessageHistoryState, incoming: DiscussionMes
   };
 }
 
-/** A notification link `?thread=<id>` (NOT-001.3) belongs to the file in the URL path, so only that file's panel opens it. */
-export function linkedThreadId(search: string, pathname: string, fileId: string): string | null {
-  const threadId = new URLSearchParams(search).get("thread")?.trim();
+/**
+ * A notification link `?thread=<id>` (NOT-001.3) or `?comment=<id>` (NOT-001.4) belongs to the file in the URL path,
+ * so only that file's panel opens it.
+ */
+export function linkedThread(search: string, pathname: string, fileId: string): LinkedThread | null {
+  const params = new URLSearchParams(search);
+  const discussion = params.get("thread")?.trim();
+  const comment = params.get("comment")?.trim();
+  const link: LinkedThread | null = discussion ? { kind: "discussion", threadId: discussion }
+    : comment ? { kind: "comment", threadId: comment } : null;
   const segment = pathname.split("/").filter(Boolean).at(-1);
-  if (!threadId || !segment) return null;
+  if (!link || !segment) return null;
   try {
-    return decodeURIComponent(segment) === fileId ? threadId : null;
+    return decodeURIComponent(segment) === fileId ? link : null;
   } catch {
     return null;
   }
@@ -462,7 +470,7 @@ export function DiscussionsPanel({
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [draft, setDraft] = useState("");
   const [pendingCommentOpen, setPendingCommentOpen] = useState<PendingCommentOpen | null>(null);
-  const [pendingThreadOpen, setPendingThreadOpen] = useState<string | null>(null);
+  const [pendingThreadOpen, setPendingThreadOpen] = useState<LinkedThread | null>(null);
   const location = useLocation();
   const [, setSearchParams] = useSearchParams();
   const [composeAnchor, setComposeAnchor] = useState<DiscussionAnchor | null>(null);
@@ -740,9 +748,11 @@ export function DiscussionsPanel({
       if (cancelled) return;
       const group = groupCommentThreads(snapshot).find((candidate) => candidate.representative.anchorType === anchor.type && candidate.representative.anchorId === anchor.id);
       if (group) {
+        // A notification link names its thread; a marker click opens the newest one.
+        const threadId = group.threads.find((thread) => thread.id === anchor.threadId)?.id ?? group.representative.id;
         setScreen("thread");
-        setSelectedThreadId(group.representative.id);
-        await loadAnchor(anchor, true, false, group.representative.id);
+        setSelectedThreadId(threadId);
+        await loadAnchor(anchor, true, false, threadId);
       } else {
         setScreen(readOnly ? "list" : "compose");
       }
@@ -752,26 +762,36 @@ export function DiscussionsPanel({
   }, [activeTab, loadAnchor, loadThreads, pendingCommentOpen]);
 
   useEffect(() => {
-    const threadId = linkedThreadId(location.search, location.pathname, fileContext.fileId);
-    if (!threadId) return;
+    const link = linkedThread(location.search, location.pathname, fileContext.fileId);
+    if (!link) return;
     // Open once, then drop the parameter so a reload or the next file switch does not reopen it.
-    setSearchParams((params) => { params.delete("thread"); return params; }, { replace: true });
+    setSearchParams((params) => { params.delete("thread"); params.delete("comment"); return params; }, { replace: true });
     clearThreadView();
     setPendingCommentOpen(null);
-    setActiveTab("discussions");
+    setActiveTab(link.kind === "comment" ? "comments" : "discussions");
     setOpen(true);
-    setPendingThreadOpen(threadId);
+    setPendingThreadOpen(link);
   }, [clearThreadView, fileContext.fileId, location.pathname, location.search, setSearchParams]);
 
   useEffect(() => {
-    if (activeTab !== "discussions" || !pendingThreadOpen) return;
-    const threadId = pendingThreadOpen;
+    const link = pendingThreadOpen;
+    if (!link || activeTab !== (link.kind === "comment" ? "comments" : "discussions")) return;
     setPendingThreadOpen(null);
-    setScreen("thread");
-    setSelectedThreadId(threadId);
-    // The detail request re-authorizes; a thread the user can no longer open shows the panel's load error.
-    void loadThread(threadId, true);
-  }, [activeTab, loadThread, pendingThreadOpen]);
+    if (link.kind === "discussion") {
+      setScreen("thread");
+      setSelectedThreadId(link.threadId);
+      // The detail request re-authorizes; a thread the user can no longer open shows the panel's load error.
+      void loadThread(link.threadId, true);
+      return;
+    }
+    // A comment opens through its node like a marker click, which also focuses the node when the editor still has it;
+    // the detail request re-authorizes the link and names the node (NOT-001.4).
+    void requestJson(threadEndpoint(link.threadId)).then((data) => {
+      const context = Array.isArray(data.contexts) && data.contexts[0] ? normalizeContext(data.contexts[0] as RawRecord) : null;
+      if (!context?.anchorId || !isCommentAnchorForFeature(fileContext.featureType, context.anchorType)) throw new Error("Comment anchor missing");
+      setPendingCommentOpen({ type: context.anchorType, id: context.anchorId, threadId: link.threadId });
+    }).catch(() => toast.error("This comment is no longer available."));
+  }, [activeTab, fileContext.featureType, loadThread, pendingThreadOpen, threadEndpoint]);
 
   const hasUnsavedText = ((screen === "thread" || screen === "compose") && draft.trim() !== "")
     || (editingMessageId !== null && editDraft !== editOriginalBody);
