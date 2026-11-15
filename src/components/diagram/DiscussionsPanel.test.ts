@@ -1,5 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { getActiveDetailRefreshTarget, isCommentAnchorForFeature, linkedThread } from "./DiscussionsPanel";
+import { getActiveDetailRefreshTarget, isCommentAnchorForFeature, linkedThread, threadsWithNewActivity } from "./DiscussionsPanel";
+
+describe("new activity for the header toast (BUG-072)", () => {
+  const thread = (id: string, latestMessageId: string | null, latestAuthorId: string | null, unread = false) => ({ id, latestMessageId, latestAuthorId, unread });
+  const ids = (threads: Array<{ id: string }>) => threads.map((item) => item.id);
+
+  it("reports a known thread whose latest message from someone else changed", () => {
+    expect(ids(threadsWithNewActivity([thread("t1", "m2", "jay")], new Map([["t1", "m1"]]), "anind"))).toEqual(["t1"]);
+  });
+
+  it("ignores own messages, unchanged threads and threads without messages", () => {
+    const seen = new Map([["t1", "m1"], ["t2", "m5"]]);
+    expect(threadsWithNewActivity([thread("t1", "m2", "anind"), thread("t2", "m5", "jay", true), thread("t3", null, null, true)], seen, "anind")).toEqual([]);
+  });
+
+  it("reports an unseen unread thread, such as a new comment from the other tab, but not an unseen read one", () => {
+    expect(ids(threadsWithNewActivity([thread("c1", "m9", "jay", true), thread("c2", "m8", "jay")], new Map(), "anind"))).toEqual(["c1"]);
+  });
+});
 
 describe("notification links (NOT-001.3, NOT-001.4)", () => {
   const uid = "1eb51217-906c-4fed-822d-80b5c058832d";

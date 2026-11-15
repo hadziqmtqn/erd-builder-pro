@@ -357,6 +357,19 @@ export function getActiveDetailRefreshTarget(
   return selectedThreadId ? { kind: "thread", threadId: selectedThreadId } : null;
 }
 
+/** Threads whose newest message is from someone else and arrived after the last snapshot (toast check for both tabs). */
+export function threadsWithNewActivity<T extends { id: string; unread: boolean; latestMessageId: string | null; latestAuthorId: string | null }>(
+  threads: T[],
+  seen: ReadonlyMap<string, string>,
+  userId?: string,
+): T[] {
+  return threads.filter((thread) => {
+    if (!thread.latestMessageId || thread.latestAuthorId === userId) return false;
+    const previous = seen.get(thread.id);
+    return previous ? previous !== thread.latestMessageId : thread.unread;
+  });
+}
+
 type CommentThreadGroup = {
   key: string;
   representative: Thread;
@@ -455,7 +468,9 @@ export function DiscussionsPanel({
   const [screen, setScreen] = useState<"list" | "compose" | "thread">("list");
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [threads, setThreads] = useState<Thread[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
+  // BUG-072: the header badge counts both tabs, so a new comment shows while Discussions is the open tab and vice versa.
+  const [unreadByTab, setUnreadByTab] = useState({ discussions: 0, comments: 0 });
+  const unreadCount = unreadByTab.discussions + unreadByTab.comments;
   const [messageHistory, setMessageHistory] = useState<MessageHistoryState>({ messages: [], hasMore: false, nextCursor: null });
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [olderError, setOlderError] = useState("");
@@ -516,6 +531,12 @@ export function DiscussionsPanel({
     anchor_type: activeTab === "comments" && !isCommentRail && anchorContext ? anchorContext.type : undefined,
     anchor_id: activeTab === "comments" && !isCommentRail && anchorContext ? anchorContext.id : undefined,
   }), [activeTab, anchorContext, discussionScope, endpoint, fileContext.featureType, fileContext.fileId, isCommentRail]);
+  const otherTab = activeTab === "comments" ? "discussions" : "comments";
+  const otherListEndpoint = useMemo(() => requestPath(`/api/projects/${encodeURIComponent(projectId)}/${otherTab}`, {
+    scope: otherTab === "discussions" ? discussionScope : undefined,
+    feature_type: fileContext.featureType,
+    file_id: fileContext.fileId,
+  }), [discussionScope, fileContext.featureType, fileContext.fileId, otherTab, projectId]);
   const threadEndpoint = useCallback((threadId: string) => requestPath(`${endpoint}/${encodeURIComponent(threadId)}`, activeTab === "comments" ? {
     feature_type: fileContext.featureType,
     file_id: fileContext.fileId,
@@ -526,25 +547,31 @@ export function DiscussionsPanel({
     setLoadError("");
     if (!hasInitialSnapshot.current) setLoadingThreads(true);
     try {
-      const data = await requestJson(listEndpoint);
+      // The other tab only feeds the badge and the toast, so its failure must not hide the active list.
+      const [data, other] = await Promise.all([requestJson(listEndpoint), requestJson(otherListEndpoint).catch(() => null)]);
       if (requestId !== listRequest.current) return [];
       const nextThreads: Thread[] = Array.isArray(data.threads) ? data.threads.map((thread: RawRecord) => normalizeThread(thread)) : [];
+      const otherThreads: Thread[] = Array.isArray(other?.threads) ? other.threads.map((thread: RawRecord) => normalizeThread(thread)) : [];
+      const watched = [...nextThreads, ...otherThreads];
       if (notify && hasInitialSnapshot.current) {
-        for (const thread of nextThreads) {
-          const previousMessageId = seenMessages.current.get(thread.id);
-          if (thread.latestMessageId && thread.latestAuthorId !== userId
-            && ((previousMessageId && thread.latestMessageId !== previousMessageId) || (!previousMessageId && thread.unread))) {
-            toast.info(`New activity in ${thread.contexts[0]?.fileName || "Project discussion"}`);
-          }
+        for (const thread of threadsWithNewActivity(watched, seenMessages.current, userId)) {
+          toast.info(`New activity in ${thread.contexts[0]?.fileName || (thread.fileId === fileContext.fileId ? fileContext.label : "Project discussion")}`);
         }
       }
-      seenMessages.current = new Map(nextThreads.filter((thread: Thread) => thread.latestMessageId).map((thread: Thread) => [thread.id, thread.latestMessageId!]));
+      // Keep the other tab's last snapshot when its request failed, so its unread threads do not toast again later.
+      const nextSeen = new Map(other ? [] : seenMessages.current);
+      for (const thread of watched) if (thread.latestMessageId) nextSeen.set(thread.id, thread.latestMessageId);
+      seenMessages.current = nextSeen;
       hasInitialSnapshot.current = true;
       setThreads(nextThreads);
       const selected = threadView.current;
       if (selected.screen === "thread" && selected.selectedThreadId
         && !nextThreads.some((thread) => thread.id === selected.selectedThreadId)) clearThreadView();
-      setUnreadCount(Number(data.unreadCount ?? data.unread_count) || 0);
+      setUnreadByTab((current) => ({
+        ...current,
+        [activeTab]: Number(data.unreadCount ?? data.unread_count) || 0,
+        ...(other ? { [otherTab]: Number(other.unreadCount ?? other.unread_count) || 0 } : {}),
+      }));
       return nextThreads;
     } catch {
       if (requestId === listRequest.current) setLoadError(`Couldn't load ${activeTab}. Try again.`);
@@ -552,7 +579,7 @@ export function DiscussionsPanel({
     } finally {
       if (requestId === listRequest.current) setLoadingThreads(false);
     }
-  }, [activeTab, clearThreadView, listEndpoint, userId]);
+  }, [activeTab, clearThreadView, fileContext.fileId, fileContext.label, listEndpoint, otherListEndpoint, otherTab, userId]);
 
   const focusAnchor = useCallback((anchor: DiscussionAnchor) => {
     onContextSelected?.({
