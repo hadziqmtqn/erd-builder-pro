@@ -19,6 +19,7 @@ import { MainHeader } from '@/components/MainHeader';
 import { useAutoCollapseSidebar } from '@/hooks/useAutoCollapseSidebar';
 import { FeedbackDialog } from '@/components/FeedbackDialog';
 import { TrialSurveyPanel } from '@/components/TrialSurveyPanel';
+import { NotificationBell } from '@/components/NotificationBell';
 import { MoveToTrashAlert } from '@/components/modals/MoveToTrashAlert';
 import { DeleteEntityAlert } from '@/components/modals/DeleteEntityAlert';
 import { RenameDocumentDialog } from '@/components/modals/RenameDocumentDialog';
@@ -640,6 +641,10 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
           noteContent={activeNote?.content}
           historyAvailable={Boolean(historyEntityType)}
           discussionPanel={session ? <span ref={setDiscussionTarget} className="contents" /> : discussionPanel}
+          // Desktop and CLI have one user, so they hide the bell (NOT-001 decision).
+          notificationBell={user && !isGuest && !isPublicView && !isInstalledApp()
+            ? <NotificationBell activeTeamId={teamState.activeTeamId} onSelectWorkspace={handleTeamSelect} />
+            : undefined}
           aiAssistant={showAIToggle ? { open: rightPanelMode === 'chat', answering: aiAnswering, onToggle: toggleAIChat, shortcut: aiShortcut } : undefined}
         /></FileSessionContext.Provider>
 
