@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   teamFindMany: vi.fn(),
   userFindMany: vi.fn(),
   canAccessTeam: vi.fn(),
+  live: true,
 }));
 
 vi.mock("../../lib/notifications.js", () => ({
@@ -19,6 +20,7 @@ vi.mock("../../lib/prisma.js", () => ({
 }));
 vi.mock("../teams/service.js", () => ({ canAccessTeam: mocks.canAccessTeam }));
 vi.mock("../../lib/middleware.js", () => ({ authenticate: vi.fn() }));
+vi.mock("../../lib/config.js", () => ({ isLocalPostgres: () => mocks.live }));
 
 import router, { listLimit } from "./index.js";
 
@@ -87,7 +89,16 @@ describe("notification routes (NOT-001.1)", () => {
         payload: { fileName: "QA ERD", projectName: "QA" },
       })],
       unreadCount: 1,
+      live: true,
     });
+  });
+
+  it("tells the bell when this server has no live channel (NOT-001.5)", async () => {
+    mocks.live = false;
+    const res = await call("get", "/notifications");
+    mocks.live = true;
+
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ live: false }));
   });
 
   it("filters unread rows and caps the page size", async () => {

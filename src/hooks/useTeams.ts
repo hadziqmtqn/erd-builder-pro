@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { ACTIVE_TEAM_KEY, apiFetch, getApiBaseUrl } from "../lib/api";
+import { ACTIVE_TEAM_KEY, apiFetch } from "../lib/api";
+import { openLiveSocket } from "../lib/live-socket";
 
 export type TeamLicense = {
   valid: boolean;
@@ -168,86 +169,17 @@ export function useTeams(isGuest = false, isSso = false, onActiveTeamUnavailable
 
   useEffect(() => {
     if (isGuest || !isSso || !activeTeamId) return;
-
-    let disposed = false;
-    let socket: WebSocket | null = null;
-    let reconnectTimer = 0;
-    let retries = 0;
-    let refreshOnReconnect = false;
-    const connect = () => {
-      if (disposed || document.hidden || !navigator.onLine) return;
-      const apiUrl = new URL(getApiBaseUrl() || window.location.origin, window.location.origin);
-      apiUrl.protocol = apiUrl.protocol === "https:" ? "wss:" : "ws:";
-      apiUrl.pathname = "/api/cloud/live-sync";
-      apiUrl.search = new URLSearchParams({ team_id: activeTeamId }).toString();
-      const current = new WebSocket(apiUrl.toString());
-      socket = current;
-      current.onopen = () => {
-        if (refreshOnReconnect) {
-          refreshOnReconnect = false;
-          void fetchTeams();
-          window.dispatchEvent(new CustomEvent("cloud-live-sync-reconnected", { detail: { teamId: activeTeamId } }));
-        }
-        retries = 0;
-      };
-      current.onmessage = (message) => {
-        let event: { teamId?: unknown; eventType?: unknown; revision?: unknown };
-        try { event = JSON.parse(message.data); }
-        catch { return; }
-        // A notification for this user from any workspace (NOT-001.3): the bell refetches; no content travels here.
-        if (event.eventType === "notification.created" && typeof event.revision === "string" && event.revision) {
-          window.dispatchEvent(new CustomEvent("notification-created"));
-          return;
-        }
+    return openLiveSocket("/api/cloud/live-sync", { team_id: activeTeamId }, {
+      onReconnect: () => {
+        void fetchTeams();
+        window.dispatchEvent(new CustomEvent("cloud-live-sync-reconnected", { detail: { teamId: activeTeamId } }));
+      },
+      onEvent: (event) => {
         if (event.teamId !== activeTeamId || event.eventType !== "cloud.workspace.sync" || typeof event.revision !== "string" || !event.revision) return;
         void fetchTeams();
         window.dispatchEvent(new CustomEvent("cloud-workspace-sync", { detail: event }));
-      };
-      current.onclose = () => {
-        if (socket === current) socket = null;
-        if (!disposed) {
-          refreshOnReconnect = true;
-        }
-        if (!disposed && !document.hidden && navigator.onLine) {
-          reconnectTimer = window.setTimeout(() => {
-            reconnectTimer = 0;
-            connect();
-          }, Math.min(30_000, 1_000 * 2 ** Math.min(retries++, 5)));
-        }
-      };
-      current.onerror = () => current.close();
-    };
-    const reconnectWhenVisible = () => {
-      if (!document.hidden && navigator.onLine && !socket && !reconnectTimer) connect();
-    };
-    const handleOffline = () => {
-      refreshOnReconnect = true;
-      window.clearTimeout(reconnectTimer);
-      reconnectTimer = 0;
-      socket?.close(1000, "Network offline");
-    };
-    const handleOnline = () => {
-      refreshOnReconnect = true;
-      window.clearTimeout(reconnectTimer);
-      reconnectTimer = 0;
-      if (socket) {
-        socket.close(1000, "Network restored");
-        return;
-      }
-      reconnectWhenVisible();
-    };
-    document.addEventListener("visibilitychange", reconnectWhenVisible);
-    window.addEventListener("offline", handleOffline);
-    window.addEventListener("online", handleOnline);
-    connect();
-    return () => {
-      disposed = true;
-      window.clearTimeout(reconnectTimer);
-      document.removeEventListener("visibilitychange", reconnectWhenVisible);
-      window.removeEventListener("offline", handleOffline);
-      window.removeEventListener("online", handleOnline);
-      socket?.close();
-    };
+      },
+    });
   }, [activeTeamId, fetchTeams, isGuest, isSso]);
 
   const selectTeam = useCallback((teamId: string | null) => {
