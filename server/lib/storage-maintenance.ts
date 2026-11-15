@@ -1,6 +1,7 @@
 import { isSsoAuthMode } from "./config.js";
 import { deleteEntityRevisions } from "./entity-history.js";
 import { logger } from "./logger.js";
+import { purgeExpiredNotifications } from "./notifications.js";
 import { prisma } from "./prisma.js";
 import { buildS3Client, deleteFromS3, getEnvStorageConfig, objectExists } from "./storage.js";
 import { OBJECT_GRACE_DAYS, storageTrackingEnabled } from "./storage-usage.js";
@@ -8,7 +9,8 @@ import { runWithTeamScope } from "./team-scope.js";
 
 /**
  * Background maintenance for CLD-010 in PostgreSQL modes: document byte recompute, two-phase object cleanup (H1)
- * with a dangling-reference report (H4), Trash retention (Q19) and revision retention (Q20).
+ * with a dangling-reference report (H4), Trash retention (Q19) and revision retention (Q20). The daily run also applies
+ * notification retention (NOT-001.1).
  * Every step is idempotent and logs counts only, never document content.
  */
 
@@ -272,6 +274,7 @@ export async function runDailyStorageMaintenance(): Promise<void> {
   // Trash first so purged documents stop referencing their objects before the sweep marks them.
   await runSafely("trash", () => purgeExpiredTrash());
   await runSafely("revisions", () => pruneRevisions());
+  await runSafely("notifications", () => purgeExpiredNotifications());
   await runSafely("sweep", () => sweepStorageObjects());
   await runSafely("usage", () => recomputeDocumentBytes());
 }
