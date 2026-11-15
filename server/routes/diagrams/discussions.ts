@@ -7,7 +7,7 @@ import { canCommentRole, projectRoleFor } from "../../lib/project-access.js";
 import { currentTeamScope } from "../../lib/team-scope.js";
 import { handleError } from "../../lib/utils.js";
 import { resolveCommentAnchorLabel, type CommentFeature } from "./comment-anchors.js";
-import { notifyDiscussionReply } from "./discussion-notifications.js";
+import { notifyThreadMessage } from "./discussion-notifications.js";
 
 const router = Router({ mergeParams: true });
 const notFound = { error: "Resource not found" };
@@ -663,6 +663,13 @@ router.post("/", async (req, res) => {
     });
     if (created === null) { res.status(409).json({ error: "Reopen this thread before commenting" }); return; }
     if (!created) { res.status(404).json(notFound); return; }
+    if (kind === "comment") {
+      // NOT-001.4: the rows exist before the Team sync event, so a bell that refetches on that event sees them.
+      await notifyThreadMessage({
+        kind, threadId: created, messageId, actorId: actor.id, teamId: actor.teamId,
+        projectId: Number(resource.projectId), projectName: resource.projectName, file: context.file,
+      });
+    }
     notifyTeam(actor.teamId);
     res.status(201).json({ id: created, messageId, kind, fileId: context.file ? String(context.file.id) : null });
   } catch (error) {
@@ -780,19 +787,15 @@ router.post("/:threadId/messages", async (req, res) => {
     });
     if (result === "missing") { res.status(404).json(notFound); return; }
     if (result === "resolved") { res.status(409).json({ error: "Reopen this thread before replying" }); return; }
-    if (kind === "discussion") {
-      // NOT-001.3: the rows exist before the Team sync event, so a bell that refetches on that event sees them.
-      const file = await threadOriginFile(req.params.threadId, resource.projectId, actor.teamId).catch(() => null);
-      await notifyDiscussionReply({
-        threadId: req.params.threadId,
-        messageId,
-        actorId: actor.id,
-        teamId: actor.teamId,
-        projectId: Number(resource.projectId),
-        projectName: resource.projectName,
-        file: file ? { featureType: file.featureType, id: file.id, uid: file.uid, label: file.label } : null,
-      });
-    }
+    // NOT-001.3 and .4: the rows exist before the Team sync event, so a bell that refetches on that event sees them.
+    // A comment route is always scoped to its file; a discussion links to the file it started on.
+    const file = kind === "comment"
+      ? resource.currentFile
+      : await threadOriginFile(req.params.threadId, resource.projectId, actor.teamId).catch(() => null);
+    await notifyThreadMessage({
+      kind, threadId: req.params.threadId, messageId, actorId: actor.id, teamId: actor.teamId,
+      projectId: Number(resource.projectId), projectName: resource.projectName, file,
+    });
     notifyTeam(actor.teamId);
     res.status(201).json({ id: messageId });
   } catch (error) {
