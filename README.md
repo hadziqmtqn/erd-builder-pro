@@ -27,9 +27,28 @@
   <a href="https://hub.docker.com/r/bekenweb/erd-builder-pro">Docker image</a>
 </p>
 
-<div align="center">
-  <img width="1100" alt="ERD Builder Pro workspace" src="public/img/erd-intro.gif" />
-</div>
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img alt="ERD canvas with tables and relationships" src="public/img/intro/erd-canvas.png" />
+      <p><strong>ERD canvas</strong><br />Model tables and relationships on the canvas or in DBML.</p>
+    </td>
+    <td width="50%" valign="top">
+      <img alt="An ERD and a note open side by side" src="public/img/intro/split-view.png" />
+      <p><strong>Split view</strong><br />Keep a diagram and its notes open side by side.</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img alt="A flow sketched on the drawing canvas" src="public/img/intro/drawing.png" />
+      <p><strong>Drawings</strong><br />Sketch flows and ideas next to your schema.</p>
+    </td>
+    <td width="50%" valign="top">
+      <img alt="DB Client showing the rows of a connected database table" src="public/img/intro/db-client.png" />
+      <p><strong>DB Client (Desktop and CLI)</strong><br />Browse tables, data, and queries of a connected database.</p>
+    </td>
+  </tr>
+</table>
 
 ERD Builder Pro combines an ERD canvas and DBML editor with flowcharts, notes, and drawings. Desktop and CLI builds also include DB Client for working with existing PostgreSQL, MySQL, and SQLite databases.
 
