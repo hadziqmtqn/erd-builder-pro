@@ -202,6 +202,8 @@ Local web development uses `npm run dev:pg:local` and `npm run test:pg`. `DB_VAR
 - `link` must be an app-relative path such as `/diagrams/<uid>?thread=<id>`; anything else is dropped. A link is never proof of access: the target route re-authorizes.
 - `GET /api/notifications` lists the session user's rows across every workspace. Items from a Team the user can no longer open keep only the Team name and event type. The read endpoints answer the generic not-found for another user's id.
 - The daily storage maintenance deletes read rows after `NOTIFICATION_READ_RETENTION_DAYS` (90) and every row after `NOTIFICATION_RETENTION_DAYS` (180). Desktop and CLI hide the bell.
+- `AppLayout` passes the bell (`NotificationBell`, NOT-001.2) to `MainHeader`. It refetches on focus, visibility, live sync reconnect, `cloud-workspace-sync` and `notification-created`, never on a timer. Payload keys arrive in snake_case like every other API key.
+- `discussion.reply` (NOT-001.3, `server/routes/diagrams/discussion-notifications.ts`) notifies the thread creator and earlier authors who are still active Team members. Its `?thread=<id>` link opens the thread in the panel of the file in the URL path, which then drops the parameter. Cloud sends `notification.created` only to recipients' sockets open for other Teams; the replier's Team sockets get the Team sync event, so the two events never race to close the same socket.
 
 ## Account Update — Mode-Aware
 
