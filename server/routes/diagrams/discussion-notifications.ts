@@ -1,4 +1,4 @@
-import { publishCloudUserNotification } from "../../lib/cloud-live-sync.js";
+import { publishUserNotification } from "../../lib/cloud-live-sync.js";
 import { logger } from "../../lib/logger.js";
 import { createNotifications, type NotificationInput } from "../../lib/notifications.js";
 import { prisma } from "../../lib/prisma.js";
@@ -68,8 +68,7 @@ async function commentAnchorLabel(threadId: string): Promise<string | null> {
 }
 
 /**
- * Stores one row per recipient (the message id makes a retry idempotent) and wakes their sockets that are open for
- * another Team. Only names go into the payload, never the message. A failure is logged and never fails the write.
+ * Stores one row per recipient (the message id makes a retry idempotent) and wakes their notification sockets. Only names go into the payload, never the message. A failure is logged and never fails the write.
  * Returns the recipients so the caller can tell which users were notified.
  */
 export async function notifyThreadMessage(notice: ThreadNotice): Promise<string[]> {
@@ -98,7 +97,7 @@ export async function notifyThreadMessage(notice: ThreadNotice): Promise<string[
       payload,
     }));
     await createNotifications(inputs);
-    await publishCloudUserNotification(recipients, notice.teamId);
+    await publishUserNotification(recipients);
     return recipients;
   } catch (error) {
     logger.warn({ err: error instanceof Error ? error.message : error, kind: notice.kind, threadId: notice.threadId }, "[Notifications] thread notice failed");

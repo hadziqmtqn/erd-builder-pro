@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ query: vi.fn(), create: vi.fn(), publish: vi.fn() }));
 vi.mock("../../lib/prisma.js", () => ({ prisma: { $queryRawUnsafe: mocks.query } }));
 vi.mock("../../lib/notifications.js", () => ({ createNotifications: mocks.create }));
-vi.mock("../../lib/cloud-live-sync.js", () => ({ publishCloudUserNotification: mocks.publish }));
+vi.mock("../../lib/cloud-live-sync.js", () => ({ publishUserNotification: mocks.publish }));
 
 import { notifyThreadMessage, threadLink, threadRecipients, type ThreadNotice } from "./discussion-notifications.js";
 
@@ -40,7 +40,7 @@ describe("discussion reply notifications (NOT-001.3)", () => {
     expect(sql).not.toContain(`fo."user_id"`);
   });
 
-  it("stores one metadata-only row per recipient and wakes their sockets outside this Team", async () => {
+  it("stores one metadata-only row per recipient and wakes their notification sockets", async () => {
     await expect(notifyThreadMessage(notice())).resolves.toEqual(["anind", "hadziq"]);
 
     const inputs = mocks.create.mock.calls[0][0];
@@ -62,7 +62,7 @@ describe("discussion reply notifications (NOT-001.3)", () => {
       payload: { fileName: "QA rc.63 ERD-004", projectName: "QA BUG-045 rc.54" },
     });
     expect(inputs[1].recipientUserId).toBe("hadziq");
-    expect(mocks.publish).toHaveBeenCalledWith(["anind", "hadziq"], "team-1");
+    expect(mocks.publish).toHaveBeenCalledWith(["anind", "hadziq"]);
   });
 
   it("points a Project-only thread to the Project page", async () => {
@@ -133,6 +133,6 @@ describe("comment notifications (NOT-001.4)", () => {
       sourceEventId: "comment.created:message-9",
       payload: { fileName: "QA rc.63 ERD-004", projectName: "QA BUG-045 rc.54", anchorLabel: "users" },
     }]);
-    expect(mocks.publish).toHaveBeenCalledWith(["anind"], "team-1");
+    expect(mocks.publish).toHaveBeenCalledWith(["anind"]);
   });
 });

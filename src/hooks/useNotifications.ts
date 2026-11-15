@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { openLiveSocket } from "@/lib/live-socket";
 import { normalizeNotification, type NotificationItem } from "@/lib/notifications";
 
 type State = { items: NotificationItem[]; unreadCount: number; status: "loading" | "ready" | "error" };
 
 /**
- * NOT-001.2 notification list for the bell. It refetches on focus, when the tab becomes visible, when live sync
- * reconnects or reports workspace activity, and after local changes; there is no global polling interval (plan).
+ * NOT-001.2 notification list for the bell. It refetches on focus, when the tab becomes visible, on the user's live
+ * channel (NOT-001.5) and after local changes; there is no global polling interval (plan).
  */
 export function useNotifications(enabled: boolean) {
   const [state, setState] = useState<State>({ items: [], unreadCount: 0, status: "loading" });
+  const [live, setLive] = useState(false);
   const request = useRef(0);
 
   const refresh = useCallback(async () => {
@@ -20,6 +22,7 @@ export function useNotifications(enabled: boolean) {
       if (!response.ok) throw new Error(`Notifications request failed (${response.status})`);
       const body = await response.json();
       if (id !== request.current) return;
+      setLive(body.live === true);
       setState({
         items: Array.isArray(body.notifications) ? body.notifications.map(normalizeNotification) : [],
         unreadCount: Number(body.unread_count ?? body.unreadCount) || 0,
@@ -38,17 +41,22 @@ export function useNotifications(enabled: boolean) {
     const onVisible = () => { if (document.visibilityState === "visible") void refresh(); };
     window.addEventListener("focus", onChange);
     document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener("cloud-live-sync-reconnected", onChange);
-    window.addEventListener("cloud-workspace-sync", onChange);
-    window.addEventListener("notification-created", onChange);
     return () => {
       window.removeEventListener("focus", onChange);
       document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener("cloud-live-sync-reconnected", onChange);
-      window.removeEventListener("cloud-workspace-sync", onChange);
-      window.removeEventListener("notification-created", onChange);
     };
   }, [enabled, refresh]);
+
+  // NOT-001.5: Cloud and Self-host wake the bell through the user's own channel; the list says whether this server has it.
+  useEffect(() => {
+    if (!enabled || !live) return;
+    return openLiveSocket("/api/notifications/live", {}, {
+      onReconnect: () => { void refresh(); },
+      onEvent: (event) => {
+        if (event.eventType === "notification.created" && typeof event.revision === "string" && event.revision) void refresh();
+      },
+    });
+  }, [enabled, live, refresh]);
 
   const markRead = useCallback(async (id: string) => {
     setState((current) => {

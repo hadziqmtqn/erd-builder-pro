@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import type { Notification } from "@prisma/client";
+import { isLocalPostgres } from "../../lib/config.js";
 import { isUuid } from "../../lib/erd-column-id-migration.js";
 import { logger } from "../../lib/logger.js";
 import { authenticate } from "../../lib/middleware.js";
@@ -83,7 +84,8 @@ router.get("/notifications", authenticate, async (req: Request, res: Response) =
       actorNames: new Map(actors.map((actor): [string, string | null] => [actor.id, actor.name])),
     };
     res.setHeader("Cache-Control", "private, no-store");
-    res.json({ notifications: rows.map((row) => presentNotification(row, lookup)), unreadCount });
+    // `live` tells the bell whether /api/notifications/live exists; attachCloudLiveSync uses the same condition (NOT-001.5).
+    res.json({ notifications: rows.map((row) => presentNotification(row, lookup)), unreadCount, live: isLocalPostgres() });
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : error }, "[Notifications] list failed");
     res.status(500).json({ error: "Internal Server Error" });

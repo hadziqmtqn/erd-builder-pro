@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import type { Server } from "node:http";
+import type { IncomingMessage, Server } from "node:http";
 import WebSocket, { WebSocketServer } from "ws";
 
-import { isSsoAuthMode } from "./config.js";
+import { isLocalPostgres, isSsoAuthMode } from "./config.js";
 import { getSession } from "./desktop-auth.js";
 import { isUuid } from "./erd-column-id-migration.js";
 import { prisma } from "./prisma.js";
@@ -14,12 +14,19 @@ export type CloudWorkspaceSyncEvent = {
   revision: string;
 };
 
-/** NOT-001.3: tells one user's sockets, whatever Team they are open for, to refetch notifications. No content. */
-export type CloudNotificationEvent = { eventType: "notification.created"; revision: string };
+/** NOT-001.5: tells one user's notification sockets to refetch the bell. No content. */
+export type UserNotificationEvent = { eventType: "notification.created"; revision: string };
 
-type CloudSession = { token: string; userId: string; teamId: string };
+const LIVE_SYNC_PATH = "/api/cloud/live-sync";
+const NOTIFICATION_PATH = "/api/notifications/live";
+
+/**
+ * A Team socket (Cloud only) carries workspace sync for that Team. A notification socket (`teamId` null, NOT-001.5)
+ * carries the user's bell events in Cloud and Self-host alike.
+ */
+type LiveSession = { token: string; userId: string; teamId: string | null };
 type Publisher = (event: CloudWorkspaceSyncEvent) => Promise<void>;
-type UserPublisher = (userIds: ReadonlySet<string>, event: CloudNotificationEvent, exceptTeamId?: string) => Promise<void>;
+type UserPublisher = (userIds: ReadonlySet<string>, event: UserNotificationEvent) => Promise<void>;
 
 const publishers = new Set<Publisher>();
 const userPublishers = new Set<UserPublisher>();
@@ -35,7 +42,7 @@ function sessionToken(cookieHeader: string | string[] | undefined = ""): string 
   return null;
 }
 
-function isSameOrigin(request: import("node:http").IncomingMessage): boolean {
+function isSameOrigin(request: IncomingMessage): boolean {
   const host = request.headers.host;
   const origin = request.headers.origin;
   if (!host || !origin) return false;
@@ -57,39 +64,45 @@ function isSameOrigin(request: import("node:http").IncomingMessage): boolean {
   }
 }
 
-async function authorize(request: import("node:http").IncomingMessage): Promise<CloudSession | null> {
-  if (!isSsoAuthMode() || !isSameOrigin(request)) return null;
+async function authorize(request: IncomingMessage, url: URL): Promise<LiveSession | null> {
+  if (!isSameOrigin(request)) return null;
 
   const token = sessionToken(request.headers.cookie);
-  const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
-  const teamId = url.searchParams.get("team_id") || "";
-  if (!token || !isUuid(teamId)) return null;
+  const teamId = url.pathname === LIVE_SYNC_PATH ? url.searchParams.get("team_id") || "" : null;
+  if (!token || (teamId !== null && (!isSsoAuthMode() || !isUuid(teamId)))) return null;
 
   const session = await getSession(token);
   if (!session || !prisma) return null;
   const [user, team] = await Promise.all([
     prisma.user.findUnique({ where: { id: session.userId }, select: { ssoSubject: true } }),
-    prisma.team.findFirst({ where: { id: teamId, type: "team", status: "active", ssoOrganizationId: { not: null } }, select: { id: true } }),
+    teamId === null ? null : prisma.team.findFirst({ where: { id: teamId, type: "team", status: "active", ssoOrganizationId: { not: null } }, select: { id: true } }),
   ]);
-  if (!user?.ssoSubject || !team || !(await canAccessTeam(teamId, session.userId, false))) return null;
+  // A Cloud user must still be linked to SaaS; a Self-host user must still exist.
+  if (!user || (isSsoAuthMode() && !user.ssoSubject)) return null;
+  if (teamId === null) return { token, userId: session.userId, teamId: null };
+  if (!team || !(await canAccessTeam(teamId, session.userId, false))) return null;
   return { token, userId: session.userId, teamId };
 }
 
+/**
+ * Team sync needs Cloud SSO. The notification channel runs wherever sessions live in the local table: Cloud and
+ * Self-host on PostgreSQL. Desktop and CLI hide the bell, so they run without either.
+ */
 export function attachCloudLiveSync(server: Server): () => void {
-  if (!isSsoAuthMode()) return () => {};
+  if (!isLocalPostgres()) return () => {};
 
-  const sockets = new Map<WebSocket, CloudSession>();
+  const sockets = new Map<WebSocket, LiveSession>();
   const wss = new WebSocketServer({ noServer: true, maxPayload: 1024, clientTracking: false });
   const reject = (socket: import("node:net").Socket) => {
     if (socket.destroyed) return;
     socket.end("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
   };
 
-  const onUpgrade = (request: import("node:http").IncomingMessage, socket: import("node:net").Socket, head: Buffer) => {
+  const onUpgrade = (request: IncomingMessage, socket: import("node:net").Socket, head: Buffer) => {
     const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
-    if (url.pathname !== "/api/cloud/live-sync") return;
+    if (url.pathname !== LIVE_SYNC_PATH && url.pathname !== NOTIFICATION_PATH) return;
 
-    void authorize(request).then((session) => {
+    void authorize(request, url).then((session) => {
       if (!session || socket.destroyed) return reject(socket);
       wss.handleUpgrade(request, socket, head, (client) => {
         sockets.set(client, session);
@@ -99,7 +112,7 @@ export function attachCloudLiveSync(server: Server): () => void {
     }).catch(() => reject(socket));
   };
 
-  const deliver = (matches: (session: CloudSession) => boolean, event: object, reason: string) =>
+  const deliver = (matches: (session: LiveSession) => boolean, event: object, reason: string) =>
     Promise.all([...sockets].map(async ([client, session]) => {
       if (!matches(session) || client.readyState !== WebSocket.OPEN) return;
       try {
@@ -120,8 +133,8 @@ export function attachCloudLiveSync(server: Server): () => void {
   const publish: Publisher = async (event) => {
     await deliver((session) => session.teamId === event.teamId, event, "Workspace updated");
   };
-  const publishToUsers: UserPublisher = async (userIds, event, exceptTeamId) => {
-    await deliver((session) => userIds.has(session.userId) && session.teamId !== exceptTeamId, event, "Notification created");
+  const publishToUsers: UserPublisher = async (userIds, event) => {
+    await deliver((session) => session.teamId === null && userIds.has(session.userId), event, "Notification created");
   };
 
   publishers.add(publish);
@@ -146,14 +159,10 @@ export async function publishCloudWorkspaceSync(event: CloudWorkspaceSyncEvent):
   await Promise.all([...publishers].map((publish) => publish(event).catch(() => {})));
 }
 
-/**
- * Sends `notification.created` to these users' open sockets; Self-host has no publisher yet (NOT-001.5). Sockets open
- * for `exceptTeamId` are skipped because that Team's own sync event already reaches them, and closing them first would
- * drop it.
- */
-export async function publishCloudUserNotification(userIds: Iterable<string>, exceptTeamId?: string): Promise<void> {
+/** Sends `notification.created` to these users' notification sockets (NOT-001.5); call it after the rows are stored. */
+export async function publishUserNotification(userIds: Iterable<string>): Promise<void> {
   const recipients = new Set(userIds);
   if (!recipients.size) return;
-  const event: CloudNotificationEvent = { eventType: "notification.created", revision: randomUUID() };
-  await Promise.all([...userPublishers].map((publish) => publish(recipients, event, exceptTeamId).catch(() => {})));
+  const event: UserNotificationEvent = { eventType: "notification.created", revision: randomUUID() };
+  await Promise.all([...userPublishers].map((publish) => publish(recipients, event).catch(() => {})));
 }
