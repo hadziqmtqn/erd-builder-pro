@@ -30,6 +30,13 @@ describe("notification wording", () => {
     expect(describeNotification(normalizeNotification(raw({ type: "sync.conflict", actor: null, payload: {} })))).toEqual({ title: "Found a sync conflict", detail: "Anind's Workspace" });
   });
 
+  it("shows where a moved file came from and went to (NOT-001.7), and that a deleted one is in the Trash (NOT-001.6)", () => {
+    const moved = normalizeNotification(raw({ type: "file.moved", payload: { file_name: "Spec", project_name: "Ops", from_project_name: "Billing" } }));
+    expect(describeNotification(moved)).toEqual({ title: "Jay Test moved a file", detail: "Spec · Billing → Ops" });
+    const trashed = normalizeNotification(raw({ type: "file.deleted", payload: { file_name: "Spec", project_name: "Ops" } }));
+    expect(describeNotification(trashed)).toEqual({ title: "Jay Test moved a file to Trash", detail: "Spec · Ops" });
+  });
+
   it("keeps only the Team name and event type for a Team the user can no longer open", () => {
     const item = normalizeNotification(raw({ accessible: false, team_name: "Old Team", actor: null, payload: {}, link: null }));
     expect(describeNotification(item)).toEqual({ title: "Discussion reply", detail: "Old Team · no longer available" });

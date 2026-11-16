@@ -8,15 +8,17 @@ vi.mock("./cloud-live-sync.js", () => ({ publishUserNotification: mocks.publish 
 vi.mock("./config.js", async (importOriginal) => ({ ...(await importOriginal<typeof import("./config.js")>()), isLocalPostgres: () => true }));
 
 import { runWithTeamScope } from "./team-scope.js";
-import { notifyFileTrash, projectEditors } from "./file-notifications.js";
+import { notifyFileMoved, notifyFileTrash, projectEditors } from "./file-notifications.js";
 
 const inTeam = <T>(run: () => Promise<T>) => runWithTeamScope({ mode: "team", teamId: "team-1" }, run) as Promise<T>;
 const diagram = { id: 42, uid: "d-uid", projectId: 7, name: "Sales ERD" };
+const PROJECTS = [{ id: 7, name: "Billing" }, { id: 8, name: "Ops" }];
 
 beforeEach(() => {
-  mocks.query.mockReset().mockImplementation(async (sql: string) => (
-    sql.includes('FROM "projects" WHERE') ? [{ name: "Billing" }] : [{ userId: "manager" }, { userId: "editor" }]
-  ));
+  mocks.query.mockReset().mockImplementation(async (sql: string, ...values: unknown[]) => {
+    if (sql.includes('FROM "projects" WHERE')) return PROJECTS.filter((project) => values.includes(project.id));
+    return values[0] === 8 ? [{ userId: "manager" }, { userId: "ops-editor" }] : [{ userId: "manager" }, { userId: "editor" }];
+  });
   mocks.create.mockReset().mockResolvedValue(2);
   mocks.publish.mockReset().mockResolvedValue(undefined);
 });
@@ -81,5 +83,32 @@ describe("file Trash notifications (NOT-001.6)", () => {
     mocks.create.mockRejectedValue(new Error("database down"));
     await expect(inTeam(() => notifyFileTrash("file.deleted", "drawing", diagram, "jay"))).resolves.toEqual([]);
     expect(mocks.publish).not.toHaveBeenCalled();
+  });
+});
+
+describe("file move notifications (NOT-001.7)", () => {
+  it("tells the editors of both Projects once each, naming both Projects and linking to the file", async () => {
+    await expect(inTeam(() => notifyFileMoved("note", { id: 3, uid: "n-uid", projectId: 7, title: "Spec" }, 8, "jay")))
+      .resolves.toEqual(["manager", "editor", "ops-editor"]);
+
+    const inputs = mocks.create.mock.calls[0][0];
+    expect(inputs).toHaveLength(3);
+    expect(inputs[0]).toMatchObject({
+      type: "file.moved",
+      projectId: 8,
+      featureType: "note",
+      fileId: "n-uid",
+      link: "/notes/n-uid",
+      payload: { fileName: "Spec", projectName: "Ops", fromProjectName: "Billing" },
+    });
+    expect(mocks.publish).toHaveBeenCalledWith(["manager", "editor", "ops-editor"]);
+  });
+
+  it("sends nothing for a save that keeps the Project, which autosave does on every save", async () => {
+    await expect(inTeam(() => notifyFileMoved("note", { id: 3, projectId: 7 }, 7, "jay"))).resolves.toEqual([]);
+    await expect(inTeam(() => notifyFileMoved("note", { id: 3, projectId: 7 }, undefined, "jay"))).resolves.toEqual([]);
+    await expect(inTeam(() => notifyFileMoved("note", { id: 3, projectId: null }, 8, "jay"))).resolves.toEqual([]);
+
+    expect(mocks.query).not.toHaveBeenCalled();
   });
 });

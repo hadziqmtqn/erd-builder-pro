@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "../../lib/prisma.js";
-import { notifyFileTrash } from "../../lib/file-notifications.js";
+import { notifyFileMoved, notifyFileTrash } from "../../lib/file-notifications.js";
 import { captureEntityRevisionSafely, deleteEntityRevisions } from "../../lib/entity-history.js";
 import { isDesktopMode, isLocalPostgres } from "../../lib/config.js";
 import { createPersonalFile } from "../../lib/personal-file-quota.js";
@@ -174,6 +174,7 @@ export async function updateNote(
     });
     if (result.count !== 1) return { success: false, conflict: true };
     await revision();
+    await notifyFileMoved("note", existing, data.projectId, userId);
 
     const updated = await prisma.note.findUnique({ where: { id: existing.id }, select: { version: true, updatedAt: true } });
     return { success: true, version: updated?.version, updatedAt: updated?.updatedAt };
@@ -190,6 +191,7 @@ export async function updateNote(
     });
     if (result.count === 1) {
       await revision();
+      await notifyFileMoved("note", existing, data.projectId, userId);
       const updated = await prisma.note.findUnique({ where: { id: existing.id }, select: { version: true, updatedAt: true } });
       return { success: true, version: updated?.version, updatedAt: updated?.updatedAt };
     }
