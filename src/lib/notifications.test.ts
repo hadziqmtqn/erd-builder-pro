@@ -30,6 +30,15 @@ describe("notification wording", () => {
     expect(describeNotification(normalizeNotification(raw({ type: "sync.conflict", actor: null, payload: {} })))).toEqual({ title: "Found a sync conflict", detail: "Anind's Workspace" });
   });
 
+  it("names the new Project role, and whose it is when the creator reads about a member (NOT-001.8)", () => {
+    const granted = normalizeNotification(raw({ type: "project.access_granted", payload: { project_name: "Billing", role: "editor", previous_role: null } }));
+    expect(describeNotification(granted)).toEqual({ title: "Jay Test gave you Editor access", detail: "Billing" });
+    const changed = normalizeNotification(raw({ type: "project.role_changed", payload: { project_name: "Billing", role: "viewer", previous_role: "editor", member_name: "Ed" } }));
+    expect(describeNotification(changed).title).toBe("Jay Test changed Ed's role to Viewer");
+    const reset = normalizeNotification(raw({ type: "project.role_changed", payload: { project_name: "Billing", role: null, previous_role: "editor" } }));
+    expect(describeNotification(reset).title).toBe("Jay Test reset your role to the default");
+  });
+
   it("shows where a moved file came from and went to (NOT-001.7), and that a deleted one is in the Trash (NOT-001.6)", () => {
     const moved = normalizeNotification(raw({ type: "file.moved", payload: { file_name: "Spec", project_name: "Ops", from_project_name: "Billing" } }));
     expect(describeNotification(moved)).toEqual({ title: "Jay Test moved a file", detail: "Spec · Billing → Ops" });

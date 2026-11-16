@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { publishProjectAccessChange } from "../../lib/file-live-sync.js";
 import { prisma } from "../../lib/prisma.js";
 import { canManageAccessRole, effectiveRole, GRANTABLE_ROLES, projectRoleFor, type GrantableRole, type ProjectRole } from "../../lib/project-access.js";
+import { notifyProjectAccess } from "../../lib/project-notifications.js";
 import { currentTeamScope } from "../../lib/team-scope.js";
 
 /** Project access for Team members (COL-004). Only the Project creator and Team Managers manage it; everyone else gets the generic not-found. */
@@ -79,14 +80,14 @@ export async function setProjectAccess(projectId: number, actorId: string, targe
   if (targetId === project.ownerId && !project.actorIsManager) {
     return { ok: false, status: 400, error: "Only a Team Manager can change the Project creator's access" };
   }
-  const previousRole = await (prisma as any).$transaction(async (tx: any) => {
+  const { previousRole, auditId } = await (prisma as any).$transaction(async (tx: any) => {
     const previous = await tx.projectAccessGrant.findUnique({ where: { projectId_userId: { projectId, userId: targetId } }, select: { role: true } });
     await tx.projectAccessGrant.upsert({
       where: { projectId_userId: { projectId, userId: targetId } },
       create: { id: randomUUID(), projectId, userId: targetId, role, grantedBy: actorId },
       update: { role, grantedBy: actorId },
     });
-    await tx.teamAuditEvent.create({
+    const audit = await tx.teamAuditEvent.create({
       data: {
         teamId: project.teamId,
         actorId,
@@ -96,9 +97,12 @@ export async function setProjectAccess(projectId: number, actorId: string, targe
         metadata: JSON.stringify({ userId: targetId, role, previousRole: previous?.role ?? null }),
       },
     });
-    return previous?.role ?? null;
+    return { previousRole: (previous?.role ?? null) as string | null, auditId: audit.id as string };
   });
-  if (previousRole !== role) publishProjectAccessChange(projectId, targetId);
+  if (previousRole !== role) {
+    publishProjectAccessChange(projectId, targetId);
+    await notifyProjectAccess({ projectId, teamId: project.teamId, actorId, targetId, ownerId: project.ownerId, role, previousRole, auditId });
+  }
   return { ok: true, data: { userId: targetId, role } };
 }
 
@@ -109,11 +113,11 @@ export async function clearProjectAccess(projectId: number, actorId: string, tar
   if (targetId === project.ownerId && !project.actorIsManager) {
     return { ok: false, status: 400, error: "Only a Team Manager can change the Project creator's access" };
   }
-  const removed = await (prisma as any).$transaction(async (tx: any) => {
+  const removed: { previousRole: string; auditId: string } | null = await (prisma as any).$transaction(async (tx: any) => {
     const previous = await tx.projectAccessGrant.findUnique({ where: { projectId_userId: { projectId, userId: targetId } }, select: { role: true } });
-    if (!previous) return false;
+    if (!previous) return null;
     await tx.projectAccessGrant.delete({ where: { projectId_userId: { projectId, userId: targetId } } });
-    await tx.teamAuditEvent.create({
+    const audit = await tx.teamAuditEvent.create({
       data: {
         teamId: project.teamId,
         actorId,
@@ -123,8 +127,11 @@ export async function clearProjectAccess(projectId: number, actorId: string, tar
         metadata: JSON.stringify({ userId: targetId, role: null, previousRole: previous.role }),
       },
     });
-    return true;
+    return { previousRole: previous.role, auditId: audit.id };
   });
-  if (removed) publishProjectAccessChange(projectId, targetId);
+  if (removed) {
+    publishProjectAccessChange(projectId, targetId);
+    await notifyProjectAccess({ projectId, teamId: project.teamId, actorId, targetId, ownerId: project.ownerId, role: null, previousRole: removed.previousRole, auditId: removed.auditId });
+  }
   return { ok: true, data: { userId: targetId } };
 }
