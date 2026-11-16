@@ -83,7 +83,9 @@ export function describeNotification(item: NotificationItem): { title: string; d
   const action = item.type === "comment.created" && anchor ? `commented on ${anchor}` : ACTIONS[item.type] ?? "had new activity";
   const actor = item.actorName ?? (item.hasActor ? "A Team member" : null);
   const title = actor ? `${actor} ${action}` : action.charAt(0).toUpperCase() + action.slice(1);
-  const where = [payloadText(item.payload, "fileName"), payloadText(item.payload, "projectName")].filter(Boolean).join(" · ");
+  const project = payloadText(item.payload, "projectName");
+  const from = item.type === "file.moved" ? payloadText(item.payload, "fromProjectName") : null;
+  const where = [payloadText(item.payload, "fileName"), from && project ? `${from} → ${project}` : project].filter(Boolean).join(" · ");
   return { title, detail: where || item.teamName };
 }
 

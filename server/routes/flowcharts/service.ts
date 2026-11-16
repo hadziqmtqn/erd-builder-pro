@@ -1,5 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
-import { notifyFileTrash } from "../../lib/file-notifications.js";
+import { notifyFileMoved, notifyFileTrash } from "../../lib/file-notifications.js";
 import { captureEntityRevisionSafely, deleteEntityRevisions } from "../../lib/entity-history.js";
 import { isDesktopMode, isLocalPostgres } from "../../lib/config.js";
 import { createPersonalFile } from "../../lib/personal-file-quota.js";
@@ -148,6 +148,7 @@ export async function updateFlowchart(
     userId,
     snapshot: { title: existing.title, data: existing.data ?? "", project_id: existing.projectId ?? null },
   });
+  await notifyFileMoved("flowchart", existing, data.projectId, userId);
 
   const updated = await prisma.flowchart.findUnique({ where: { id: existing.id }, select: { version: true, updatedAt: true } });
   return { success: true, version: updated?.version, updatedAt: updated?.updatedAt };

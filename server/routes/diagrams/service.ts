@@ -1,5 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
-import { notifyFileTrash } from "../../lib/file-notifications.js";
+import { notifyFileMoved, notifyFileTrash } from "../../lib/file-notifications.js";
 import { createPersonalFile } from "../../lib/personal-file-quota.js";
 import { ownFileIdentifierWhere, editableFileIdentifierWhere, fileIdentifierWhere, fileScopeWhere } from "../../lib/team-scope.js";
 import { isForeignProjectMove } from "../../lib/project-access.js";
@@ -322,6 +322,7 @@ export async function updateDiagram(
   if (data.projectId !== undefined) updatePayload.projectId = data.projectId;
 
   await prisma.diagram.update({ where: { id: Number(existing.id) }, data: updatePayload });
+  await notifyFileMoved("diagram", existing, data.projectId, userId);
   return { success: true };
 }
 
