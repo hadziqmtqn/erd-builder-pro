@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   sso: false,
+  notify: vi.fn(),
   plan: { maxTeams: 2, maxMembers: 2 },
   db: {
     team: { findUnique: vi.fn(), findMany: vi.fn(), findFirst: vi.fn(), count: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("../../lib/config.js", () => ({ isLocalPostgres: () => true, isSsoAuthMode: () => mocks.sso, getSsoConfig: () => ({ issuerUrl: "https://example.test" }) }));
 vi.mock("../../lib/prisma.js", () => ({ prisma: mocks.db }));
+vi.mock("../../lib/team-notifications.js", () => ({ notifyTeamMember: mocks.notify }));
 vi.mock("../../lib/license-client.js", () => ({
   getStoredInstanceLicense: () => ({ lastCheckedAt: new Date().toISOString() }),
   verifyStoredInstanceLicense: () => ({ entitlement: mocks.plan }),
@@ -131,6 +133,7 @@ describe("SH-001 / SH-003 capacity reconciliation", () => {
     expect(memberships.find(member => member.userId === "staff").status).toBe("inactive");
     expect(mocks.db.teamAuditEvent.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: "member_deactivated", actorId: "admin" }) });
     expect(mocks.db.session.deleteMany).toHaveBeenCalledWith({ where: { userId: "staff" } });
+    expect(mocks.notify).toHaveBeenCalledWith({ type: "team.member_removed", teamId: "one", userId: "staff", actorId: "admin" });
     await expect(instanceLicenseUsage()).resolves.toEqual({ teamCount: 1, memberCount: 1 });
     await expect(teams.canAccessTeam("one", "manager", false)).resolves.toBe(true);
   });
