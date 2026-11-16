@@ -4,6 +4,7 @@ import { Bell, Check, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem, useSidebar } from "@/components/ui/sidebar";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CommentAvatar, shortCommentTime } from "@/components/comments/CommentThreadView";
 import { useNotifications } from "@/hooks/useNotifications";
@@ -11,13 +12,23 @@ import { describeNotification, groupNotifications, notificationTarget, type Noti
 import { cn } from "@/lib/utils";
 
 type Props = {
+  /** COL-009: a sidebar item from 768px up, the header icon while the sidebar is a Sheet. */
+  placement: "header" | "sidebar";
   activeTeamId: string | null;
   /** Switches the active workspace (saving open changes first) before a link from another workspace opens. */
   onSelectWorkspace: (teamId: string | null) => Promise<void>;
 };
 
-/** NOT-001.2 bell on every page: unread badge and the user's notifications from every workspace. */
-export function NotificationBell({ activeTeamId, onSelectWorkspace }: Props) {
+/**
+ * NOT-001.2 bell on every page: unread badge and the user's notifications from every workspace. AppLayout renders one per
+ * slot; only the slot that matches the sidebar mode mounts it, so the list is fetched once (COL-009).
+ */
+export function NotificationBell(props: Props) {
+  const { isMobile } = useSidebar();
+  return (props.placement === "header") === isMobile ? <NotificationPopover {...props} /> : null;
+}
+
+function NotificationPopover({ placement, activeTeamId, onSelectWorkspace }: Props) {
   const navigate = useNavigate();
   const descriptionId = useId();
   const [open, setOpen] = useState(false);
@@ -34,29 +45,45 @@ export function NotificationBell({ activeTeamId, onSelectWorkspace }: Props) {
     navigate(target.link);
   };
 
-  return (
+  const label = `Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`;
+  const count = unreadCount > 99 ? "99+" : unreadCount;
+  const sidebar = placement === "sidebar";
+  const popover = (
     <Popover open={open} onOpenChange={(next) => { setOpen(next); if (next) void refresh(); }}>
       <PopoverTrigger
-        render={
+        render={sidebar ? (
+          // No `tooltip`: its Tooltip wrapper swallows the first click on a popover trigger; `title` keeps the hint in the rail.
+          <SidebarMenuButton title="Notifications" aria-label={label}>
+            <span className="relative flex shrink-0">
+              <Bell aria-hidden="true" />
+              {/* The rail hides SidebarMenuBadge, so a dot on the icon marks unread there. */}
+              {unreadCount > 0 && (
+                <span aria-hidden="true" data-unread-dot="" className="absolute -right-0.5 -top-0.5 hidden size-2 rounded-full bg-primary ring-2 ring-sidebar group-data-[collapsible=icon]:block" />
+              )}
+            </span>
+            <span>Notifications</span>
+          </SidebarMenuButton>
+        ) : (
           <Button
             type="button"
             variant="ghost"
             size="icon"
             className="relative shrink-0 text-muted-foreground hover:bg-muted hover:text-foreground"
-            aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}
+            aria-label={label}
             title="Notifications"
           >
             <Bell aria-hidden="true" />
             {unreadCount > 0 && (
               <Badge variant="default" className="absolute -right-1 -top-1 h-4 min-w-4 px-1 text-[10px] leading-none">
-                {unreadCount > 99 ? "99+" : unreadCount}
+                {count}
               </Badge>
             )}
           </Button>
-        }
+        )}
       />
       <PopoverContent
-        align="end"
+        side={sidebar ? "right" : "bottom"}
+        align={sidebar ? "start" : "end"}
         sideOffset={8}
         aria-describedby={descriptionId}
         className="flex max-h-[min(36rem,calc(100svh-5rem))] w-[min(24rem,calc(100vw-1rem))] flex-col gap-0 overflow-hidden p-0"
@@ -120,6 +147,17 @@ export function NotificationBell({ activeTeamId, onSelectWorkspace }: Props) {
         </div>
       </PopoverContent>
     </Popover>
+  );
+  if (!sidebar) return popover;
+  return (
+    <SidebarMenuItem>
+      {popover}
+      {unreadCount > 0 && (
+        <SidebarMenuBadge aria-hidden="true" className="rounded-full bg-primary text-[10px] text-primary-foreground peer-hover/menu-button:text-primary-foreground peer-data-active/menu-button:text-primary-foreground">
+          {count}
+        </SidebarMenuBadge>
+      )}
+    </SidebarMenuItem>
   );
 }
 

@@ -567,6 +567,9 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
     }
   }, [rightPanelMode, isActiveDiagramContext, activeDiagramIsProductionDb, setRightPanelMode]);
 
+  // Desktop and CLI have one user, so they hide the bell (NOT-001 decision).
+  const showNotificationBell = Boolean(user && !isGuest && !isPublicView && !isInstalledApp());
+
   return (
     <>
       {!isOnline && !isPublicView && <OfflineOverlay />}
@@ -600,6 +603,9 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
           onTeamCreated={handleTeamCreated}
           onOpenLicenseSettings={() => { setSettingsTab('license'); setIsSettingsOpen(true); }}
           ssoPortalUrl={user?.isSso ? (user.ssoPortalUrl ?? user.sso_portal_url) : null}
+          notificationBell={showNotificationBell
+            ? <NotificationBell placement="sidebar" activeTeamId={teamState.activeTeamId} onSelectWorkspace={handleTeamSelect} />
+            : undefined}
         />
       )}
 
@@ -644,9 +650,8 @@ function AppLayoutInner({ root, session, mainAI, paired, onPairChange, onFocused
           noteContent={activeNote?.content}
           historyAvailable={Boolean(historyEntityType)}
           discussionPanel={session ? <span ref={setDiscussionTarget} className="contents" /> : discussionPanel}
-          // Desktop and CLI have one user, so they hide the bell (NOT-001 decision).
-          notificationBell={user && !isGuest && !isPublicView && !isInstalledApp()
-            ? <NotificationBell activeTeamId={teamState.activeTeamId} onSelectWorkspace={handleTeamSelect} />
+          notificationBell={showNotificationBell
+            ? <NotificationBell placement="header" activeTeamId={teamState.activeTeamId} onSelectWorkspace={handleTeamSelect} />
             : undefined}
           aiAssistant={showAIToggle ? { open: rightPanelMode === 'chat', answering: aiAnswering, onToggle: toggleAIChat, shortcut: aiShortcut } : undefined}
         /></FileSessionContext.Provider>

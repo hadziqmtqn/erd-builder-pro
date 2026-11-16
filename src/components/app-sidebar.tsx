@@ -58,6 +58,8 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onTeamCreated: (team: any) => void;
   onOpenLicenseSettings: () => void;
   ssoPortalUrl?: string | null;
+  /** NOT-001.2 bell as a menu item under Dashboard from 768px up (COL-009). */
+  notificationBell?: React.ReactNode;
 }
 
 /** The single app sidebar: workspace, search, Dashboard and Projects (COL-008). */
@@ -88,6 +90,7 @@ export const AppSidebar = React.memo(({
   onTeamCreated,
   onOpenLicenseSettings,
   ssoPortalUrl,
+  notificationBell,
   ...props
 }: AppSidebarProps) => {
   const location = useLocation();
@@ -162,6 +165,7 @@ export const AppSidebar = React.memo(({
                     <span>Dashboard</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+                {notificationBell}
                 {isSelfHosted && canManageInstance && (
                   <SidebarMenuItem>
                     <DropdownMenu>
