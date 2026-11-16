@@ -56,9 +56,11 @@ function NotificationPopover({ placement, activeTeamId, onSelectWorkspace }: Pro
           <SidebarMenuButton title="Notifications" aria-label={label}>
             <span className="relative flex shrink-0">
               <Bell aria-hidden="true" />
-              {/* The rail hides SidebarMenuBadge, so a dot on the icon marks unread there. */}
+              {/* The rail hides SidebarMenuBadge, so a small count on the icon (up to 9+) marks unread there. It stays inside the 32px button. */}
               {unreadCount > 0 && (
-                <span aria-hidden="true" data-unread-dot="" className="absolute -right-0.5 -top-0.5 hidden size-2 rounded-full bg-primary ring-2 ring-sidebar group-data-[collapsible=icon]:block" />
+                <Badge aria-hidden="true" data-rail-count="" variant="default" className="absolute -right-1.5 -top-1.5 hidden h-4 min-w-4 px-0.5 text-[10px] leading-none ring-2 ring-sidebar group-data-[collapsible=icon]:inline-flex">
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </Badge>
               )}
             </span>
             <span>Notifications</span>
