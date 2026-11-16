@@ -14,6 +14,7 @@ import {
 import { Globe, CloudOff, Loader2, Sparkles } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { toast } from 'sonner';
 import { Badge } from "@/components/ui/badge";
@@ -276,28 +277,37 @@ export const MainHeader = React.memo(({
           </div>
         )}
         {notificationBell}
-        {aiAssistant && (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={aiAssistant.onToggle}
-            aria-pressed={aiAssistant.open}
-            aria-keyshortcuts={aiAssistant.shortcut.ariaKeyShortcuts}
-            title={`AI Assistant (${aiAssistant.shortcut.label})`}
-            className={cn('ml-1 h-8 gap-2 px-2.5 text-[13px] font-medium', aiAssistant.open && 'border-ring bg-muted')}
-          >
-            <Sparkles className="size-4 text-primary" />
-            <span className="hidden sm:inline">AI Assistant</span>
-            {aiAssistant.answering && !aiAssistant.open && (
-              <span title="AI is still answering" className="text-primary">
-                <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-                <span className="sr-only">AI is still answering</span>
-              </span>
-            )}
-            <Kbd className="hidden lg:inline-flex">{aiAssistant.shortcut.label}</Kbd>
-          </Button>
-        )}
+        {aiAssistant && <AIAssistantButton {...aiAssistant} />}
       </div>
     </header>
   );
 });
+
+/** The header AI toggle; its shortcut sits in the tooltip (COL-009), which also opens on keyboard focus. */
+export function AIAssistantButton({ open, answering, onToggle, shortcut }: NonNullable<MainHeaderProps['aiAssistant']>) {
+  return (
+    <Tooltip>
+      <TooltipTrigger render={
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onToggle}
+          aria-pressed={open}
+          aria-keyshortcuts={shortcut.ariaKeyShortcuts}
+          className={cn('ml-1 h-8 gap-2 px-2.5 text-[13px] font-medium', open && 'border-ring bg-muted')}
+        />
+      }>
+        <Sparkles className="size-4 text-primary" />
+        {/* sr-only rather than hidden: without the old title, this text is the button's name on narrow screens. */}
+        <span className="sr-only sm:not-sr-only">AI Assistant</span>
+        {answering && !open && (
+          <span title="AI is still answering" className="text-primary">
+            <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+            <span className="sr-only">AI is still answering</span>
+          </span>
+        )}
+      </TooltipTrigger>
+      <TooltipContent side="bottom">AI Assistant <Kbd>{shortcut.label}</Kbd></TooltipContent>
+    </Tooltip>
+  );
+}
