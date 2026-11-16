@@ -113,6 +113,26 @@ describe("self-host license entitlement verification", () => {
     })).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE", status: 503 });
   });
 
+  it("reports a proxy redirect instead of following it", async () => {
+    vi.stubEnv("DATABASE_URL", "postgresql://localhost/erd");
+    useTemporaryDirectory();
+    process.env.ERDBPRO_LICENSE_API_URL = "https://license.example.test";
+    process.env.ERDBPRO_LICENSE_STATE_FILE = path.join(temporaryDirectory, "license-state.json");
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, {
+      status: 302,
+      headers: { Location: "https://access.example.test/login" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(activateSelfHostLicense({
+      teamId: "team-1",
+      teamName: "Team One",
+      licenseKey: "license-key",
+      memberCount: 0,
+    })).rejects.toMatchObject({ code: "LICENSE_REQUEST_REJECTED", status: 302 });
+    expect(fetchMock.mock.calls[0][1].redirect).toBe("manual");
+  });
+
   it("accepts a valid signed team entitlement", () => {
     const installationId = "018f3f7e-1c33-43f2-a4e4-19b55e61d3fa";
     const entitlement = verifySignedEntitlement(signedEntitlement(installationId), installationId);

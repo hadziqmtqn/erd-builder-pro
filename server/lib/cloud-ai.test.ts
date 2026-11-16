@@ -53,7 +53,7 @@ vi.mock("./prisma.js", () => ({
 }));
 vi.mock("./team-scope.js", () => ({ currentTeamScope: () => ({ mode: "team", teamId: "team-1" }) }));
 
-import { pruneCloudAiUsage, refreshCloudAiRuntimeConfig, requireCloudAiAccess, storeCloudAiEnvelope } from "./cloud-ai.js";
+import { getCloudMachineToken, pruneCloudAiUsage, refreshCloudAiRuntimeConfig, requireCloudAiAccess, storeCloudAiEnvelope } from "./cloud-ai.js";
 import { sendCloudTelemetryHeartbeat } from "./cloud-telemetry.js";
 
 const entitlement = (capabilities: Record<string, boolean>) => JSON.stringify({
@@ -150,6 +150,20 @@ describe("Cloud AI access", () => {
     expect(fetchMock.mock.calls[1][0]).toBe("https://account.example.com/api/v1/cloud/ai-config");
     expect(fetchMock.mock.calls[1][1].headers.Authorization).toBe("Bearer machine-token");
     expect(mocks.executeRaw).toHaveBeenCalled();
+  });
+
+  it("reports a proxy redirect on the machine token request instead of following it", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, {
+      status: 302,
+      headers: { Location: "https://access.example.com/login" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getCloudMachineToken(
+      { issuerUrl: "https://account.example.com", clientId: "redirected-client", clientSecret: "secret" },
+      "cloud:ai-config",
+    )).rejects.toThrow("machine token request failed with HTTP 302");
+    expect(fetchMock.mock.calls[0][1].redirect).toBe("manual");
   });
 
   it("accepts an already applied configuration revision idempotently", async () => {

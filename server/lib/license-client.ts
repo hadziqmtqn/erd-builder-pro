@@ -228,6 +228,7 @@ async function requestLicenseApi(
   try {
     response = await fetch(endpointUrl(action), {
       method: "POST",
+      redirect: "manual",
       headers,
       body: JSON.stringify(body),
     });

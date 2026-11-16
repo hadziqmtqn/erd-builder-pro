@@ -8,8 +8,13 @@ import {
   ssoStorageEmail,
   startSso,
 } from "./sso.js";
+import { logger } from "../../lib/logger.js";
 
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe("Cloud SSO", () => {
   it("keeps SSO identity separate from an existing local email", () => {
@@ -85,6 +90,45 @@ describe("Cloud SSO", () => {
 
     expect(await redirectFor({ error: "access_denied", state: "state-1" })).toBe("Sign-in was cancelled");
     expect(await redirectFor({ error: "access_denied", state: "forged" })).toBe("Invalid or expired SSO response");
+  });
+
+  it("reports the HTTP status when a proxy redirects the issuer requests", async () => {
+    vi.stubEnv("AUTH_MODE", "sso");
+    vi.stubEnv("DATABASE_URL", "postgresql://localhost/erd");
+    vi.stubEnv("ERD_INSTALL_MODE", "web");
+    vi.stubEnv("APP_URL", "https://cloud.example.com");
+    vi.stubEnv("SSO_ISSUER_URL", "https://account.example.com");
+    vi.stubEnv("SSO_CLIENT_ID", "cloud-client");
+    vi.stubEnv("SSO_REDIRECT_URI", "https://cloud.example.com/api/sso/callback");
+    // Cloudflare Access answers a request without its session with a redirect to its login page.
+    const accessRedirect = () => new Response(null, { status: 302, headers: { Location: "https://access.example.com/login" } });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(accessRedirect())
+      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: "access-1" }), { status: 200 }))
+      .mockResolvedValueOnce(accessRedirect());
+    vi.stubGlobal("fetch", fetchMock);
+    const logError = vi.spyOn(logger, "error").mockImplementation(() => undefined);
+    const callback = async () => {
+      let redirect = "";
+      await finishSso({
+        query: { code: "code-1", state: "state-1" },
+        cookies: { erdbpro_sso_state: "state-1", erdbpro_sso_verifier: "verifier-1" },
+        header: () => undefined,
+      } as unknown as Request, {
+        clearCookie: () => undefined,
+        redirect: (value: string) => { redirect = value; },
+      } as unknown as Response);
+      return new URL(redirect).searchParams.get("error");
+    };
+
+    expect(await callback()).toBe("Unable to complete SSO login");
+    expect(await callback()).toBe("Unable to complete SSO login");
+
+    expect(fetchMock.mock.calls.map(([, init]) => init.redirect)).toEqual(["manual", "manual", "manual"]);
+    expect(logError.mock.calls.map(([fields]) => fields)).toEqual([
+      { phase: "exchange_token", err: "token exchange failed with HTTP 302" },
+      { phase: "fetch_identity", err: "Identity request failed with HTTP 302" },
+    ]);
   });
 
   it("sends unverified accounts to the trusted issuer verification page", () => {

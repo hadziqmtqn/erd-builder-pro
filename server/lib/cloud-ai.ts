@@ -65,7 +65,8 @@ export async function fetchWithTimeout(url: string, init: RequestInit): Promise<
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), CLOUD_AI_REQUEST_TIMEOUT_MS);
   try {
-    return await fetch(url, { ...init, signal: controller.signal });
+    // Control-plane requests never follow a redirect: it comes from a proxy such as Cloudflare Access or a wrong URL.
+    return await fetch(url, { ...init, redirect: "manual", signal: controller.signal });
   } finally {
     clearTimeout(timeout);
   }
