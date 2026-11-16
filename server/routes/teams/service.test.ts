@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   ssoMode: vi.fn(() => false),
+  notify: vi.fn(),
   localPostgres: vi.fn(() => true),
   provisionedTeam: false,
   provisionedMembership: vi.fn((member: { teamId: string }) => false),
@@ -26,6 +27,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../../lib/config.js", () => ({ isLocalPostgres: mocks.localPostgres, isSsoAuthMode: mocks.ssoMode }));
 vi.mock("../../lib/prisma.js", () => ({ prisma: mocks.database }));
+vi.mock("../../lib/team-notifications.js", () => ({ notifyTeamMember: mocks.notify }));
 vi.mock("../../lib/team-provisioning.js", () => ({
   isProvisionedTeam: () => mocks.provisionedTeam,
   isProvisionedMembership: mocks.provisionedMembership,
@@ -210,6 +212,8 @@ describe("Team integrity", () => {
       update: expect.objectContaining({ role: "staff" }),
     }));
     expect(mocks.database.teamMember.findFirst).toHaveBeenCalledTimes(2);
+    // NOT-001.9: the member and the Team's Managers hear about it after the transaction.
+    expect(mocks.notify).toHaveBeenCalledWith({ type: "team.member_added", teamId: "team-2", userId: "user-1", actorId: "admin" });
     mocks.provisionedTeam = false;
   });
 
@@ -280,6 +284,7 @@ describe("Team integrity", () => {
     mocks.provisionedMembership.mockReturnValue(false);
 
     await expect(teams.quarantineMember("team-1", "user-1", "admin-1", true)).resolves.toBe(true);
+    expect(mocks.notify).toHaveBeenCalledWith({ type: "team.member_removed", teamId: "team-1", userId: "user-1", actorId: "admin-1" });
 
     expect(tx.teamMember.updateMany).toHaveBeenCalledWith({
       where: { id: member.id, teamId: member.teamId, userId: member.userId, role: member.role, status: member.status, joinedAt: member.joinedAt, provisioningSignature: member.provisioningSignature },

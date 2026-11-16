@@ -17,6 +17,7 @@ export function FileSessionDiscussions({ file, active, target, teamId }: { file:
   const onContextSelected = (context: CollaborationContext) => {
     if (context.featureType === featureType && String(context.fileId) === file.uid) {
       if (featureType === 'diagram' && context.anchorId) window.dispatchEvent(new CustomEvent('erd-discussion-anchor-selected', { detail: { fileId: file.uid, type: context.anchorType, id: context.anchorId } }));
+      if (featureType === 'flowchart' && context.anchorId) window.dispatchEvent(new CustomEvent('flowchart-comment-anchor-selected', { detail: { fileId: file.uid, id: context.anchorId } }));
       return;
     }
     const paths = { diagram: 'diagrams', note: 'notes', drawing: 'drawings', flowchart: 'flowcharts' };

@@ -46,6 +46,8 @@ model User {
   userAiRules     UserAiRule[]
   preferences     UserPreference?
   trialSurveys    UserTrialSurvey[]
+  notifications   Notification[] @relation("NotificationRecipient")
+  actedNotifications Notification[] @relation("NotificationActor")
 
   sessions      Session[]
   teamMemberships TeamMember[]
@@ -811,4 +813,34 @@ model UserTrialSurvey {
 
   @@unique([userId, teamId, surveyKey], map: "user_trial_surveys_user_team_survey_key")
   @@map("user_trial_surveys")
+}
+
+/// NOT-001 global notification center: one row per recipient, immutable except read_at. type, scope_type and
+/// feature_type are application allowlists; entity_* and file_id are polymorphic and never an authorization source.
+model Notification {
+  id              String    @id @default(uuid())
+  recipientUserId String    @map("recipient_user_id")
+  actorUserId     String?   @map("actor_user_id")
+  scopeType       String    @map("scope_type")
+  teamId          String?   @map("team_id")
+  projectId       Int?      @map("project_id")
+  featureType     String?   @map("feature_type")
+  fileId          String?   @map("file_id")
+  type            String
+  entityType      String    @map("entity_type")
+  entityId        String    @map("entity_id")
+  groupKey        String?   @map("group_key")
+  link            String?
+  sourceEventId   String?   @map("source_event_id")
+  payload         String    @default("{}")
+  readAt          DateTime? @map("read_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  recipient       User      @relation("NotificationRecipient", fields: [recipientUserId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  actor           User?     @relation("NotificationActor", fields: [actorUserId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@unique([recipientUserId, sourceEventId], map: "notifications_recipient_source_event_key")
+  @@index([recipientUserId, readAt, createdAt(sort: Desc)], map: "notifications_recipient_unread")
+  @@index([recipientUserId, createdAt(sort: Desc)], map: "notifications_recipient_created")
+  @@index([teamId, projectId, createdAt(sort: Desc)], map: "notifications_scope_created")
+  @@map("notifications")
 }

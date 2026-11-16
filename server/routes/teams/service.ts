@@ -9,6 +9,7 @@ import { cloudCapabilities } from "../../lib/cloud-capability.js";
 import { withTeamCapacityTransaction } from "../../lib/team-capacity-transaction.js";
 import { instanceLicenseUsage } from "../../lib/instance-license-usage.js";
 import { reportSelfHostCapacityChange } from "../../lib/self-host-capacity-report.js";
+import { notifyTeamMember } from "../../lib/team-notifications.js";
 
 export const TEAM_ROLES = ["manager", "staff"] as const;
 export type TeamRole = (typeof TEAM_ROLES)[number];
@@ -175,7 +176,10 @@ export async function quarantineMember(teamId: string, userId: string, actorId: 
     });
     return true;
   });
-  if (quarantined) reportSelfHostCapacityChange();
+  if (quarantined) {
+    reportSelfHostCapacityChange();
+    await notifyTeamMember({ type: "team.member_removed", teamId, userId, actorId });
+  }
   return quarantined;
 }
 
@@ -285,7 +289,7 @@ export async function addMember(teamId: string, email: string, actorId: string, 
   localMutation();
   if (!await managedTeam(teamId, actorId, superAdmin)) return null;
   await requireActiveInstanceLicense({ refresh: true });
-  await withTeamCapacityTransaction(async (db) => {
+  const addedUserId: string = await withTeamCapacityTransaction(async (db) => {
     const value = await mutationTeam(db, teamId, actorId, superAdmin);
     if (!value || value.status !== "active") throw new TeamServiceError("TEAM_INACTIVE", 409);
     await verifyTeamIntegrity(value, db);
@@ -306,8 +310,10 @@ export async function addMember(teamId: string, email: string, actorId: string, 
     const provisioningSignature = membershipProvisioningSignature({ id, teamId, userId: user.id, role, status: "active", joinedAt });
     await db.teamMember.upsert({ where: { teamId_userId: { teamId, userId: user.id } }, create: { id, teamId, userId: user.id, role, status: "active", joinedAt, provisioningSignature }, update: { role, status: "active", joinedAt, provisioningSignature } });
     await db.teamAuditEvent.create({ data: { teamId, actorId, action: "member_activated", targetType: "team_member", targetId: id, metadata: JSON.stringify({ userId: user.id, role }) } });
+    return user.id;
   });
   reportSelfHostCapacityChange();
+  await notifyTeamMember({ type: "team.member_added", teamId, userId: addedUserId, actorId });
   return getTeam(teamId, actorId, superAdmin);
 }
 export async function updateMemberRole(teamId: string, userId: string, role: TeamRole, actorId: string, superAdmin: boolean) {
@@ -339,7 +345,10 @@ async function deactivateMembership(teamId: string, userId: string, actorId: str
     await db.teamAuditEvent.create({ data: { teamId, actorId, action: status === "inactive" ? "member_deactivated" : "member_banned", targetType: "team_member", targetId: member.id, metadata: JSON.stringify({ userId, status }) } });
     return true;
   });
-  if (deactivated) reportSelfHostCapacityChange();
+  if (deactivated) {
+    reportSelfHostCapacityChange();
+    await notifyTeamMember({ type: "team.member_removed", teamId, userId, actorId });
+  }
   return deactivated;
 }
 export async function removeMember(teamId: string, userId: string, actorId: string, superAdmin: boolean) {

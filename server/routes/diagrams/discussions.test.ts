@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   executeRaw: vi.fn(),
   transaction: vi.fn(),
   publish: vi.fn(),
+  notify: vi.fn(),
   role: "commenter" as string | null,
 }));
 
@@ -22,6 +23,7 @@ vi.mock("../../lib/prisma.js", () => ({
   },
 }));
 vi.mock("../../lib/cloud-live-sync.js", () => ({ publishCloudWorkspaceSync: mocks.publish }));
+vi.mock("./discussion-notifications.js", () => ({ notifyThreadMessage: mocks.notify }));
 vi.mock("../../lib/project-access.js", () => ({
   canCommentRole: (role: string | null) => role !== null && role !== "viewer",
   projectRoleFor: async () => mocks.role,
@@ -58,6 +60,7 @@ describe("Cloud ERD discussions scope", () => {
     mocks.executeRaw.mockReset();
     mocks.transaction.mockReset();
     mocks.publish.mockReset();
+    mocks.notify.mockReset().mockResolvedValue([]);
     mocks.role = "commenter";
     mocks.transaction.mockImplementation((callback: (tx: unknown) => unknown) => callback({
       $queryRawUnsafe: (...args: unknown[]) => mocks.queryRaw(...args),
@@ -258,6 +261,7 @@ describe("Cloud ERD discussions scope", () => {
     });
     expect(mocks.executeRaw).not.toHaveBeenCalled();
     expect(mocks.publish).not.toHaveBeenCalled();
+    expect(mocks.notify).not.toHaveBeenCalled();
   });
 
   it("lists project discussions across the active file boundary", async () => {
@@ -310,8 +314,15 @@ describe("Cloud ERD discussions scope", () => {
         }),
       });
       expect(response.status).toBe(201);
-      expect((await response.json()).kind).toBe("comment");
+      const created = await response.json();
+      expect(created.kind).toBe("comment");
+      expect(mocks.notify).toHaveBeenCalledWith({
+        kind: "comment", threadId: created.id, messageId: created.messageId, actorId: "member-a", teamId: "team-a",
+        projectId: 7, projectName: "Workspace", file: expect.objectContaining({ featureType: "diagram", id: 42, uid: "diagram-uid" }),
+      });
     });
+    // NOT-001.4: the notification rows exist before the Team sync event that makes the bell refetch.
+    expect(mocks.notify.mock.invocationCallOrder[0]).toBeLessThan(mocks.publish.mock.invocationCallOrder[0]);
     expect(mocks.executeRaw).toHaveBeenCalledTimes(4);
     expect(mocks.executeRaw.mock.calls[0][0]).toContain('UPDATE "diagrams" SET "updated_at" = "updated_at"');
     expect(mocks.publish).toHaveBeenCalledWith(expect.objectContaining({ teamId: "team-a" }));
@@ -472,6 +483,37 @@ describe("Cloud ERD discussions scope", () => {
     expect(mocks.executeRaw.mock.calls[0][0]).toContain('UPDATE "diagrams" SET "updated_at" = "updated_at"');
     expect(mocks.executeRaw.mock.calls.slice(1).every(([query]) => String(query).includes('SET "updated_at" = CURRENT_TIMESTAMP') && String(query).includes('"status" = \'open\''))).toBe(true);
     expect(mocks.publish).not.toHaveBeenCalled();
+    expect(mocks.notify).not.toHaveBeenCalled();
+  });
+
+  it("notifies about comment and discussion replies with the file each thread belongs to (NOT-001.3, NOT-001.4)", async () => {
+    mocks.queryRaw.mockImplementation(async (query: string) => {
+      if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
+      if (query.includes('FROM "diagrams" f')) return [{ id: 42, uid: "diagram-uid", projectId: 7, label: "ERD" }];
+      if (query.includes('FROM "users"')) return [{ name: "Member A", email: "member@example.test" }];
+      if (query.includes('FROM "comment_threads" t') || query.includes('FROM "discussion_threads" t')) return [{ status: "open" }];
+      if (query.includes('FROM "discussion_contexts" c WHERE')) return [{ featureType: "diagram", fileId: "42" }];
+      return [];
+    });
+    const file = expect.objectContaining({ featureType: "diagram", id: 42, uid: "diagram-uid", label: "ERD" });
+
+    await withServer(async (url) => {
+      for (const kind of ["comments", "discussions"]) {
+        const response = await fetch(`${url}/api/projects/7/${kind}/thread-1/messages${kind === "comments" ? "?feature_type=diagram&file_id=diagram-uid" : ""}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ body: "Agreed." }),
+        });
+        expect(response.status).toBe(201);
+        const { id } = await response.json();
+        expect(mocks.notify).toHaveBeenLastCalledWith({
+          kind: kind === "comments" ? "comment" : "discussion", threadId: "thread-1", messageId: id, actorId: "member-a",
+          teamId: "team-a", projectId: 7, projectName: "Workspace", file,
+        });
+      }
+    });
+    expect(mocks.notify).toHaveBeenCalledTimes(2);
+    expect(mocks.notify.mock.invocationCallOrder[0]).toBeLessThan(mocks.publish.mock.invocationCallOrder[0]);
   });
 
   it("keeps Comment thread endpoints scoped to the active file", async () => {

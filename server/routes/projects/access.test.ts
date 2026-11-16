@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => {
     role: "owner" as string | null,
     tx,
     publish: vi.fn(),
+    notify: vi.fn(),
     prisma: {
       project: { findFirst: vi.fn() },
       teamMember: { findMany: vi.fn(), findFirst: vi.fn() },
@@ -22,6 +23,7 @@ const mocks = vi.hoisted(() => {
 vi.mock("../../lib/prisma.js", () => ({ prisma: mocks.prisma }));
 vi.mock("../../lib/team-scope.js", () => ({ currentTeamScope: () => mocks.scope }));
 vi.mock("../../lib/file-live-sync.js", () => ({ publishProjectAccessChange: mocks.publish }));
+vi.mock("../../lib/project-notifications.js", () => ({ notifyProjectAccess: mocks.notify }));
 vi.mock("../../lib/project-access.js", async (importActual) => ({
   ...(await importActual<typeof import("../../lib/project-access.js")>()),
   projectRoleFor: async () => mocks.role,
@@ -36,6 +38,8 @@ beforeEach(() => {
   mocks.prisma.project.findFirst.mockResolvedValue({ id: 7, userId: "creator" });
   mocks.prisma.$transaction.mockImplementation((callback: (tx: unknown) => unknown) => callback(mocks.tx));
   mocks.tx.projectAccessGrant.findUnique.mockResolvedValue(null);
+  mocks.tx.teamAuditEvent.create.mockResolvedValue({ id: "audit-1" });
+  mocks.notify.mockResolvedValue([]);
 });
 
 describe("Project access management (COL-004)", () => {
@@ -125,6 +129,24 @@ describe("Project access management (COL-004)", () => {
     expect(await clearProjectAccess(7, "creator", "ed")).toEqual({ ok: true, data: { userId: "ed" } });
     expect(mocks.tx.projectAccessGrant.delete).not.toHaveBeenCalled();
     expect(mocks.tx.teamAuditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("notifies only a real change, with the audit event and both roles (NOT-001.8)", async () => {
+    mocks.prisma.teamMember.findFirst.mockResolvedValue({ role: "staff" });
+    const change = { projectId: 7, teamId: "team-1", actorId: "creator", targetId: "ed", ownerId: "creator", auditId: "audit-1" };
+
+    await setProjectAccess(7, "creator", "ed", "editor");
+    expect(mocks.notify).toHaveBeenLastCalledWith({ ...change, role: "editor", previousRole: null });
+
+    mocks.tx.projectAccessGrant.findUnique.mockResolvedValue({ role: "editor" });
+    await setProjectAccess(7, "creator", "ed", "editor");
+    expect(mocks.notify).toHaveBeenCalledTimes(1);
+
+    await clearProjectAccess(7, "creator", "ed");
+    expect(mocks.notify).toHaveBeenLastCalledWith({ ...change, role: null, previousRole: "editor" });
+    mocks.tx.projectAccessGrant.findUnique.mockResolvedValue(null);
+    await clearProjectAccess(7, "creator", "ed");
+    expect(mocks.notify).toHaveBeenCalledTimes(2);
   });
 
   it("tells the member's open files only when their stored role changed (BUG-061)", async () => {

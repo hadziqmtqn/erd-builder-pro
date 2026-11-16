@@ -12,6 +12,7 @@ import path from "node:path";
 import { authenticate, checkSupabase } from "./lib/middleware.js";
 import { httpLogger, logger, requestIdMiddleware, redactLogValue } from "./lib/logger.js";
 import { getInstallMode, isDesktopMode } from "./lib/config.js";
+import { isSameHostOrigin } from "./lib/same-origin.js";
 import authRouter from "./routes/auth/index.js";
 import diagramsRouter from "./routes/diagrams/index.js";
 import projectsRouter from "./routes/projects/index.js";
@@ -25,6 +26,7 @@ import { initAutoBackupScheduler } from "./lib/auto-backup-init.js";
 import commonRouter from "./routes/common/index.js";
 import storageUsageRouter from "./routes/storage-usage/index.js";
 import trialSurveyRouter from "./routes/trial-survey/index.js";
+import notificationsRouter from "./routes/notifications/index.js";
 import aiRouter from "./routes/ai/index.js";
 import aiSettingsRouter from "./routes/ai-settings/index.js";
 import aiChatRouter from "./routes/ai-chat/index.js";
@@ -51,7 +53,7 @@ app.set('trust proxy', 1);
 
 // Security headers
 const isProd = process.env.NODE_ENV === 'production';
-app.use(helmet({
+const securityHeaders = (upgradeInsecureRequests: boolean) => helmet({
   contentSecurityPolicy: isProd ? {
     directives: {
       defaultSrc: ["'self'"],
@@ -68,11 +70,16 @@ app.use(helmet({
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
       formAction: ["'self'"],
+      // On a plain-HTTP install (LAN IP, Dokploy sslip.io) this would rewrite every asset to https and blank the page (BUG-074).
+      ...(upgradeInsecureRequests ? {} : { upgradeInsecureRequests: null }),
     },
   } : false,
   crossOriginEmbedderPolicy: false,
   crossOriginResourcePolicy: { policy: "cross-origin" },
-}));
+});
+const httpsSecurityHeaders = securityHeaders(true);
+const httpSecurityHeaders = securityHeaders(false);
+app.use((req, res, next) => (req.secure ? httpsSecurityHeaders : httpSecurityHeaders)(req, res, next));
 
 // CORS — configurable via CORS_ORIGINS env var
 // In production, Vercel domains (*.vercel.app) are allowed by default
@@ -81,7 +88,7 @@ const allowedOrigins = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(",").map(s => s.trim())
   : [];
 
-app.use(cors({
+const corsMiddleware = cors({
   origin: (origin, callback) => {
     if (!origin) {
       return callback(null, true);
@@ -146,7 +153,9 @@ app.use(cors({
     callback(Object.assign(new Error("Not allowed by CORS"), { status: 403 }));
   },
   credentials: true
-}));
+});
+// The app's own pages load module scripts with an Origin header; a same-host request is not cross-origin (BUG-074).
+app.use((req, res, next) => isSameHostOrigin(req.headers.origin, req.headers.host, req.protocol) ? next() : corsMiddleware(req, res, next));
 
 const publicMcpRouter = createPublicMcpRouter();
 if (publicMcpRouter) app.use(publicMcpRouter);
@@ -402,6 +411,7 @@ app.use("/api/ai/rules", (await import("./routes/ai-rules/index.js")).default);
 app.use("/api", feedbackRouter);
 app.use("/api", storageUsageRouter);
 app.use("/api", trialSurveyRouter);
+app.use("/api", notificationsRouter);
 app.use("/api", commonRouter);
 app.use("/api/guest", guestImportRouter);
 app.use("/api/desktop", desktopImportRouter);
