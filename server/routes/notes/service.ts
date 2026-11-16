@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "../../lib/prisma.js";
+import { notifyFileTrash } from "../../lib/file-notifications.js";
 import { captureEntityRevisionSafely, deleteEntityRevisions } from "../../lib/entity-history.js";
 import { isDesktopMode, isLocalPostgres } from "../../lib/config.js";
 import { createPersonalFile } from "../../lib/personal-file-quota.js";
@@ -261,10 +262,12 @@ export async function softDeleteNote(uid: string, userId: string) {
   });
   if (!existing) return null;
 
-  await prisma?.note.update({
-    where: { id: existing.id },
+  // NOT-001.6: only a real change notifies, so a repeated request never sends a second notice.
+  const changed = await prisma?.note.updateMany({
+    where: { id: existing.id, OR: [{ isDeleted: false }, { isDeleted: null }] },
     data: { isDeleted: true, deletedAt: new Date() },
   });
+  if (changed?.count) await notifyFileTrash("file.deleted", "note", existing, userId);
   return { success: true };
 }
 
@@ -274,10 +277,11 @@ export async function restoreNote(uid: string, userId: string) {
   });
   if (!existing) return null;
 
-  await prisma?.note.update({
-    where: { id: existing.id },
+  const changed = await prisma?.note.updateMany({
+    where: { id: existing.id, isDeleted: true },
     data: { isDeleted: false, deletedAt: null },
   });
+  if (changed?.count) await notifyFileTrash("file.restored", "note", existing, userId);
   return { success: true };
 }
 

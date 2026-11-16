@@ -1,4 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
+import { notifyFileTrash } from "../../lib/file-notifications.js";
 import { captureEntityRevisionSafely, deleteEntityRevisions } from "../../lib/entity-history.js";
 import { isDesktopMode, isLocalPostgres } from "../../lib/config.js";
 import { createPersonalFile } from "../../lib/personal-file-quota.js";
@@ -158,10 +159,12 @@ export async function softDeleteFlowchart(uid: string, userId: string) {
   });
   if (!existing) return null;
 
-  await prisma?.flowchart.update({
-    where: { id: existing.id },
+  // NOT-001.6: only a real change notifies, so a repeated request never sends a second notice.
+  const changed = await prisma?.flowchart.updateMany({
+    where: { id: existing.id, OR: [{ isDeleted: false }, { isDeleted: null }] },
     data: { isDeleted: true, deletedAt: new Date() },
   });
+  if (changed?.count) await notifyFileTrash("file.deleted", "flowchart", existing, userId);
   return { success: true };
 }
 
@@ -171,10 +174,11 @@ export async function restoreFlowchart(uid: string, userId: string) {
   });
   if (!existing) return null;
 
-  await prisma?.flowchart.update({
-    where: { id: existing.id },
+  const changed = await prisma?.flowchart.updateMany({
+    where: { id: existing.id, isDeleted: true },
     data: { isDeleted: false, deletedAt: null },
   });
+  if (changed?.count) await notifyFileTrash("file.restored", "flowchart", existing, userId);
   return { success: true };
 }
 
