@@ -107,13 +107,14 @@ export function startSso(req: Request, res: Response): void {
 
 async function getRemoteIdentity(accessToken: string, issuerUrl: string, requestId: string): Promise<RemoteIdentity> {
   const response = await fetch(`${issuerUrl}/api/v1/sso/user`, {
+    redirect: "manual",
     headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json", "X-Request-Id": requestId },
   });
-  const body = await response.json() as RemoteIdentityResponse;
+  const body = await response.json().catch(() => ({})) as RemoteIdentityResponse;
   if (!response.ok) {
     throw new SsoIdentityError(
       body.error?.code || "IDENTITY_REQUEST_FAILED",
-      body.error?.message || "Identity request failed",
+      body.error?.message || `Identity request failed with HTTP ${response.status}`,
     );
   }
   if (!body.user?.id || !body.user.email) throw new Error("identity request failed");
@@ -197,6 +198,8 @@ export async function finishSso(req: Request, res: Response): Promise<void> {
     const requestId = req.header("X-Request-Id") || randomUUID();
     const tokenResponse = await fetch(`${config.issuerUrl}/oauth/token`, {
       method: "POST",
+      // The issuer answers directly; a redirect comes from a proxy such as Cloudflare Access or a wrong URL.
+      redirect: "manual",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
         Accept: "application/json",
@@ -210,8 +213,8 @@ export async function finishSso(req: Request, res: Response): Promise<void> {
         code_verifier: verifier,
       }),
     });
-    const token = await tokenResponse.json() as { access_token?: string; error?: string };
-    if (!tokenResponse.ok || !token.access_token) throw new Error("token exchange failed");
+    const token = await tokenResponse.json().catch(() => ({})) as { access_token?: string; error?: string };
+    if (!tokenResponse.ok || !token.access_token) throw new Error(`token exchange failed with HTTP ${tokenResponse.status}`);
 
     phase = "fetch_identity";
     const remote = await getRemoteIdentity(token.access_token, config.issuerUrl, requestId);
