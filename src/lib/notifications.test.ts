@@ -39,6 +39,15 @@ describe("notification wording", () => {
     expect(describeNotification(reset).title).toBe("Jay Test reset your role to the default");
   });
 
+  it("names the member for Managers and speaks to the member otherwise (NOT-001.9)", () => {
+    const managers = normalizeNotification(raw({ type: "team.member_added", payload: { member_name: "Ed" } }));
+    expect(describeNotification(managers).title).toBe("Jay Test added Ed to the Team");
+    const removed = normalizeNotification(raw({ type: "team.member_removed", payload: { member_name: "Ed" } }));
+    expect(describeNotification(removed).title).toBe("Jay Test removed Ed from the Team");
+    const member = normalizeNotification(raw({ type: "team.member_added", payload: {} }));
+    expect(describeNotification(member)).toEqual({ title: "Jay Test added you to a Team", detail: "Anind's Workspace" });
+  });
+
   it("shows where a moved file came from and went to (NOT-001.7), and that a deleted one is in the Trash (NOT-001.6)", () => {
     const moved = normalizeNotification(raw({ type: "file.moved", payload: { file_name: "Spec", project_name: "Ops", from_project_name: "Billing" } }));
     expect(describeNotification(moved)).toEqual({ title: "Jay Test moved a file", detail: "Spec · Billing → Ops" });
