@@ -74,13 +74,27 @@ const LABELS: Record<string, string> = {
   "sync.conflict": "Sync conflict",
 };
 
+const ROLE_LABELS: Record<string, string> = { editor: "Editor", commenter: "Commenter", viewer: "Viewer" };
+
+/** NOT-001.8: the member reads about their own role; the Project creator also gets the member's name. */
+function projectAccessAction(item: NotificationItem): string | null {
+  if (item.type !== "project.access_granted" && item.type !== "project.role_changed") return null;
+  const role = payloadText(item.payload, "role");
+  const label = role ? ROLE_LABELS[role] ?? role : null;
+  const member = payloadText(item.payload, "memberName");
+  const whose = member ? `${member}'s` : "your";
+  if (!label) return item.type === "project.role_changed" ? `reset ${whose} role to the default` : null;
+  return item.type === "project.access_granted" ? `gave ${member ?? "you"} ${label} access` : `changed ${whose} role to ${label}`;
+}
+
 /** One line for who did what, one for where; a Team the user left shows only its name and the event type. */
 export function describeNotification(item: NotificationItem): { title: string; detail: string | null } {
   if (!item.accessible) {
     return { title: LABELS[item.type] ?? "Activity", detail: `${item.teamName ?? "A Team"} · no longer available` };
   }
   const anchor = payloadText(item.payload, "anchorLabel");
-  const action = item.type === "comment.created" && anchor ? `commented on ${anchor}` : ACTIONS[item.type] ?? "had new activity";
+  const action = projectAccessAction(item)
+    ?? (item.type === "comment.created" && anchor ? `commented on ${anchor}` : ACTIONS[item.type] ?? "had new activity");
   const actor = item.actorName ?? (item.hasActor ? "A Team member" : null);
   const title = actor ? `${actor} ${action}` : action.charAt(0).toUpperCase() + action.slice(1);
   const project = payloadText(item.payload, "projectName");
