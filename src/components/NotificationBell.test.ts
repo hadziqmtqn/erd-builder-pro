@@ -38,25 +38,39 @@ describe('COL-009 notification bell placement', () => {
     expect(headerPart(html)).toContain('aria-label="Notifications, 3 unread"');
   });
 
-  it('shows the count in the wide sidebar and a dot in the rail', () => {
+  // SidebarMenuBadge hides itself in the rail; the rail count shows only there.
+  const railCount = (html: string) => {
+    const [tag = '', text] = html.match(/<span[^>]*data-rail-count=""[^>]*>([^<]*)</) ?? [];
+    return { classes: (tag.match(/class="([^"]*)"/)?.[1] ?? '').split(' '), text };
+  };
+
+  it('shows up to 99+ in the wide sidebar and up to 9+ on the rail icon', () => {
     const html = render(false, 150);
     expect(html).toContain('aria-label="Notifications, 150 unread"');
     expect(html).toContain('title="Notifications"');
-    // SidebarMenuBadge hides itself in the rail; the dot shows only there.
     expect(html).toMatch(/data-sidebar="menu-badge"[^>]*>99\+</);
-    expect(html).toMatch(/data-unread-dot=""[^>]*class="[^"]*\bhidden\b[^"]*group-data-\[collapsible=icon\]:block/);
+    const rail = railCount(html);
+    expect(rail.text).toBe('9+');
+    expect(rail.classes).toEqual(expect.arrayContaining(['hidden', 'group-data-[collapsible=icon]:inline-flex']));
   });
 
-  it('shows neither count nor dot when everything is read', () => {
+  it('shows a single-digit count as it is on both', () => {
+    const html = render(false, 7);
+    expect(html).toContain('aria-label="Notifications, 7 unread"');
+    expect(html).toMatch(/data-sidebar="menu-badge"[^>]*>7</);
+    expect(railCount(html).text).toBe('7');
+  });
+
+  it('shows no badge in the sidebar or on the rail when everything is read', () => {
     const html = render(false, 0);
     expect(html).toContain('aria-label="Notifications"');
     expect(html).not.toContain('data-sidebar="menu-badge"');
-    expect(html).not.toContain('data-unread-dot');
+    expect(html).not.toContain('data-rail-count');
   });
 
   it('keeps the header icon badge on narrow screens', () => {
     const html = headerPart(render(true, 150));
     expect(html).toContain('>99+</');
-    expect(html).not.toContain('data-unread-dot');
+    expect(html).not.toContain('data-rail-count');
   });
 });
