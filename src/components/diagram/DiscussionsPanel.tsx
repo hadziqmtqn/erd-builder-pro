@@ -238,7 +238,7 @@ function normalizeContext(raw: RawRecord, fallback?: Partial<CollaborationContex
   };
 }
 
-function normalizeThread(raw: RawRecord): Thread {
+export function normalizeThread(raw: RawRecord): Thread {
   const contexts = Array.isArray(raw.contexts)
     ? raw.contexts.map((context) => normalizeContext(context as RawRecord)).filter(Boolean) as CollaborationContext[]
     : [];
@@ -368,6 +368,14 @@ export function threadsWithNewActivity<T extends { id: string; unread: boolean; 
     const previous = seen.get(thread.id);
     return previous ? previous !== thread.latestMessageId : thread.unread;
   });
+}
+
+/**
+ * Toast text for new activity. The comments list is always the open file's own (the server filters it by feature_type and
+ * file_id), and its rows carry the numeric file id without a file name, so they use the open file's label (BUG-072).
+ */
+export function newActivityLabel(thread: Pick<Thread, "contexts">, fromCommentList: boolean, fileLabel: string): string {
+  return `New activity in ${thread.contexts[0]?.fileName || (fromCommentList ? fileLabel : "Project discussion")}`;
 }
 
 type CommentThreadGroup = {
@@ -554,8 +562,9 @@ export function DiscussionsPanel({
       const otherThreads: Thread[] = Array.isArray(other?.threads) ? other.threads.map((thread: RawRecord) => normalizeThread(thread)) : [];
       const watched = [...nextThreads, ...otherThreads];
       if (notify && hasInitialSnapshot.current) {
+        const commentThreads = activeTab === "comments" ? nextThreads : otherThreads;
         for (const thread of threadsWithNewActivity(watched, seenMessages.current, userId)) {
-          toast.info(`New activity in ${thread.contexts[0]?.fileName || (thread.fileId === fileContext.fileId ? fileContext.label : "Project discussion")}`);
+          toast.info(newActivityLabel(thread, commentThreads.includes(thread), fileContext.label));
         }
       }
       // Keep the other tab's last snapshot when its request failed, so its unread threads do not toast again later.
@@ -579,7 +588,7 @@ export function DiscussionsPanel({
     } finally {
       if (requestId === listRequest.current) setLoadingThreads(false);
     }
-  }, [activeTab, clearThreadView, fileContext.fileId, fileContext.label, listEndpoint, otherListEndpoint, otherTab, userId]);
+  }, [activeTab, clearThreadView, fileContext.label, listEndpoint, otherListEndpoint, otherTab, userId]);
 
   const focusAnchor = useCallback((anchor: DiscussionAnchor) => {
     onContextSelected?.({

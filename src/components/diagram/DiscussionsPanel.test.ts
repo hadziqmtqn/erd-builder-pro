@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getActiveDetailRefreshTarget, isCommentAnchorForFeature, linkedThread, threadsWithNewActivity } from "./DiscussionsPanel";
+import { getActiveDetailRefreshTarget, isCommentAnchorForFeature, linkedThread, newActivityLabel, normalizeThread, threadsWithNewActivity } from "./DiscussionsPanel";
 
 describe("new activity for the header toast (BUG-072)", () => {
   const thread = (id: string, latestMessageId: string | null, latestAuthorId: string | null, unread = false) => ({ id, latestMessageId, latestAuthorId, unread });
@@ -16,6 +16,22 @@ describe("new activity for the header toast (BUG-072)", () => {
 
   it("reports an unseen unread thread, such as a new comment from the other tab, but not an unseen read one", () => {
     expect(ids(threadsWithNewActivity([thread("c1", "m9", "jay", true), thread("c2", "m8", "jay")], new Map(), "anind"))).toEqual(["c1"]);
+  });
+
+  it("names the open file for a comment, whose row has the numeric file id and no file name", () => {
+    // Shape of GET /api/projects/:id/comments rows (listComments): no contexts, no fileName.
+    const comment = normalizeThread({
+      id: "c1", featureType: "diagram", fileId: "1", anchorType: "table", anchorId: "orders", anchorLabel: "ORDERS",
+      status: "open", canDelete: false, latestMessageId: "m1", latestMessage: "Check this", latestAuthorId: "jay",
+      lastMessageAt: "2026-11-16T10:00:00.000Z", previewMessages: [], unread: true,
+    });
+    expect(newActivityLabel(comment, true, "QA PR341 ERD-001 relationships")).toBe("New activity in QA PR341 ERD-001 relationships");
+  });
+
+  it("names a discussion's own file, or the Project when it has none", () => {
+    const discussion = (fileName: string | null) => normalizeThread({ id: "d1", featureType: "diagram", fileId: "2", fileName, latestMessageId: "m2", latestAuthorId: "jay", unread: true });
+    expect(newActivityLabel(discussion("Billing ERD"), false, "Open file")).toBe("New activity in Billing ERD");
+    expect(newActivityLabel(discussion(null), false, "Open file")).toBe("New activity in Project discussion");
   });
 });
 
