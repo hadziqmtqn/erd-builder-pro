@@ -87,13 +87,21 @@ function projectAccessAction(item: NotificationItem): string | null {
   return item.type === "project.access_granted" ? `gave ${member ?? "you"} ${label} access` : `changed ${whose} role to ${label}`;
 }
 
+/** NOT-001.9: Managers read the member's name; the member reads the default "added you to a Team". */
+function teamMemberAction(item: NotificationItem): string | null {
+  const member = payloadText(item.payload, "memberName");
+  if (!member) return null;
+  if (item.type === "team.member_added") return `added ${member} to the Team`;
+  return item.type === "team.member_removed" ? `removed ${member} from the Team` : null;
+}
+
 /** One line for who did what, one for where; a Team the user left shows only its name and the event type. */
 export function describeNotification(item: NotificationItem): { title: string; detail: string | null } {
   if (!item.accessible) {
     return { title: LABELS[item.type] ?? "Activity", detail: `${item.teamName ?? "A Team"} · no longer available` };
   }
   const anchor = payloadText(item.payload, "anchorLabel");
-  const action = projectAccessAction(item)
+  const action = projectAccessAction(item) ?? teamMemberAction(item)
     ?? (item.type === "comment.created" && anchor ? `commented on ${anchor}` : ACTIONS[item.type] ?? "had new activity");
   const actor = item.actorName ?? (item.hasActor ? "A Team member" : null);
   const title = actor ? `${actor} ${action}` : action.charAt(0).toUpperCase() + action.slice(1);
