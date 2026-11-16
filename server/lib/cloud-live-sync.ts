@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, Server } from "node:http";
+import type { TLSSocket } from "node:tls";
 import WebSocket, { WebSocketServer } from "ws";
 
 import { isLocalPostgres, isSsoAuthMode } from "./config.js";
@@ -53,8 +54,11 @@ function isSameOrigin(request: IncomingMessage): boolean {
     const forwardedProtocol = (typeof forwardedProtocolHeader === "string" ? forwardedProtocolHeader : forwardedProtocolHeader?.[0])?.split(",")[0]?.trim().toLowerCase();
     // Traefik forwards a WebSocket upgrade as `ws`/`wss`, while the page that opened it is `http`/`https` (BUG-054).
     const pageProtocol = forwardedProtocol === "wss" ? "https" : forwardedProtocol === "ws" ? "http" : forwardedProtocol;
-    const expectedProtocol = pageProtocol ? `${pageProtocol}:` : process.env.NODE_ENV === "production" ? "https:" : "http:";
-    if (url.protocol !== expectedProtocol) return false;
+    // Without a proxy header the socket shows how the request arrived, as Express `req.protocol` does (BUG-074).
+    const requestProtocol = pageProtocol ? `${pageProtocol}:` : (request.socket as TLSSocket).encrypted ? "https:" : "http:";
+    // Never a downgrade, the same rule as CORS: an http page needs an http request, while an https page on this host is
+    // ours. Browsers keep https pages off http endpoints, so one only meets an http request behind a TLS proxy without the header.
+    if (url.protocol !== requestProtocol && url.protocol !== "https:") return false;
     if (url.host.toLowerCase() === host.toLowerCase()) return true;
     const requestHostname = new URL(`http://${host}`).hostname;
     const isLoopback = (hostname: string) => hostname === "localhost" || hostname === "127.0.0.1";

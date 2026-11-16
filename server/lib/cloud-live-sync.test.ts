@@ -96,7 +96,8 @@ describe("Cloud live sync WebSocket", () => {
   it("rejects cross-origin and inactive membership handshakes", async () => {
     await expect(connect({ cookie: "token=session-cookie", origin: "https://attacker.test" })).rejects.toThrow();
     expect(mocks.getSession).not.toHaveBeenCalled();
-    await expect(connect({ cookie: "token=session-cookie", origin: baseUrl.replace(/^ws:/, "https:") })).rejects.toThrow();
+    // An http page never reaches a socket the proxy reports as https.
+    await expect(connect({ cookie: "token=session-cookie", origin: baseUrl.replace(/^ws:/, "http:"), forwardedProtocol: "https" })).rejects.toThrow();
 
     mocks.canAccessTeam.mockResolvedValue(false);
     await expect(connect({ cookie: "token=session-cookie", origin: baseUrl.replace(/^ws:/, "http:") })).rejects.toThrow();
@@ -190,6 +191,20 @@ describe("Cloud live sync WebSocket", () => {
       await expect(connect({ cookie: "token=session-cookie", origin: origin(), path: NOTIFICATIONS })).rejects.toThrow();
       mocks.userFindUnique.mockResolvedValueOnce({ ssoSubject: null });
       await expect(connect({ cookie: "token=session-cookie", origin: origin(), path: NOTIFICATIONS })).rejects.toThrow();
+    });
+
+    it("accepts this host's page without a proxy header, but never a downgrade to http (BUG-074 rule)", async () => {
+      vi.stubEnv("NODE_ENV", "production");
+      mocks.isSsoAuthMode.mockReturnValue(false);
+      try {
+        // A plain-HTTP Self-host, and an https page behind a TLS proxy that sends no X-Forwarded-Proto.
+        const http = await connect({ cookie: "token=local-session", origin: origin(), path: NOTIFICATIONS });
+        const https = await connect({ cookie: "token=local-session", origin: baseUrl.replace(/^ws:/, "https:"), path: NOTIFICATIONS });
+        expect([http.readyState, https.readyState]).toEqual([WebSocket.OPEN, WebSocket.OPEN]);
+        await expect(connect({ cookie: "token=local-session", origin: origin(), forwardedProtocol: "https", path: NOTIFICATIONS })).rejects.toThrow();
+      } finally {
+        vi.unstubAllEnvs();
+      }
     });
 
     it("closes a socket whose session expired before the event, without sending it", async () => {
