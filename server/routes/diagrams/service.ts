@@ -1,4 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
+import { notifyFileTrash } from "../../lib/file-notifications.js";
 import { createPersonalFile } from "../../lib/personal-file-quota.js";
 import { ownFileIdentifierWhere, editableFileIdentifierWhere, fileIdentifierWhere, fileScopeWhere } from "../../lib/team-scope.js";
 import { isForeignProjectMove } from "../../lib/project-access.js";
@@ -330,10 +331,12 @@ export async function softDeleteDiagram(uid: string, userId: string) {
   });
   if (!existing) return null;
 
-  await prisma?.diagram.update({
-    where: { id: Number(existing.id) },
+  // NOT-001.6: only a real change notifies, so a repeated request never sends a second notice.
+  const changed = await prisma?.diagram.updateMany({
+    where: { id: Number(existing.id), OR: [{ isDeleted: false }, { isDeleted: null }] },
     data: { isDeleted: true, deletedAt: new Date() },
   });
+  if (changed?.count) await notifyFileTrash("file.deleted", "diagram", existing, userId);
   return { success: true };
 }
 
@@ -343,10 +346,11 @@ export async function restoreDiagram(uid: string, userId: string) {
   });
   if (!existing) return null;
 
-  await prisma?.diagram.update({
-    where: { id: Number(existing.id) },
+  const changed = await prisma?.diagram.updateMany({
+    where: { id: Number(existing.id), isDeleted: true },
     data: { isDeleted: false, deletedAt: null },
   });
+  if (changed?.count) await notifyFileTrash("file.restored", "diagram", existing, userId);
   return { success: true };
 }
 

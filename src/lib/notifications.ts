@@ -50,7 +50,7 @@ export function normalizeNotification(raw: Raw): NotificationItem {
 const ACTIONS: Record<string, string> = {
   "discussion.reply": "replied to a discussion",
   "comment.created": "commented",
-  "file.deleted": "deleted a file",
+  "file.deleted": "moved a file to Trash",
   "file.restored": "restored a file",
   "file.moved": "moved a file",
   "project.role_changed": "changed your role",
@@ -63,7 +63,7 @@ const ACTIONS: Record<string, string> = {
 const LABELS: Record<string, string> = {
   "discussion.reply": "Discussion reply",
   "comment.created": "New comment",
-  "file.deleted": "File deleted",
+  "file.deleted": "File moved to Trash",
   "file.restored": "File restored",
   "file.moved": "File moved",
   "project.role_changed": "Role changed",
