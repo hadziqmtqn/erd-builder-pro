@@ -17,6 +17,7 @@ import { ReplyBox } from "@/components/comments/ReplyBox";
 import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useFileSession } from '@/contexts/FileSessionContext';
+import { DRAWING_COMMENTS_ENABLED } from "@/lib/fileComments";
 
 export type CollaborationFeatureType = "diagram" | "note" | "drawing" | "flowchart";
 export type CollaborationAnchorType = "general" | "table" | "relationship" | "block" | "shape" | "point";
@@ -438,6 +439,13 @@ const commentAnchors: Record<CollaborationFeatureType, ReadonlySet<DiscussionAnc
   drawing: new Set(["point"]),
   flowchart: new Set(["shape"]),
 };
+
+/** What an empty thread list tells this user. While Drawing comments are paused it says so, instead of naming nodes (BUG-083). */
+export function emptyThreadsHint(tab: "discussions" | "comments", featureType: CollaborationFeatureType, readOnly: boolean): string {
+  if (tab === "comments" && featureType === "drawing" && !DRAWING_COMMENTS_ENABLED) return "Comments aren't available on drawings.";
+  if (readOnly) return "You can read threads here, but only members with comment access can start one.";
+  return tab === "comments" ? "Use the node context menu to start one." : "Start a thread to capture a question or design decision.";
+}
 
 export function isCommentAnchorForFeature(featureType: CollaborationFeatureType, anchorType: unknown): anchorType is DiscussionAnchor["type"] {
   return typeof anchorType === "string" && commentAnchors[featureType].has(anchorType as DiscussionAnchor["type"]);
@@ -1201,7 +1209,7 @@ export function DiscussionsPanel({
               {!loadingThreads && !loadError && (isCommentRail ? commentGroups.length : threads.length) === 0 && (
                 <div className="mx-4 mt-4 rounded-lg border border-dashed border-border px-4 py-8 text-center">
                   <p className="text-sm font-medium">{activeTab === "comments" ? "No comments on this file yet." : "No discussions in this view yet."}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{readOnly ? "You can read threads here, but only members with comment access can start one." : activeTab === "comments" ? "Use the node context menu to start one." : "Start a thread to capture a question or design decision."}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{emptyThreadsHint(activeTab, fileContext.featureType, readOnly)}</p>
                 </div>
               )}
               {!loadError && isCommentRail && commentGroups.map((group) => {
