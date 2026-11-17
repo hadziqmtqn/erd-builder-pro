@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   executeRaw: vi.fn(),
   transaction: vi.fn(),
   publish: vi.fn(),
+  fileCollaboration: vi.fn(),
   notify: vi.fn(),
   role: "commenter" as string | null,
 }));
@@ -24,6 +25,7 @@ vi.mock("../../lib/prisma.js", () => ({
 }));
 vi.mock("../../lib/cloud-live-sync.js", () => ({ publishCloudWorkspaceSync: mocks.publish }));
 vi.mock("./discussion-notifications.js", () => ({ notifyThreadMessage: mocks.notify }));
+vi.mock("../../lib/file-live-sync.js", () => ({ publishFileCollaboration: mocks.fileCollaboration }));
 vi.mock("../../lib/project-access.js", () => ({
   canCommentRole: (role: string | null) => role !== null && role !== "viewer",
   projectRoleFor: async () => mocks.role,
@@ -59,6 +61,7 @@ describe("Cloud ERD discussions scope", () => {
     mocks.queryRaw.mockReset();
     mocks.executeRaw.mockReset();
     mocks.transaction.mockReset();
+    mocks.fileCollaboration.mockReset();
     mocks.publish.mockReset();
     mocks.notify.mockReset().mockResolvedValue([]);
     mocks.role = "commenter";
@@ -514,6 +517,40 @@ describe("Cloud ERD discussions scope", () => {
     });
     expect(mocks.notify).toHaveBeenCalledTimes(2);
     expect(mocks.notify.mock.invocationCallOrder[0]).toBeLessThan(mocks.publish.mock.invocationCallOrder[0]);
+  });
+
+  it("signals a reply on the change streams of the thread's files on Self-host only (BUG-079)", async () => {
+    mocks.queryRaw.mockImplementation(async (query: string) => {
+      if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: "Workspace" }];
+      if (query.includes('FROM "diagrams" f')) return [{ id: 42, uid: "diagram-uid", projectId: 7, label: "ERD" }];
+      if (query.includes('FROM "users"')) return [{ name: "Member A", email: "member@example.test" }];
+      if (query.includes('FROM "comment_threads" t') || query.includes('FROM "discussion_threads" t')) return [{ status: "open" }];
+      if (query.includes('FROM "discussion_contexts" c WHERE')) return [{ featureType: "diagram", fileId: "42" }];
+      if (query.includes('FROM "comment_threads" WHERE "id"')) return [{ featureType: "diagram", fileId: "42" }];
+      if (query.includes('FROM "discussion_contexts" WHERE "thread_id"')) return [{ featureType: "diagram", fileId: "42" }, { featureType: "note", fileId: "9" }];
+      return [];
+    });
+    const reply = (url: string, kind: string) => fetch(`${url}/api/projects/7/${kind}/thread-1/messages${kind === "comments" ? "?feature_type=diagram&file_id=diagram-uid" : ""}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: "Agreed." }),
+    });
+
+    mocks.ssoMode = false;
+    await withServer(async (url) => {
+      expect((await reply(url, "comments")).status).toBe(201);
+      expect((await reply(url, "discussions")).status).toBe(201);
+    });
+    await vi.waitFor(() => expect(mocks.fileCollaboration).toHaveBeenCalledTimes(3));
+    expect(mocks.fileCollaboration.mock.calls).toEqual([
+      ["diagram", "42", "member-a", "team-a"],
+      ["diagram", "42", "member-a", "team-a"],
+      ["note", "9", "member-a", "team-a"],
+    ]);
+
+    // Cloud refreshes through its Team channel instead.
+    mocks.ssoMode = true;
+    mocks.fileCollaboration.mockClear();
+    await withServer(async (url) => { expect((await reply(url, "discussions")).status).toBe(201); });
+    expect(mocks.fileCollaboration).not.toHaveBeenCalled();
   });
 
   it("keeps Comment thread endpoints scoped to the active file", async () => {

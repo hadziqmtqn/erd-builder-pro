@@ -9,7 +9,7 @@ vi.mock("./prisma.js", () => ({ prisma: { note: { findFirst: mocks.noteFindFirst
 vi.mock("./config.js", () => ({ isLocalPostgres: () => true }));
 vi.mock("../routes/teams/service.js", () => ({ canAccessTeam: mocks.canAccessTeam }));
 
-const { fileChangeStream, notifyFileChange, publishProjectAccessChange } = await import("./file-live-sync.js");
+const { fileChangeStream, notifyFileChange, publishFileCollaboration, publishProjectAccessChange } = await import("./file-live-sync.js");
 const { runWithTeamScope } = await import("./team-scope.js");
 const NOTE = { id: 7, uid: "note-uid", projectId: 3 };
 
@@ -54,6 +54,17 @@ describe("file change stream", () => {
     await fetch(`${base}/notes/${NOTE.uid}?fail=1`, { method: "PUT" });
     await fetch(`${base}/notes/7`, { method: "PUT", headers: { "x-user": "editor" } });
     expect(await next()).toBe("event: change\ndata: {}\n\n");
+    expect(mocks.noteFindFirst).toHaveBeenCalledTimes(2);
+  });
+
+  it("signals someone else's comment or discussion change on this file with its Team (BUG-079)", async () => {
+    const { next } = await open();
+    await next();
+    publishFileCollaboration("note", NOTE.uid, "viewer", "team-1");
+    publishFileCollaboration("diagram", NOTE.uid, "editor", "team-1");
+    publishFileCollaboration("note", "other-note", "editor", "team-1");
+    publishFileCollaboration("note", "7", "editor", "team-1");
+    expect(await next()).toBe('event: collaboration\ndata: {"teamId":"team-1"}\n\n');
     expect(mocks.noteFindFirst).toHaveBeenCalledTimes(2);
   });
 

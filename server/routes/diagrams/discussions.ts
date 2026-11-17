@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
 import { publishCloudWorkspaceSync } from "../../lib/cloud-live-sync.js";
+import { isSsoAuthMode } from "../../lib/config.js";
+import { publishFileCollaboration } from "../../lib/file-live-sync.js";
 import { prisma } from "../../lib/prisma.js";
 import { canCommentRole, projectRoleFor } from "../../lib/project-access.js";
 import { currentTeamScope } from "../../lib/team-scope.js";
@@ -252,8 +254,27 @@ async function actorName(userId: string, fallback: string): Promise<string> {
   return rows[0]?.name?.trim() || rows[0]?.email || fallback || "Team member";
 }
 
-function notifyTeam(teamId: string): void {
+type ThreadChange = { kind: ResourceKind; threadId: string; actorId: string };
+
+/**
+ * Cloud refreshes collaboration views through the Team live channel. Self-host has none, so it also signals the change
+ * on the change streams of the thread's files, and whoever has one open refreshes its badges and markers (BUG-079).
+ */
+function notifyTeam(teamId: string, change?: ThreadChange): void {
   void publishCloudWorkspaceSync({ teamId, eventType: "cloud.workspace.sync", revision: randomUUID() });
+  if (change && !isSsoAuthMode()) void signalThreadFiles(teamId, change);
+}
+
+async function signalThreadFiles(teamId: string, { kind, threadId, actorId }: ThreadChange): Promise<void> {
+  if (!prisma) return;
+  const rows = await prisma.$queryRawUnsafe<Array<{ featureType: string; fileId: string }>>(kind === "comment"
+    ? 'SELECT "feature_type" AS "featureType", "file_id" AS "fileId" FROM "comment_threads" WHERE "id" = $1'
+    : 'SELECT "feature_type" AS "featureType", "file_id" AS "fileId" FROM "discussion_contexts" WHERE "thread_id" = $1', threadId)
+    .catch(() => []);
+  for (const row of rows) {
+    const model = featureTypeSchema.safeParse(row.featureType);
+    if (model.success) publishFileCollaboration(model.data, String(row.fileId), actorId, teamId);
+  }
 }
 
 type CreateThreadInput = z.infer<typeof createThreadSchema>;
@@ -670,7 +691,7 @@ router.post("/", async (req, res) => {
         projectId: Number(resource.projectId), projectName: resource.projectName, file: context.file,
       });
     }
-    notifyTeam(actor.teamId);
+    notifyTeam(actor.teamId, { kind, threadId: created, actorId: actor.id });
     res.status(201).json({ id: created, messageId, kind, fileId: context.file ? String(context.file.id) : null });
   } catch (error) {
     handleError(res, error, "Failed to create collaboration thread");
@@ -796,7 +817,7 @@ router.post("/:threadId/messages", async (req, res) => {
       kind, threadId: req.params.threadId, messageId, actorId: actor.id, teamId: actor.teamId,
       projectId: Number(resource.projectId), projectName: resource.projectName, file,
     });
-    notifyTeam(actor.teamId);
+    notifyTeam(actor.teamId, { kind, threadId: req.params.threadId, actorId: actor.id });
     res.status(201).json({ id: messageId });
   } catch (error) {
     handleError(res, error, "Failed to reply to collaboration thread");
@@ -859,7 +880,7 @@ router.patch("/:threadId/messages/:messageId", async (req, res) => {
     });
     if (updated === "missing") { res.status(404).json(notFound); return; }
     if (updated === "conflict") { res.status(409).json({ error: "This message changed. Refresh before editing it again." }); return; }
-    notifyTeam(actor.teamId);
+    notifyTeam(actor.teamId, { kind, threadId: req.params.threadId, actorId: actor.id });
     res.json({ id: req.params.messageId, body: input.data.body });
   } catch (error) {
     handleError(res, error, "Failed to edit collaboration message");
@@ -921,7 +942,7 @@ router.delete("/:threadId/messages/:messageId", async (req, res) => {
 
     if (deleted === "missing") { res.status(404).json(notFound); return; }
     if (deleted === "conflict") { res.status(409).json({ error: "This message changed. Refresh before deleting it again." }); return; }
-    notifyTeam(actor.teamId);
+    notifyTeam(actor.teamId, { kind: "discussion", threadId: req.params.threadId, actorId: actor.id });
     res.json({ success: true, id: req.params.messageId });
   } catch (error) {
     handleError(res, error, "Failed to delete collaboration message");
@@ -971,7 +992,7 @@ router.patch("/:threadId", async (req, res) => {
     });
     if (changed === null) { res.status(404).json(notFound); return; }
     if (changed === "conflict") { res.status(409).json({ error: "Thread status changed. Refresh before trying again." }); return; }
-    if (changed) notifyTeam(actor.teamId);
+    if (changed) notifyTeam(actor.teamId, { kind, threadId: req.params.threadId, actorId: actor.id });
     res.json({ status: input.data.status });
   } catch (error) {
     handleError(res, error, "Failed to update collaboration thread");
@@ -1036,7 +1057,7 @@ router.post("/:threadId/contexts", async (req, res) => {
       return true;
     });
     if (!found) { res.status(409).json({ error: "Reopen this thread before adding context" }); return; }
-    notifyTeam(actor.teamId);
+    notifyTeam(actor.teamId, { kind: "discussion", threadId: req.params.threadId, actorId: actor.id });
     res.status(201).json({ success: true });
   } catch (error) {
     handleError(res, error, "Failed to add discussion context");

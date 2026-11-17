@@ -569,6 +569,10 @@ export function WorkspaceProvider({
     void fetchProjects(false, debouncedSearchQuery);
     void refreshActiveDocument();
     toast.info('Your access to this Project changed.');
+  }, (teamId) => {
+    // Self-host has no Team live channel (BUG-079); this is the event Cloud's channel sends, so the Discussions badge,
+    // the panel and the comment markers refresh the same way.
+    window.dispatchEvent(new CustomEvent('cloud-workspace-sync', { detail: { teamId, eventType: 'cloud.workspace.sync', revision: String(Date.now()) } }));
   });
 
   // URL routing for /drawings/:uid
