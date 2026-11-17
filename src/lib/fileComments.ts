@@ -147,3 +147,19 @@ export function storedHasAnchor(data: unknown, anchor: CommentAnchorRef): boolea
   const items = (parsed as { nodes?: unknown; edges?: unknown } | null)?.[anchor.type === 'relationship' ? 'edges' : 'nodes'];
   return Array.isArray(items) && items.some((item) => item?.id === anchor.id);
 }
+
+/**
+ * BUG-078: pushes an ERD canvas before a new comment thread only while a local edit is still unsaved or unsynced. The
+ * canvas comes from the server and every edit keeps a save or sync pending until it is pushed, so with nothing pending
+ * the server already holds the anchor. The open diagram's list entry carries no data, so checking it with
+ * storedHasAnchor saved the unchanged diagram on every new thread.
+ */
+export async function prepareCanvasAnchor(anchor: CommentAnchorRef, canvas: {
+  items: ReadonlyArray<{ id: string }>;
+  editable: boolean;
+  pending: boolean;
+  push: () => Promise<void>;
+}): Promise<void> {
+  if (!canvas.editable || !canvas.pending || !canvas.items.some((item) => item.id === anchor.id)) return;
+  await canvas.push();
+}
