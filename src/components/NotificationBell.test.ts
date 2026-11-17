@@ -3,12 +3,25 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { SidebarProvider } from '@/components/ui/sidebar';
-import { NotificationBell } from './NotificationBell';
+import { NotificationBell, selectedScopeTab } from './NotificationBell';
 
 const screen = vi.hoisted(() => ({ mobile: false, unread: 0 }));
 const useNotifications = vi.hoisted(() => vi.fn());
 vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => screen.mobile }));
 vi.mock('@/hooks/useNotifications', () => ({ useNotifications }));
+// Records each popover's props; the real PopoverContent still renders.
+const popoverProps = vi.hoisted(() => [] as Array<{ initialFocus?: unknown }>);
+vi.mock('@/components/ui/popover', async (importOriginal) => {
+  const { createElement: h } = await import('react');
+  const actual = await importOriginal<typeof import('@/components/ui/popover')>();
+  return {
+    ...actual,
+    PopoverContent: (props: Parameters<typeof actual.PopoverContent>[0]) => {
+      popoverProps.push(props);
+      return h(actual.PopoverContent, props);
+    },
+  };
+});
 
 // AppLayout renders the bell in both slots, as here; the sidebar mode decides which one mounts.
 const render = (mobile: boolean, unread = 0) => {
@@ -72,5 +85,25 @@ describe('COL-009 notification bell placement', () => {
     const html = headerPart(render(true, 150));
     expect(html).toContain('>99+</');
     expect(html).not.toContain('data-rail-count');
+  });
+});
+
+describe('BUG-080 bell popover initial focus', () => {
+  it('sets the initial focus in the sidebar and in the header, never to the default first button', () => {
+    for (const mobile of [false, true]) {
+      popoverProps.length = 0;
+      render(mobile, 3);
+      expect(popoverProps).toHaveLength(1);
+      expect(popoverProps[0].initialFocus).toBeTypeOf('function');
+      // Without a browser the scope tabs are not mounted, so focus stays put instead of falling to Mark all as read.
+      expect((popoverProps[0].initialFocus as () => unknown)()).toBe(false);
+    }
+  });
+
+  it('picks the selected scope tab', () => {
+    const tab = {} as HTMLElement;
+    const root = { querySelector: (selector: string) => (selector === '[role="tab"][aria-selected="true"]' ? tab : null) } as unknown as ParentNode;
+    expect(selectedScopeTab(root)).toBe(tab);
+    expect(selectedScopeTab(null)).toBe(false);
   });
 });
