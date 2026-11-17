@@ -46,14 +46,15 @@ export function fileChangeStream(model: LiveFileModel) {
     const scope = currentTeamScope();
     const readable = async () => {
       if (scope?.mode === "team" && (!scope.teamId || !(await canAccessTeam(scope.teamId, user.id, Boolean(user.isSuperAdmin))))) return null;
-      return (prisma as any)?.[model].findFirst({ where: fileIdentifierWhere(req.params.uid, user.id), select: { id: true, uid: true, projectId: true } });
+      return (prisma as any)?.[model].findFirst({ where: fileIdentifierWhere(req.params.uid, user.id), select: { id: true, uid: true, projectId: true, version: true } });
     };
     const inScope = <T>(callback: () => Promise<T>) => scope ? runWithTeamScope(scope, callback) : callback();
     const file = await readable().catch(() => null);
     if (!file) { res.status(404).json({ error: "Resource not found" }); return; }
 
     res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-store", Connection: "keep-alive", "X-Accel-Buffering": "no" });
-    res.write(": ready\n\n");
+    // BUG-077: the current version lets a client that reconnects tell a missed save from a dropped connection.
+    res.write(`event: ready\ndata: ${JSON.stringify({ version: file.version ?? null })}\n\n`);
     const keys = new Set([String(file.uid), String(file.id)]);
     let closed = false;
     const close = () => {

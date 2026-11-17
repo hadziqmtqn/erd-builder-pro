@@ -11,7 +11,7 @@ vi.mock("../routes/teams/service.js", () => ({ canAccessTeam: mocks.canAccessTea
 
 const { fileChangeStream, notifyFileChange, publishProjectAccessChange } = await import("./file-live-sync.js");
 const { runWithTeamScope } = await import("./team-scope.js");
-const NOTE = { id: 7, uid: "note-uid", projectId: 3 };
+const NOTE = { id: 7, uid: "note-uid", projectId: 3, version: 4 };
 
 describe("file change stream", () => {
   let server: Server;
@@ -50,7 +50,7 @@ describe("file change stream", () => {
   it("signals a successful save by uid or numeric id, never a failed one", async () => {
     const { response, next } = await open();
     expect(response.headers.get("content-type")).toBe("text/event-stream");
-    expect(await next()).toContain(": ready");
+    expect(await next()).toBe('event: ready\ndata: {"version":4}\n\n');
     await fetch(`${base}/notes/${NOTE.uid}?fail=1`, { method: "PUT" });
     await fetch(`${base}/notes/7`, { method: "PUT", headers: { "x-user": "editor" } });
     expect(await next()).toBe("event: change\ndata: {}\n\n");
