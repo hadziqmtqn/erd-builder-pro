@@ -60,3 +60,18 @@ describe('file change stream reconnects (BUG-077)', () => {
     expect(knownVersion).not.toHaveBeenCalled();
   });
 });
+
+describe('Self-host collaboration signal on the file stream (BUG-079)', () => {
+  afterEach(() => { apiFetch.mockReset(); });
+
+  it('passes the Team id to onCollaboration without counting it as a save', async () => {
+    const signal = new AbortController();
+    apiFetch.mockResolvedValueOnce(sse([ready(5), 'event: collaboration\ndata: {"teamId":"team-1"}\n\n'], 'open', signal.signal));
+    const onChange = vi.fn();
+    const onCollaboration = vi.fn();
+    void watchFileChanges('/api/diagrams/d1/events', { onChange, onCollaboration }, signal.signal);
+    await vi.waitFor(() => expect(onCollaboration).toHaveBeenCalledWith('team-1'));
+    signal.abort();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});
