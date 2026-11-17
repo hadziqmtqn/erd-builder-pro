@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { getActiveDetailRefreshTarget, isCommentAnchorForFeature, linkedThread, newActivityLabel, normalizeThread, threadsWithNewActivity } from "./DiscussionsPanel";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { getActiveDetailRefreshTarget, isCommentAnchorForFeature, linkedThread, newActivityLabel, normalizeThread, requestListJson, threadsWithNewActivity } from "./DiscussionsPanel";
+
+const apiFetch = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/api", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/api")>(), apiFetch }));
 
 describe("new activity for the header toast (BUG-072)", () => {
   const thread = (id: string, latestMessageId: string | null, latestAuthorId: string | null, unread = false) => ({ id, latestMessageId, latestAuthorId, unread });
@@ -85,5 +88,38 @@ describe("active collaboration detail refresh", () => {
       anchor: { type: "table", id: "table-1" },
       threadId: "thread-1",
     });
+  });
+});
+
+describe("thread list retries (BUG-082)", () => {
+  const json = (status: number, body: unknown = {}) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+  // Runs the request through fetchWithRetry's pauses (800 ms, then 2 s).
+  const settle = async <T,>(request: Promise<T>) => {
+    const outcome = request.then((value) => ({ value }), (error: Error) => ({ error }));
+    await vi.advanceTimersByTimeAsync(3000);
+    return outcome;
+  };
+  afterEach(() => { vi.useRealTimers(); apiFetch.mockReset(); });
+
+  it("recovers by itself when a network failure or a 5xx is followed by a success", async () => {
+    vi.useFakeTimers();
+    apiFetch.mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValueOnce(json(502)).mockResolvedValueOnce(json(200, { threads: [], unreadCount: 2 }));
+    expect(await settle(requestListJson("/api/projects/7/discussions"))).toEqual({ value: { threads: [], unreadCount: 2 } });
+    expect(apiFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("gives up after the retries when the failure persists, so the panel shows its error and Retry", async () => {
+    vi.useFakeTimers();
+    apiFetch.mockResolvedValue(json(503, { error: "Service unavailable" }));
+    const outcome = await settle(requestListJson("/api/projects/7/comments"));
+    expect(outcome).toHaveProperty("error.message", "Service unavailable");
+    expect(apiFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not retry a 4xx such as the generic not-found", async () => {
+    vi.useFakeTimers();
+    apiFetch.mockResolvedValue(json(404, { error: "Not found" }));
+    expect(await settle(requestListJson("/api/projects/7/discussions"))).toHaveProperty("error.message", "Not found");
+    expect(apiFetch).toHaveBeenCalledTimes(1);
   });
 });
