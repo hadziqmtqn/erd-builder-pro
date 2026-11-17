@@ -21,6 +21,14 @@ export function publishFileChange(model: LiveFileModel, identifier: string, acto
 }
 
 /**
+ * Signals that a file's comments or discussions changed (BUG-079). Self-host has no Team live channel, so streams of
+ * that file tell their clients to refresh collaboration views; the actor is not signalled.
+ */
+export function publishFileCollaboration(model: LiveFileModel, identifier: string, actorId: string, teamId: string): void {
+  changes.emit("collaboration", model, String(identifier), String(actorId), teamId);
+}
+
+/**
  * Signals that a member's role on a Project changed (BUG-061). Their open streams for files in that Project tell the
  * client to reload its Project access, so the file turns read-only or editable without a reload.
  */
@@ -63,6 +71,7 @@ export function fileChangeStream(model: LiveFileModel) {
       clearInterval(heartbeat); clearTimeout(expiry);
       changes.off(model, onChange);
       changes.off("project-access", onAccess);
+      changes.off("collaboration", onCollaboration);
       res.end();
     };
     const onChange = (identifier: string, actorId: string) => {
@@ -71,6 +80,14 @@ export function fileChangeStream(model: LiveFileModel) {
         if (closed) return;
         if (!current) close();
         else res.write("event: change\ndata: {}\n\n");
+      }, close);
+    };
+    const onCollaboration = (fileModel: string, identifier: string, actorId: string, teamId: string) => {
+      if (fileModel !== model || !keys.has(identifier) || actorId === String(user.id)) return;
+      void inScope(readable).then(current => {
+        if (closed) return;
+        if (!current) close();
+        else res.write(`event: collaboration\ndata: ${JSON.stringify({ teamId })}\n\n`);
       }, close);
     };
     const onAccess = (projectId: string, userId: string) => {
@@ -85,6 +102,7 @@ export function fileChangeStream(model: LiveFileModel) {
     const expiry = setTimeout(close, MAX_STREAM_MS);
     changes.on(model, onChange);
     changes.on("project-access", onAccess);
+    changes.on("collaboration", onCollaboration);
     req.on("close", close);
   };
 }

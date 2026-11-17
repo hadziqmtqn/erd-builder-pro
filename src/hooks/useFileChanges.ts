@@ -6,6 +6,8 @@ type FileChangeHandlers = {
   onAccess?: () => void;
   /** The version of the open file this client already knows, its own saves included; null when unknown. */
   knownVersion?: () => Promise<number | null>;
+  /** Someone else changed the file's comments or discussions on Self-host; receives the Team id (BUG-079). */
+  onCollaboration?: (teamId: string) => void;
 };
 
 /** The version in the stream's `ready` event, or null when the server sent none. */
@@ -13,6 +15,16 @@ function readyVersion(event: string): number | null {
   try {
     const version = JSON.parse(event.split('\ndata: ')[1] ?? 'null')?.version;
     return Number.isInteger(version) ? version : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The Team id carried by a `collaboration` event, or null. */
+export function collaborationTeam(event: string): string | null {
+  try {
+    const teamId = JSON.parse(event.split('\ndata: ')[1] ?? 'null')?.teamId;
+    return typeof teamId === 'string' && teamId ? teamId : null;
   } catch {
     return null;
   }
@@ -48,6 +60,9 @@ export async function watchFileChanges(path: string, handlers: FileChangeHandler
         }
         if (events.some(event => event.startsWith('event: change'))) handlers.onChange();
         if (events.some(event => event.startsWith('event: access'))) handlers.onAccess?.();
+        const collaboration = events.find(event => event.startsWith('event: collaboration'));
+        const teamId = collaboration ? collaborationTeam(collaboration) : null;
+        if (teamId) handlers.onCollaboration?.(teamId);
       }
     } catch {
       if (signal.aborted) return;
@@ -61,10 +76,17 @@ export async function watchFileChanges(path: string, handlers: FileChangeHandler
  * Calls `onChange` when someone else saved the file at `path` (BUG-023), and `onAccess` when the user's role on the
  * file's Project changed (BUG-061). Uses fetch rather than EventSource so the request carries the Team header like
  * every other file call. `knownVersion` lets a reconnect skip the signal when nothing was saved meanwhile (BUG-077).
+ * `onCollaboration` gets the Team id when someone else changed the file's comments or discussions on Self-host (BUG-079).
  */
-export function useFileChanges(path: string | null, onChange: () => void, onAccess?: () => void, knownVersion?: () => Promise<number | null>) {
-  const latest = useRef({ onChange, onAccess, knownVersion });
-  latest.current = { onChange, onAccess, knownVersion };
+export function useFileChanges(
+  path: string | null,
+  onChange: () => void,
+  onAccess?: () => void,
+  knownVersion?: () => Promise<number | null>,
+  onCollaboration?: (teamId: string) => void,
+) {
+  const latest = useRef({ onChange, onAccess, knownVersion, onCollaboration });
+  latest.current = { onChange, onAccess, knownVersion, onCollaboration };
   useEffect(() => {
     if (!path) return;
     const controller = new AbortController();
@@ -72,6 +94,7 @@ export function useFileChanges(path: string | null, onChange: () => void, onAcce
       onChange: () => latest.current.onChange(),
       onAccess: () => latest.current.onAccess?.(),
       knownVersion: async () => (await latest.current.knownVersion?.()) ?? null,
+      onCollaboration: teamId => latest.current.onCollaboration?.(teamId),
     }, controller.signal);
     return () => controller.abort();
   }, [path]);
