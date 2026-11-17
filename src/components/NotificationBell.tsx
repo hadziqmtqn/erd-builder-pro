@@ -36,6 +36,13 @@ export function selectedScopeTab(root: ParentNode | null): HTMLElement | false {
   return root?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]') ?? false;
 }
 
+/** BUG-080: Mark all as read disables itself, so focus moves to the selected scope tab first instead of falling to the page. */
+export function markAllKeepingFocus(root: ParentNode | null, markAllRead: () => Promise<void>): Promise<void> {
+  const tab = selectedScopeTab(root);
+  if (tab) tab.focus();
+  return markAllRead();
+}
+
 function NotificationPopover({ placement, activeTeamId, onSelectWorkspace }: Props) {
   const navigate = useNavigate();
   const descriptionId = useId();
@@ -107,7 +114,7 @@ function NotificationPopover({ placement, activeTeamId, onSelectWorkspace }: Pro
               {unreadCount ? `${unreadCount} unread` : "You're all caught up"}
             </p>
           </div>
-          <Button type="button" variant="ghost" size="sm" disabled={!unreadCount} onClick={() => void markAllRead()}>
+          <Button type="button" variant="ghost" size="sm" disabled={!unreadCount} onClick={() => void markAllKeepingFocus(scopeTabs.current, markAllRead)}>
             Mark all as read
           </Button>
         </div>

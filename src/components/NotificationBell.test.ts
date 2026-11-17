@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { SidebarProvider } from '@/components/ui/sidebar';
-import { NotificationBell, selectedScopeTab } from './NotificationBell';
+import { markAllKeepingFocus, NotificationBell, selectedScopeTab } from './NotificationBell';
 
 const screen = vi.hoisted(() => ({ mobile: false, unread: 0 }));
 const useNotifications = vi.hoisted(() => vi.fn());
@@ -105,5 +105,13 @@ describe('BUG-080 bell popover initial focus', () => {
     const root = { querySelector: (selector: string) => (selector === '[role="tab"][aria-selected="true"]' ? tab : null) } as unknown as ParentNode;
     expect(selectedScopeTab(root)).toBe(tab);
     expect(selectedScopeTab(null)).toBe(false);
+  });
+
+  it('moves focus to the selected tab before Mark all as read disables itself', async () => {
+    const calls: string[] = [];
+    const tab = { focus: vi.fn(() => calls.push('focus')) } as unknown as HTMLElement;
+    const root = { querySelector: () => tab } as unknown as ParentNode;
+    await markAllKeepingFocus(root, async () => { calls.push('mark'); });
+    expect(calls).toEqual(['focus', 'mark']);
   });
 });
