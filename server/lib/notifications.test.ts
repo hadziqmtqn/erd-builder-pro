@@ -3,10 +3,10 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ create: vi.fn(), deleteMany: vi.fn() }));
-vi.mock("./prisma.js", () => ({ prisma: { notification: { create: mocks.create, deleteMany: mocks.deleteMany } } }));
+const mocks = vi.hoisted(() => ({ create: vi.fn(), deleteMany: vi.fn(), updateMany: vi.fn() }));
+vi.mock("./prisma.js", () => ({ prisma: { notification: { create: mocks.create, deleteMany: mocks.deleteMany, updateMany: mocks.updateMany } } }));
 
-import { createNotifications, purgeExpiredNotifications, safeNotificationLink, type NotificationInput } from "./notifications.js";
+import { createNotifications, purgeExpiredNotifications, readNotificationGroup, safeNotificationLink, type NotificationInput } from "./notifications.js";
 
 const DAY_MS = 86_400_000;
 const migration = (variant: "sqlite" | "pg") =>
@@ -147,5 +147,16 @@ describe("purgeExpiredNotifications", () => {
       { readAt: { not: null }, createdAt: { lt: new Date(now.getTime() - 30 * DAY_MS) } },
       { createdAt: { lt: new Date(now.getTime() - 180 * DAY_MS) } },
     ]);
+  });
+});
+
+describe("readNotificationGroup (BUG-081)", () => {
+  it("reads only the recipient's unread notifications of that group", async () => {
+    mocks.updateMany.mockReset().mockResolvedValue({ count: 2 });
+    expect(await readNotificationGroup("anind", "discussion:thread-1")).toBe(2);
+    expect(mocks.updateMany).toHaveBeenCalledWith({
+      where: { recipientUserId: "anind", groupKey: "discussion:thread-1", readAt: null },
+      data: { readAt: expect.any(Date) },
+    });
   });
 });

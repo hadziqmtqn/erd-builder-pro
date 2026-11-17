@@ -111,9 +111,11 @@ router.post("/notifications/:id/read", authenticate, async (req: Request, res: R
   if (!store || !isUuid(id)) return notFound(res);
   try {
     const userId = ((req as any).user as SessionUser).id;
-    const updated = await store.updateMany({ where: { id, recipientUserId: userId, readAt: null }, data: { readAt: new Date() } });
-    // Reading an already read notification is fine; someone else's id gets the same answer as a missing one.
-    if (!updated.count && !(await store.count({ where: { id, recipientUserId: userId } }))) return notFound(res);
+    const row = await store.findFirst({ where: { id, recipientUserId: userId }, select: { groupKey: true } });
+    // Someone else's id gets the same answer as a missing one; reading an already read notification is fine.
+    if (!row) return notFound(res);
+    // BUG-081: one bell item stands for its whole group, such as every reply in a thread, so reading it reads them all.
+    await store.updateMany({ where: { recipientUserId: userId, readAt: null, ...(row.groupKey ? { groupKey: row.groupKey } : { id }) }, data: { readAt: new Date() } });
     res.json({ success: true });
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : error }, "[Notifications] read failed");

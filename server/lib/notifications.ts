@@ -92,6 +92,14 @@ export async function createNotifications(inputs: NotificationInput[]): Promise<
   return created;
 }
 
+/** BUG-081: marks a recipient's unread notifications of one group, such as every reply in a thread, as read. */
+export async function readNotificationGroup(recipientUserId: string, groupKey: string): Promise<number> {
+  const store = notificationStore();
+  if (!store) return 0;
+  const updated = await store.updateMany({ where: { recipientUserId, groupKey, readAt: null }, data: { readAt: new Date() } });
+  return updated.count;
+}
+
 const DAY_MS = 86_400_000;
 function retentionDays(variable: string, fallback: number): number {
   const days = Number(process.env[variable]);

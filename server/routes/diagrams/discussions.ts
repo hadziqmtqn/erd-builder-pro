@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
-import { publishCloudWorkspaceSync } from "../../lib/cloud-live-sync.js";
+import { publishCloudWorkspaceSync, publishUserNotification } from "../../lib/cloud-live-sync.js";
+import { readNotificationGroup } from "../../lib/notifications.js";
 import { prisma } from "../../lib/prisma.js";
 import { canCommentRole, projectRoleFor } from "../../lib/project-access.js";
 import { currentTeamScope } from "../../lib/team-scope.js";
@@ -733,6 +734,8 @@ router.post("/:threadId/read", async (req, res) => {
       VALUES ($1, $2, CURRENT_TIMESTAMP)
       ON CONFLICT ("thread_id", "user_id") DO UPDATE SET "last_read_at" = CURRENT_TIMESTAMP
     `, req.params.threadId, actor.id);
+    // BUG-081: reading the thread also reads its bell notifications, and the user's open bells refresh.
+    if (await readNotificationGroup(actor.id, `${kind}:${req.params.threadId}`)) await publishUserNotification([actor.id]);
     res.json({ success: true });
   } catch (error) {
     handleError(res, error, "Failed to mark collaboration thread as read");

@@ -8,6 +8,10 @@ export type NotificationItem = {
   accessible: boolean;
   projectId: number | null;
   link: string | null;
+  /** Replies in one thread share a key; the bell shows them as one item (BUG-081). */
+  groupKey: string | null;
+  /** How many notifications this item stands for once grouped. */
+  groupCount?: number;
   actorName: string | null;
   hasActor: boolean;
   payload: Record<string, unknown>;
@@ -39,6 +43,7 @@ export function normalizeNotification(raw: Raw): NotificationItem {
     accessible: (raw.accessible ?? true) !== false,
     projectId: Number.isFinite(projectId) && projectId > 0 ? projectId : null,
     link: text(raw.link),
+    groupKey: text(raw.group_key ?? raw.groupKey),
     actorName: actor ? text(actor.name) : null,
     hasActor: Boolean(actor),
     payload,
@@ -104,7 +109,8 @@ export function describeNotification(item: NotificationItem): { title: string; d
   const action = projectAccessAction(item) ?? teamMemberAction(item)
     ?? (item.type === "comment.created" && anchor ? `commented on ${anchor}` : ACTIONS[item.type] ?? "had new activity");
   const actor = item.actorName ?? (item.hasActor ? "A Team member" : null);
-  const title = actor ? `${actor} ${action}` : action.charAt(0).toUpperCase() + action.slice(1);
+  const count = item.groupCount && item.groupCount > 1 ? ` (${item.groupCount})` : "";
+  const title = (actor ? `${actor} ${action}` : action.charAt(0).toUpperCase() + action.slice(1)) + count;
   const project = payloadText(item.payload, "projectName");
   const from = item.type === "file.moved" ? payloadText(item.payload, "fromProjectName") : null;
   const where = [payloadText(item.payload, "fileName"), from && project ? `${from} → ${project}` : project].filter(Boolean).join(" · ");
@@ -130,7 +136,11 @@ export function groupNotifications(items: NotificationItem[], scope: Notificatio
       project = { key: projectKey, label: item.accessible ? payloadText(item.payload, "projectName") : null, items: [] };
       group.projects.push(project);
     }
-    project.items.push(item);
+    // BUG-081: the newest notification of a group stands for the rest and stays unread while any of them is.
+    const index = item.groupKey ? project.items.findIndex((entry) => entry.groupKey === item.groupKey) : -1;
+    if (index < 0) { project.items.push(item); continue; }
+    const shown = project.items[index];
+    project.items[index] = { ...shown, groupCount: (shown.groupCount ?? 1) + 1, readAt: shown.readAt && item.readAt ? shown.readAt : null };
   }
   return [...groups.values()];
 }

@@ -61,9 +61,13 @@ export function useNotifications(enabled: boolean) {
   const markRead = useCallback(async (id: string) => {
     setState((current) => {
       const target = current.items.find((item) => item.id === id);
-      if (!target || target.readAt) return current;
+      if (!target) return current;
+      // The server reads the item's whole group (BUG-081), so the list does the same.
+      const unread = (item: NotificationItem) => !item.readAt && (item.id === id || (target.groupKey !== null && item.groupKey === target.groupKey));
+      const count = current.items.filter(unread).length;
+      if (!count) return current;
       const readAt = new Date().toISOString();
-      return { ...current, unreadCount: Math.max(0, current.unreadCount - 1), items: current.items.map((item) => (item.id === id ? { ...item, readAt } : item)) };
+      return { ...current, unreadCount: Math.max(0, current.unreadCount - count), items: current.items.map((item) => (unread(item) ? { ...item, readAt } : item)) };
     });
     await apiFetch(`/api/notifications/${encodeURIComponent(id)}/read`, { method: "POST" }).catch(() => undefined);
     void refresh();

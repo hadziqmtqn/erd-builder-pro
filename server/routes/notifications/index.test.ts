@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   hasTable: true,
   findMany: vi.fn(),
   count: vi.fn(),
+  findFirst: vi.fn(),
   updateMany: vi.fn(),
   teamFindMany: vi.fn(),
   userFindMany: vi.fn(),
@@ -13,7 +14,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../lib/notifications.js", () => ({
-  notificationStore: () => (mocks.hasTable ? { findMany: mocks.findMany, count: mocks.count, updateMany: mocks.updateMany } : null),
+  notificationStore: () => (mocks.hasTable ? { findMany: mocks.findMany, count: mocks.count, findFirst: mocks.findFirst, updateMany: mocks.updateMany } : null),
 }));
 vi.mock("../../lib/prisma.js", () => ({
   prisma: { team: { findMany: mocks.teamFindMany }, user: { findMany: mocks.userFindMany } },
@@ -65,6 +66,7 @@ describe("notification routes (NOT-001.1)", () => {
     mocks.hasTable = true;
     mocks.findMany.mockReset().mockResolvedValue([row()]);
     mocks.count.mockReset().mockResolvedValue(1);
+    mocks.findFirst.mockReset().mockResolvedValue({ groupKey: null });
     mocks.updateMany.mockReset().mockResolvedValue({ count: 1 });
     mocks.teamFindMany.mockReset().mockResolvedValue([{ id: "team-1", name: "Anind's Workspace" }, { id: "team-2", name: "Old Team" }]);
     mocks.userFindMany.mockReset().mockResolvedValue([{ id: "jay", name: "Jay Test" }]);
@@ -129,21 +131,28 @@ describe("notification routes (NOT-001.1)", () => {
 
   it("marks the user's own notification read, also when it was read before", async () => {
     let res = await call("post", "/notifications/:id/read", { params: { id: ID } });
-    expect(mocks.updateMany).toHaveBeenCalledWith({ where: { id: ID, recipientUserId: "anind", readAt: null }, data: { readAt: expect.any(Date) } });
+    expect(mocks.findFirst).toHaveBeenCalledWith({ where: { id: ID, recipientUserId: "anind" }, select: { groupKey: true } });
+    expect(mocks.updateMany).toHaveBeenCalledWith({ where: { recipientUserId: "anind", readAt: null, id: ID }, data: { readAt: expect.any(Date) } });
     expect(res.json).toHaveBeenCalledWith({ success: true });
 
     mocks.updateMany.mockResolvedValue({ count: 0 });
     res = await call("post", "/notifications/:id/read", { params: { id: ID } });
-    expect(mocks.count).toHaveBeenCalledWith({ where: { id: ID, recipientUserId: "anind" } });
+    expect(res.json).toHaveBeenCalledWith({ success: true });
+  });
+
+  it("reads every notification of the item's group, such as each reply in a thread (BUG-081)", async () => {
+    mocks.findFirst.mockResolvedValue({ groupKey: "discussion:thread-1" });
+    const res = await call("post", "/notifications/:id/read", { params: { id: ID } });
+    expect(mocks.updateMany).toHaveBeenCalledWith({ where: { recipientUserId: "anind", readAt: null, groupKey: "discussion:thread-1" }, data: { readAt: expect.any(Date) } });
     expect(res.json).toHaveBeenCalledWith({ success: true });
   });
 
   it("answers a generic not-found for another user's notification and for an invalid id", async () => {
-    mocks.updateMany.mockResolvedValue({ count: 0 });
-    mocks.count.mockResolvedValue(0);
+    mocks.findFirst.mockResolvedValue(null);
     let res = await call("post", "/notifications/:id/read", { params: { id: OTHER_ID } });
     expect(res.status).toHaveBeenCalledWith(404);
     expect(res.json).toHaveBeenCalledWith({ error: "Resource not found" });
+    expect(mocks.updateMany).not.toHaveBeenCalled();
 
     mocks.updateMany.mockClear();
     res = await call("post", "/notifications/:id/read", { params: { id: "../other" } });
