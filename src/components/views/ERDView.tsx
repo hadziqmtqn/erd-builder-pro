@@ -34,7 +34,7 @@ import { toast } from 'sonner';
 import { computeSchemaDiff, DiffResult } from '@/lib/schema-diff';
 import { mergeSchemaChanges } from '@/lib/schema-merge';
 import { useWorkspace } from '@/providers/WorkspaceContext';
-import { storedHasAnchor } from '@/lib/fileComments';
+import { prepareCanvasAnchor } from '@/lib/fileComments';
 import { EyeOff, Monitor } from 'lucide-react';
 import { buildErdIndexes, erdColumnKey, erdSourceColumnKey } from '@/lib/erd-indexes';
 import { canvasLayout, dbSchemaToCanvas, keepsDbRelation } from '@/lib/db-client-schema';
@@ -180,14 +180,16 @@ const ERDViewComponent = ({
   const isProductionDb = isDbClient;
 
   // The server rejects a comment anchor it has not saved yet (a table or relationship added moments ago),
-  // so before a new thread starts, save the canvas and push it unless the server already has that item.
-  const prepareAnchor = async (anchor: CommentAnchor) => {
-    const onCanvas = (anchor.type === 'table' ? getNodes() : getEdges()) as Array<{ id: string }>;
-    if (isReadOnly || isProductionDb || !saveDiagram || !onCanvas.some((item) => item.id === anchor.id)) return;
-    if (storedHasAnchor(activeDiagram?.data, anchor) && !isLocalSaving && !hasPendingSyncs) return;
-    await saveDiagram(getNodes() as Node<Entity>[], getEdges(), getViewport());
-    await syncDrafts();
-  };
+  // so before a new thread starts, save and push the canvas while an edit is still pending (BUG-078).
+  const prepareAnchor = (anchor: CommentAnchor) => prepareCanvasAnchor(anchor, {
+    items: (anchor.type === 'table' ? getNodes() : getEdges()) as Array<{ id: string }>,
+    editable: !isReadOnly && !isProductionDb && Boolean(saveDiagram),
+    pending: isLocalSaving || hasPendingSyncs,
+    push: async () => {
+      await saveDiagram?.(getNodes() as Node<Entity>[], getEdges(), getViewport());
+      await syncDrafts();
+    },
+  });
 
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);

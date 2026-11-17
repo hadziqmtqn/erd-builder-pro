@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { COMMENT_STEP, hiddenCount, storedHasAnchor, visibleMessages } from '../fileComments';
+import { describe, expect, it, vi } from 'vitest';
+import { COMMENT_STEP, hiddenCount, prepareCanvasAnchor, storedHasAnchor, visibleMessages } from '../fileComments';
 
 describe('comment paging window', () => {
   const messages = Array.from({ length: 25 }, (_, index) => index + 1);
@@ -40,5 +40,33 @@ describe('storedHasAnchor', () => {
     expect(storedHasAnchor('not json', { type: 'shape', id: 'a' })).toBe(false);
     expect(storedHasAnchor(undefined, { type: 'shape', id: 'a' })).toBe(false);
     expect(storedHasAnchor({ nodes: { a: { x: 1 } } }, { type: 'table', id: 'a' })).toBe(false);
+  });
+});
+
+describe('saving the ERD canvas before a new comment thread (BUG-078)', () => {
+  const table = { type: 'table', id: 'orders' };
+  const canvas = (overrides: Partial<Parameters<typeof prepareCanvasAnchor>[1]> = {}) => ({
+    items: [{ id: 'orders' }, { id: 'customers' }], editable: true, pending: false, push: vi.fn(async () => {}), ...overrides,
+  });
+
+  it('does not save an unchanged diagram when an Editor comments on a loaded table', async () => {
+    const unchanged = canvas();
+    await prepareCanvasAnchor(table, unchanged);
+    expect(unchanged.push).not.toHaveBeenCalled();
+  });
+
+  it('still saves and pushes a pending edit, such as a table added moments ago, before its first thread', async () => {
+    const edited = canvas({ items: [{ id: 'orders' }, { id: 'new_table' }], pending: true });
+    await prepareCanvasAnchor({ type: 'table', id: 'new_table' }, edited);
+    expect(edited.push).toHaveBeenCalledTimes(1);
+  });
+
+  it('never saves for a viewer, a production database diagram or an anchor that is not on the canvas', async () => {
+    const readOnly = canvas({ editable: false, pending: true });
+    const missing = canvas({ pending: true });
+    await prepareCanvasAnchor(table, readOnly);
+    await prepareCanvasAnchor({ type: 'relationship', id: 'gone' }, missing);
+    expect(readOnly.push).not.toHaveBeenCalled();
+    expect(missing.push).not.toHaveBeenCalled();
   });
 });
