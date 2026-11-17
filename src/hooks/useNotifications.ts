@@ -62,12 +62,11 @@ export function useNotifications(enabled: boolean) {
     setState((current) => {
       const target = current.items.find((item) => item.id === id);
       if (!target) return current;
-      // The server reads the item's whole group (BUG-081), so the list does the same.
+      // The server reads the item's whole group, and the badge counts groups, so it drops by one (BUG-081).
       const unread = (item: NotificationItem) => !item.readAt && (item.id === id || (target.groupKey !== null && item.groupKey === target.groupKey));
-      const count = current.items.filter(unread).length;
-      if (!count) return current;
+      if (!current.items.some(unread)) return current;
       const readAt = new Date().toISOString();
-      return { ...current, unreadCount: Math.max(0, current.unreadCount - count), items: current.items.map((item) => (unread(item) ? { ...item, readAt } : item)) };
+      return { ...current, unreadCount: Math.max(0, current.unreadCount - 1), items: current.items.map((item) => (unread(item) ? { ...item, readAt } : item)) };
     });
     await apiFetch(`/api/notifications/${encodeURIComponent(id)}/read`, { method: "POST" }).catch(() => undefined);
     void refresh();

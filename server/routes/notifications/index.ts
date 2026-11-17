@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Router, type Request, type Response } from "express";
 import type { Notification } from "@prisma/client";
 import { isLocalPostgres } from "../../lib/config.js";
@@ -44,7 +45,8 @@ export function presentNotification(row: Notification, lookup: Lookup) {
     fileId: accessible ? row.fileId : null,
     entityType: accessible ? row.entityType : null,
     entityId: accessible ? row.entityId : null,
-    groupKey: accessible ? row.groupKey : null,
+    // A Team the user left shows no details, but its replies still group like the unread count (BUG-081).
+    groupKey: row.groupKey && !accessible ? `hidden:${createHash("sha256").update(row.groupKey).digest("hex").slice(0, 16)}` : row.groupKey,
     link: accessible ? row.link : null,
     actor: accessible && row.actorUserId ? { id: row.actorUserId, name: lookup.actorNames.get(row.actorUserId) ?? null } : null,
     payload: accessible ? parsePayload(row.payload) : {},
@@ -58,6 +60,15 @@ export function listLimit(value: unknown): number {
   return Number.isFinite(limit) && limit > 0 ? Math.min(limit, MAX_LIMIT) : DEFAULT_LIMIT;
 }
 
+/** BUG-081: unread bell items as the bell shows them, one per thread (group key) and one per notification without a key. */
+async function unreadItemCount(store: NonNullable<ReturnType<typeof notificationStore>>, recipientUserId: string): Promise<number> {
+  const [single, groups] = await Promise.all([
+    store.count({ where: { recipientUserId, readAt: null, groupKey: null } }),
+    store.groupBy({ by: ["groupKey"], where: { recipientUserId, readAt: null, groupKey: { not: null } } }),
+  ]);
+  return single + groups.length;
+}
+
 router.get("/notifications", authenticate, async (req: Request, res: Response) => {
   const store = notificationStore();
   if (!store || !prisma) return notFound(res);
@@ -69,7 +80,7 @@ router.get("/notifications", authenticate, async (req: Request, res: Response) =
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: listLimit(req.query.limit),
       }),
-      store.count({ where: { recipientUserId: user.id, readAt: null } }),
+      unreadItemCount(store, user.id),
     ]);
     const teamIds = [...new Set(rows.flatMap((row) => (row.teamId ? [row.teamId] : [])))];
     const actorIds = [...new Set(rows.flatMap((row) => (row.actorUserId ? [row.actorUserId] : [])))];

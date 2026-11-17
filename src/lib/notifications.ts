@@ -120,9 +120,29 @@ export function describeNotification(item: NotificationItem): { title: string; d
 /** Personal Workspace is null in items and "" or null as the active Team id. */
 const sameWorkspace = (teamId: string | null, activeTeamId: string | null | undefined) => (teamId ?? null) === (activeTeamId || null);
 
+/**
+ * BUG-081: one bell item per thread across the whole list, as the server counts unread items. The newest notification
+ * stands for the rest and stays unread while any of them is.
+ */
+function collapseGroups(items: NotificationItem[]): NotificationItem[] {
+  const shown: NotificationItem[] = [];
+  const indexByKey = new Map<string, number>();
+  for (const item of items) {
+    const index = item.groupKey ? indexByKey.get(item.groupKey) : undefined;
+    if (index === undefined) {
+      if (item.groupKey) indexByKey.set(item.groupKey, shown.length);
+      shown.push(item);
+      continue;
+    }
+    const first = shown[index];
+    shown[index] = { ...first, groupCount: (first.groupCount ?? 1) + 1, readAt: first.readAt && item.readAt ? first.readAt : null };
+  }
+  return shown;
+}
+
 export function groupNotifications(items: NotificationItem[], scope: NotificationScope, activeTeamId: string | null | undefined): NotificationGroup[] {
   const groups = new Map<string, NotificationGroup>();
-  for (const item of items) {
+  for (const item of collapseGroups(items)) {
     if (scope === "workspace" && !sameWorkspace(item.teamId, activeTeamId)) continue;
     const key = item.teamId ?? "personal";
     let group = groups.get(key);
@@ -136,11 +156,7 @@ export function groupNotifications(items: NotificationItem[], scope: Notificatio
       project = { key: projectKey, label: item.accessible ? payloadText(item.payload, "projectName") : null, items: [] };
       group.projects.push(project);
     }
-    // BUG-081: the newest notification of a group stands for the rest and stays unread while any of them is.
-    const index = item.groupKey ? project.items.findIndex((entry) => entry.groupKey === item.groupKey) : -1;
-    if (index < 0) { project.items.push(item); continue; }
-    const shown = project.items[index];
-    project.items[index] = { ...shown, groupCount: (shown.groupCount ?? 1) + 1, readAt: shown.readAt && item.readAt ? shown.readAt : null };
+    project.items.push(item);
   }
   return [...groups.values()];
 }
