@@ -29,6 +29,7 @@ import { offerLatestVersion, useSyncService } from '../hooks/useSyncService';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useFileChanges } from '../hooks/useFileChanges';
+import { documentVersionKey, getCachedDiagramVersion } from '../lib/diagramVersioning';
 import { useERDSession } from '../hooks/useERDSession';
 import { useSQLGenerator } from '../hooks/useSQLGenerator';
 import { useUpdateCheck } from '../hooks/useUpdateCheck';
@@ -556,6 +557,7 @@ export function WorkspaceProvider({
   // An editor may be mid-edit, so they are offered the latest version instead of having it swapped under them.
   const liveRoute = ({ erd: 'diagrams', notes: 'notes', drawings: 'drawings', flowchart: 'flowcharts' } as Record<string, string>)[view];
   const liveUid = activeDocument?.uid ?? activeDocument?.id;
+  const liveVersionId = view === 'erd' ? activeDiagramId : liveUid;
   useFileChanges(!isPublicView && liveRoute && liveUid != null
     ? `/api/${liveRoute}/${encodeURIComponent(String(liveUid))}/events` : null, () => {
     if (isReadOnlyFile(activeDocument)) { void refreshActiveDocument(); return; }
@@ -569,7 +571,7 @@ export function WorkspaceProvider({
     void fetchProjects(false, debouncedSearchQuery);
     void refreshActiveDocument();
     toast.info('Your access to this Project changed.');
-  });
+  }, () => (liveVersionId == null ? Promise.resolve(null) : getCachedDiagramVersion(documentVersionKey(view, liveVersionId))));
 
   // URL routing for /drawings/:uid
   useEffect(() => {
