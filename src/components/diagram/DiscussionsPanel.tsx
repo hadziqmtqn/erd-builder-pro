@@ -15,6 +15,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { CommentAvatar, shortCommentTime } from "@/components/comments/CommentThreadView";
 import { ReplyBox } from "@/components/comments/ReplyBox";
 import { apiFetch } from "@/lib/api";
+import { fetchWithRetry } from "@/hooks/aiChat/fetchWithRetry";
 import { cn } from "@/lib/utils";
 import { useFileSession } from '@/contexts/FileSessionContext';
 
@@ -138,12 +139,19 @@ function requestPath(base: string, query: Record<string, string | undefined>): s
   return encoded ? `${base}?${encoded}` : base;
 }
 
-async function requestJson(path: string, init?: RequestInit) {
-  const response = await apiFetch(path, init);
+async function requestJson(path: string, init?: RequestInit, retryTransient = false) {
+  const send = () => apiFetch(path, init);
+  const response = retryTransient ? await fetchWithRetry(send, (status) => status >= 500) : await send();
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.error || "The request could not be completed.");
   return body;
 }
+
+/**
+ * BUG-082: a thread list retries a network failure or a 5xx twice with a short pause before the panel shows its error.
+ * A 4xx, such as the generic not-found, is final.
+ */
+export const requestListJson = (path: string) => requestJson(path, undefined, true);
 
 function avatarInitials(name: string): string {
   const initials = name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("");
@@ -556,7 +564,7 @@ export function DiscussionsPanel({
     if (!hasInitialSnapshot.current) setLoadingThreads(true);
     try {
       // The other tab only feeds the badge and the toast, so its failure must not hide the active list.
-      const [data, other] = await Promise.all([requestJson(listEndpoint), requestJson(otherListEndpoint).catch(() => null)]);
+      const [data, other] = await Promise.all([requestListJson(listEndpoint), requestListJson(otherListEndpoint).catch(() => null)]);
       if (requestId !== listRequest.current) return [];
       const nextThreads: Thread[] = Array.isArray(data.threads) ? data.threads.map((thread: RawRecord) => normalizeThread(thread)) : [];
       const otherThreads: Thread[] = Array.isArray(other?.threads) ? other.threads.map((thread: RawRecord) => normalizeThread(thread)) : [];
@@ -747,6 +755,18 @@ export function DiscussionsPanel({
       window.removeEventListener("collaboration-updated", onLocalUpdate);
     };
   }, [loadThreads, projectId, refreshActiveDetail, teamId]);
+
+  // BUG-082: a list that failed also recovers when the tab is shown again or the connection returns.
+  useEffect(() => {
+    if (!loadError) return;
+    const reload = () => { if (document.visibilityState === "visible") void loadThreads(true); };
+    window.addEventListener("online", reload);
+    document.addEventListener("visibilitychange", reload);
+    return () => {
+      window.removeEventListener("online", reload);
+      document.removeEventListener("visibilitychange", reload);
+    };
+  }, [loadError, loadThreads]);
 
   useEffect(() => {
     if (!open) return;
