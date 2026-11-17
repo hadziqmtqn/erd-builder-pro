@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bell, Check, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -28,9 +28,18 @@ export function NotificationBell(props: Props) {
   return (props.placement === "header") === isMobile ? <NotificationPopover {...props} /> : null;
 }
 
+/**
+ * BUG-080: the popover opens on the selected scope tab (All by default), not on its first button, so Enter or Space right
+ * after opening it cannot mark everything as read. Without that tab, focus stays where it was.
+ */
+export function selectedScopeTab(root: ParentNode | null): HTMLElement | false {
+  return root?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]') ?? false;
+}
+
 function NotificationPopover({ placement, activeTeamId, onSelectWorkspace }: Props) {
   const navigate = useNavigate();
   const descriptionId = useId();
+  const scopeTabs = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [scope, setScope] = useState<NotificationScope>("all");
   const { items, unreadCount, status, refresh, markRead, markAllRead } = useNotifications(true);
@@ -87,6 +96,7 @@ function NotificationPopover({ placement, activeTeamId, onSelectWorkspace }: Pro
         side={sidebar ? "right" : "bottom"}
         align={sidebar ? "start" : "end"}
         sideOffset={8}
+        initialFocus={() => selectedScopeTab(scopeTabs.current)}
         aria-describedby={descriptionId}
         className="flex max-h-[min(36rem,calc(100svh-5rem))] w-[min(24rem,calc(100vw-1rem))] flex-col gap-0 overflow-hidden p-0"
       >
@@ -101,7 +111,7 @@ function NotificationPopover({ placement, activeTeamId, onSelectWorkspace }: Pro
             Mark all as read
           </Button>
         </div>
-        <div className="shrink-0 border-b border-border/70 px-3 py-2">
+        <div ref={scopeTabs} className="shrink-0 border-b border-border/70 px-3 py-2">
           <Tabs value={scope} onValueChange={(value) => setScope(value as NotificationScope)} className="w-full">
             <TabsList className="mx-auto">
               <TabsTrigger value="all">All</TabsTrigger>
