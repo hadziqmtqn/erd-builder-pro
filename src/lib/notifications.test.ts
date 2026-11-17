@@ -86,6 +86,19 @@ describe("notification grouping", () => {
     expect(groupNotifications(items, "workspace", "").map((group) => group.key)).toEqual(["personal"]);
     expect(groupNotifications(items, "workspace", null).map((group) => group.key)).toEqual(["personal"]);
   });
+
+  it("shows the replies of one thread as one item, unread while any reply is (BUG-081)", () => {
+    const items = [
+      raw({ id: "n3", group_key: "discussion:thread-1", read_at: "2026-11-15T03:00:00.000Z", created_at: "2026-11-15T03:00:00.000Z" }),
+      raw({ id: "n2", group_key: "discussion:thread-1", created_at: "2026-11-15T02:00:00.000Z" }),
+      raw({ id: "n1", group_key: "discussion:thread-2", created_at: "2026-11-15T01:00:00.000Z" }),
+      raw({ id: "n0", type: "file.deleted", group_key: null }),
+    ].map(normalizeNotification);
+    const shown = groupNotifications(items, "all", "team-1")[0].projects[0].items;
+    expect(shown.map((item) => [item.id, item.groupCount ?? 1, item.readAt])).toEqual([["n3", 2, null], ["n1", 1, null], ["n0", 1, null]]);
+    expect(describeNotification(shown[0]).title).toBe("Jay Test replied to a discussion (2)");
+    expect(describeNotification(shown[1]).title).toBe("Jay Test replied to a discussion");
+  });
 });
 
 describe("notification click target", () => {

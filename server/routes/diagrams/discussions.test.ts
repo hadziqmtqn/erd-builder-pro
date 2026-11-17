@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   executeRaw: vi.fn(),
   transaction: vi.fn(),
   publish: vi.fn(),
+  publishUser: vi.fn(),
+  readGroup: vi.fn(),
   notify: vi.fn(),
   role: "commenter" as string | null,
 }));
@@ -22,7 +24,8 @@ vi.mock("../../lib/prisma.js", () => ({
     $transaction: (callback: (tx: unknown) => unknown) => mocks.transaction(callback),
   },
 }));
-vi.mock("../../lib/cloud-live-sync.js", () => ({ publishCloudWorkspaceSync: mocks.publish }));
+vi.mock("../../lib/cloud-live-sync.js", () => ({ publishCloudWorkspaceSync: mocks.publish, publishUserNotification: mocks.publishUser }));
+vi.mock("../../lib/notifications.js", () => ({ readNotificationGroup: mocks.readGroup }));
 vi.mock("./discussion-notifications.js", () => ({ notifyThreadMessage: mocks.notify }));
 vi.mock("../../lib/project-access.js", () => ({
   canCommentRole: (role: string | null) => role !== null && role !== "viewer",
@@ -59,6 +62,8 @@ describe("Cloud ERD discussions scope", () => {
     mocks.queryRaw.mockReset();
     mocks.executeRaw.mockReset();
     mocks.transaction.mockReset();
+    mocks.publishUser.mockReset();
+    mocks.readGroup.mockReset().mockResolvedValue(0);
     mocks.publish.mockReset();
     mocks.notify.mockReset().mockResolvedValue([]);
     mocks.role = "commenter";
@@ -1092,9 +1097,13 @@ describe("Cloud ERD discussions scope", () => {
       if (query.includes('SELECT t."id"') && query.includes('FROM "discussion_threads"')) return [{ id: "thread-1" }];
       return [];
     });
+    mocks.readGroup.mockResolvedValue(2);
     await withServer(async (url) => {
       expect((await fetch(`${url}/api/projects/7/discussions/thread-1/read`, { method: "POST" })).status).toBe(200);
     });
     expect(mocks.executeRaw).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO "discussion_reads"'), "thread-1", "member-a");
+    // BUG-081: the thread's bell notifications are read too, and the user's open bells refresh.
+    expect(mocks.readGroup).toHaveBeenCalledWith("member-a", "discussion:thread-1");
+    expect(mocks.publishUser).toHaveBeenCalledWith(["member-a"]);
   });
 });
