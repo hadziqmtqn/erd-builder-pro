@@ -3,6 +3,9 @@ import { apiFetch } from '@/lib/api';
 // Client for the per-file comment endpoints (COL-003). Comments live on their file; the Discussions panel never lists them.
 
 export type CommentFeature = 'note' | 'diagram' | 'drawing' | 'flowchart';
+
+/** COL-005: per-element comments on Drawings are paused until they get the same comment window as ERD and Flowchart. */
+export const DRAWING_COMMENTS_ENABLED = false;
 export type CommentFileRef = { projectId: string; teamId: string; featureType: CommentFeature; fileId: string };
 export type CommentAnchorRef = { type: string; id: string };
 export type CommentMessage = { id: string; authorId: string; authorName: string; body: string; createdAt: string };

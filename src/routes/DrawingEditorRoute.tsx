@@ -5,10 +5,9 @@ import { Image } from 'lucide-react';
 import { ProjectFileTabs } from '@/components/ProjectFileTabs';
 import { FileCommentMarkersProvider, type FileCommentMarkerConfig } from '@/components/diagram/FileCommentMarkers';
 import type { TeamsState } from '@/hooks/useTeams';
+import { DRAWING_COMMENTS_ENABLED } from '@/lib/fileComments';
 
 const DrawingsView = React.lazy(() => import('@/components/views/DrawingsView').then(m => ({ default: m.DrawingsView })));
-
-const DRAWING_COMMENTS_ENABLED = false;
 
 export function DrawingEditorRoute() {
   const ctx = useWorkspace();
@@ -23,7 +22,6 @@ export function DrawingEditorRoute() {
   const drawingFileId = activeDrawing?.uid ?? activeDrawingId;
   const drawingProject = ctx.projects.find((project: any) => String(project.id) === String(drawingProjectId));
   const drawingProjectTeamId = drawingProject?.team_id ?? drawingProject?.teamId;
-  // COL-005: per-element comments on Drawings are paused until they get the same comment window as ERD and Flowchart.
   const commentsEnabled = DRAWING_COMMENTS_ENABLED && Boolean(!isPublicView && !ctx.isGuest && ctx.getFileAccessRole(activeDrawing) !== 'viewer' && drawingProjectTeamId && teamState.activeTeamId
     && String(drawingProjectTeamId) === String(teamState.activeTeamId));
   const commentMarkers = useMemo<FileCommentMarkerConfig | null>(() => (
