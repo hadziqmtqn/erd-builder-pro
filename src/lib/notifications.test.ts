@@ -99,6 +99,15 @@ describe("notification grouping", () => {
     expect(describeNotification(shown[0]).title).toBe("Jay Test replied to a discussion (2)");
     expect(describeNotification(shown[1]).title).toBe("Jay Test replied to a discussion");
   });
+
+  it("keeps one item per thread even after its file moved to another Project, as the unread count does", () => {
+    const items = [
+      raw({ id: "n2", group_key: "comment:thread-9", project_id: 8, created_at: "2026-11-15T02:00:00.000Z" }),
+      raw({ id: "n1", group_key: "comment:thread-9", project_id: 7, created_at: "2026-11-15T01:00:00.000Z" }),
+    ].map(normalizeNotification);
+    const projects = groupNotifications(items, "all", "team-1")[0].projects;
+    expect(projects.map((project) => [project.key, project.items.map((item) => [item.id, item.groupCount])])).toEqual([["8", [["n2", 2]]]]);
+  });
 });
 
 describe("notification click target", () => {

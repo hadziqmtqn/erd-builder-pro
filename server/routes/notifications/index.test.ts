@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   hasTable: true,
   findMany: vi.fn(),
   count: vi.fn(),
+  groupBy: vi.fn(),
   findFirst: vi.fn(),
   updateMany: vi.fn(),
   teamFindMany: vi.fn(),
@@ -14,7 +15,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../lib/notifications.js", () => ({
-  notificationStore: () => (mocks.hasTable ? { findMany: mocks.findMany, count: mocks.count, findFirst: mocks.findFirst, updateMany: mocks.updateMany } : null),
+  notificationStore: () => (mocks.hasTable ? { findMany: mocks.findMany, count: mocks.count, groupBy: mocks.groupBy, findFirst: mocks.findFirst, updateMany: mocks.updateMany } : null),
 }));
 vi.mock("../../lib/prisma.js", () => ({
   prisma: { team: { findMany: mocks.teamFindMany }, user: { findMany: mocks.userFindMany } },
@@ -65,7 +66,8 @@ describe("notification routes (NOT-001.1)", () => {
   beforeEach(() => {
     mocks.hasTable = true;
     mocks.findMany.mockReset().mockResolvedValue([row()]);
-    mocks.count.mockReset().mockResolvedValue(1);
+    mocks.count.mockReset().mockResolvedValue(0);
+    mocks.groupBy.mockReset().mockResolvedValue([{ groupKey: "thread-1" }]);
     mocks.findFirst.mockReset().mockResolvedValue({ groupKey: null });
     mocks.updateMany.mockReset().mockResolvedValue({ count: 1 });
     mocks.teamFindMany.mockReset().mockResolvedValue([{ id: "team-1", name: "Anind's Workspace" }, { id: "team-2", name: "Old Team" }]);
@@ -77,7 +79,8 @@ describe("notification routes (NOT-001.1)", () => {
     const res = await call("get", "/notifications");
 
     expect(mocks.findMany).toHaveBeenCalledWith({ where: { recipientUserId: "anind" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 30 });
-    expect(mocks.count).toHaveBeenCalledWith({ where: { recipientUserId: "anind", readAt: null } });
+    expect(mocks.count).toHaveBeenCalledWith({ where: { recipientUserId: "anind", readAt: null, groupKey: null } });
+    expect(mocks.groupBy).toHaveBeenCalledWith({ by: ["groupKey"], where: { recipientUserId: "anind", readAt: null, groupKey: { not: null } } });
     expect(mocks.canAccessTeam).toHaveBeenCalledWith("team-1", "anind", false);
     expect(res.setHeader).toHaveBeenCalledWith("Cache-Control", "private, no-store");
     expect(res.json).toHaveBeenCalledWith({
@@ -93,6 +96,14 @@ describe("notification routes (NOT-001.1)", () => {
       unreadCount: 1,
       live: true,
     });
+  });
+
+  it("counts unread bell items: one per thread, one per notification without a group (BUG-081)", async () => {
+    // Two replies in thread-1 and one in thread-2 are two items; two ungrouped notifications add two more.
+    mocks.count.mockResolvedValue(2);
+    mocks.groupBy.mockResolvedValue([{ groupKey: "discussion:thread-1" }, { groupKey: "discussion:thread-2" }]);
+    const res = await call("get", "/notifications");
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ unreadCount: 4 }));
   });
 
   it("tells the bell when this server has no live channel (NOT-001.5)", async () => {
@@ -118,6 +129,9 @@ describe("notification routes (NOT-001.1)", () => {
 
     expect(item).toMatchObject({ type: "discussion.reply", teamName: "Old Team", accessible: false });
     expect(item).toMatchObject({ projectId: null, featureType: null, fileId: null, entityId: null, link: null, actor: null, payload: {} });
+    // Its replies still group like the unread count, without showing the thread id.
+    expect(item.groupKey).toMatch(/^hidden:[0-9a-f]{16}$/);
+    expect(item.groupKey).not.toContain("thread-1");
   });
 
   it("returns an empty payload when the stored payload is not a JSON object", async () => {
