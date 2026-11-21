@@ -41,6 +41,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "macOS": {
+      "signingIdentity": "-"
+    },
     "windows": {
       "wix": {
         "version": "3.4.7.3",

@@ -117,6 +117,11 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
+      - name: Verify app signature (ARM64)
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: bash src-tauri/scripts/verify-macos-signature.sh "src-tauri/target/release/bundle/macos/ERD Builder Pro.app"
+
       - name: Create .app.tar.gz (ARM64)
         if: matrix.platform == 'macos'
         shell: bash
@@ -180,6 +185,11 @@ jobs:
           npm_config_arch: x64
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Verify app signature (x86_64)
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: bash src-tauri/scripts/verify-macos-signature.sh "src-tauri/target/x86_64-apple-darwin/release/bundle/macos/ERD Builder Pro.app"
 
       - name: Create .app.tar.gz (x86_64)
         if: matrix.platform == 'macos'
@@ -331,7 +341,9 @@ jobs:
 
           ### Desktop app signing
 
-          Windows installers are not Authenticode-signed. The macOS app is not signed with an Apple Developer ID or notarized. We distribute these desktop builds through GitHub Releases, not the Microsoft Store or Apple App Store. SmartScreen or Gatekeeper may show a warning or prevent launch.
+          Windows installers are not Authenticode-signed. The macOS app is ad-hoc signed, but not signed with an Apple Developer ID or notarized. We distribute these desktop builds through GitHub Releases, not the Microsoft Store or Apple App Store. SmartScreen or Gatekeeper may show a warning or prevent launch.
+
+          On macOS, the first launch shows "Apple could not verify…". Close the dialog, open System Settings → Privacy & Security, and click **Open Anyway** next to ERD Builder Pro.
           NOTICE
 
           echo "Generated release notes:"
