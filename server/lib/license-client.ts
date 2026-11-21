@@ -21,6 +21,11 @@ const OFFICIAL_LICENSE_PUBLIC_KEY_ID = "production-1";
 const OFFICIAL_LICENSE_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEABi1Uek1UFOesLWNtuyL8T7+nZzbWIoBhNeRaQ/6w4Wk=
 -----END PUBLIC KEY-----`;
+// Official license service and issuers, used when ERDBPRO_LICENSE_API_URL or
+// ERDBPRO_LICENSE_ISSUER is unset (SH-008), so Docker installs need no license env.
+// The license host must answer the API itself: requests do not follow redirects.
+const OFFICIAL_LICENSE_API_URL = "https://license.erdbuilderpro.com";
+const OFFICIAL_LICENSE_ISSUERS = ["https://erdbuilderpro.com", "https://www.erdbuilderpro.com"];
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const UUID_CANONICAL = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CAPABILITY_KEY = /^[a-z][a-z0-9_]*$/;
@@ -190,8 +195,7 @@ export function removeStoredInstanceLicense(): void {
 }
 
 function configuredApiUrl(): URL {
-  const raw = process.env.ERDBPRO_LICENSE_API_URL?.trim();
-  if (!raw) throw new LicenseClientError("LICENSE_CLIENT_NOT_CONFIGURED", 503);
+  const raw = process.env.ERDBPRO_LICENSE_API_URL?.trim() || OFFICIAL_LICENSE_API_URL;
 
   try {
     const url = new URL(raw);
@@ -224,9 +228,11 @@ async function requestLicenseApi(
   if (clientToken) headers.Authorization = `Bearer ${clientToken}`;
   if (action === "activate") headers["Idempotency-Key"] = randomUUID();
 
+  // Resolve the URL first so a misconfigured API URL keeps its own error code.
+  const url = endpointUrl(action);
   let response: Response;
   try {
-    response = await fetch(endpointUrl(action), {
+    response = await fetch(url, {
       method: "POST",
       redirect: "manual",
       headers,
@@ -324,10 +330,11 @@ export function verifySignedEntitlement(
     ? process.env.ERDBPRO_LICENSE_PUBLIC_KEY?.trim().replace(/\\n/g, "\n") || OFFICIAL_LICENSE_PUBLIC_KEY
     : OFFICIAL_LICENSE_PUBLIC_KEY;
   const issuer = process.env.ERDBPRO_LICENSE_ISSUER?.trim();
+  const issuers = issuer ? [issuer] : OFFICIAL_LICENSE_ISSUERS;
   const keyId = process.env.NODE_ENV === "test"
     ? process.env.ERDBPRO_LICENSE_PUBLIC_KEY_ID?.trim() || OFFICIAL_LICENSE_PUBLIC_KEY_ID
     : OFFICIAL_LICENSE_PUBLIC_KEY_ID;
-  if (!publicKey || !issuer) throw new LicenseClientError("LICENSE_VERIFICATION_NOT_CONFIGURED", 503);
+  if (!publicKey) throw new LicenseClientError("LICENSE_VERIFICATION_NOT_CONFIGURED", 503);
   if (header?.alg !== "EdDSA" || header?.kid !== keyId) {
     throw new LicenseClientError("LICENSE_SIGNATURE_INVALID", 502);
   }
@@ -349,7 +356,7 @@ export function verifySignedEntitlement(
   const maxMembers = limits?.max_members;
   const maxTeams = limits?.max_teams;
   if (
-    claims?.iss !== issuer ||
+    !issuers.includes(claims?.iss) ||
     !claimAudience(claims?.aud) ||
     claims?.product_type !== PRODUCT_TYPE ||
     claims?.client_type !== CLIENT_TYPE ||

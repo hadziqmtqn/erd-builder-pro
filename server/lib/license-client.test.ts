@@ -393,3 +393,108 @@ describe("self-host license entitlement verification", () => {
     expect(() => verifyStoredInstanceLicense({ allowGrace: true })).toThrowError(expect.objectContaining({ code: "LICENSE_EXPIRED" }));
   });
 });
+
+describe("official license service defaults (SH-008)", () => {
+  const OFFICIAL_ISSUER = "https://www.erdbuilderpro.com";
+
+  function useLicenseEnvDefaults() {
+    vi.stubEnv("DATABASE_URL", "postgresql://localhost/erd");
+    useTemporaryDirectory();
+    delete process.env.ERDBPRO_LICENSE_API_URL;
+  }
+
+  function officialEntitlement(installationId: string, issuer = OFFICIAL_ISSUER, keyPair = generateKeyPairSync("ed25519")) {
+    const issuedAt = Math.floor(Date.now() / 1000);
+    const token = signedEntitlement(installationId, ["team_files"], "erd-self-host-instance-license", issuedAt, issuedAt + 3600, { iss: issuer }, keyPair);
+    delete process.env.ERDBPRO_LICENSE_ISSUER;
+    return token;
+  }
+
+  function jsonResponse(body: unknown, status = 200) {
+    return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+  }
+
+  it("activates and checks against the official license service when no license env is set", async () => {
+    useLicenseEnvDefaults();
+    const installationId = getInstallationId();
+    const keys = generateKeyPairSync("ed25519");
+    const token = officialEntitlement(installationId, OFFICIAL_ISSUER, keys);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ client_token: "official-token", signed_entitlement: token, license: { code_last_four: "WXYZ" } }))
+      .mockResolvedValueOnce(jsonResponse({ signed_entitlement: token }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const activated = await activateSelfHostInstanceLicense({ licenseKey: "license-key", teamCount: 1, memberCount: 3 });
+    const checked = await checkSelfHostInstanceLicense({ teamCount: 1, memberCount: 3 });
+
+    expect(activated.entitlement.planCode).toBe("team-10");
+    expect(checked.entitlement.licenseId).toBe(activated.entitlement.licenseId);
+    expect(String(fetchMock.mock.calls[0][0])).toBe("https://license.erdbuilderpro.com/api/v1/license-client/self_host/activate");
+    expect(String(fetchMock.mock.calls[1][0])).toBe("https://license.erdbuilderpro.com/api/v1/license-client/self_host/check");
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: "POST", redirect: "manual" });
+    expect(new Headers(fetchMock.mock.calls[1][1].headers).get("Authorization")).toBe("Bearer official-token");
+    expect(verifyStoredInstanceLicense().entitlement.licenseId).toBe(activated.entitlement.licenseId);
+  });
+
+  it("reports the license service's own error instead of a missing configuration", async () => {
+    useLicenseEnvDefaults();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ error: { code: "LICENSE_NOT_FOUND" } }, 404)));
+
+    await expect(activateSelfHostInstanceLicense({ licenseKey: "invalid-key", teamCount: 0, memberCount: 0 }))
+      .rejects.toMatchObject({ code: "LICENSE_NOT_FOUND", status: 404 });
+  });
+
+  it.each(["", "   "])("treats a blank API URL (%j) as unset", async (blank) => {
+    useLicenseEnvDefaults();
+    process.env.ERDBPRO_LICENSE_API_URL = blank;
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ error: { code: "LICENSE_NOT_FOUND" } }, 404));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(activateSelfHostInstanceLicense({ licenseKey: "invalid-key", teamCount: 0, memberCount: 0 })).rejects.toMatchObject({ code: "LICENSE_NOT_FOUND" });
+    expect(String(fetchMock.mock.calls[0][0])).toBe("https://license.erdbuilderpro.com/api/v1/license-client/self_host/activate");
+  });
+
+  it("prefers a configured API URL over the official service", async () => {
+    useLicenseEnvDefaults();
+    process.env.ERDBPRO_LICENSE_API_URL = "https://staging-saas.example.test/some/path";
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ error: { code: "LICENSE_NOT_FOUND" } }, 404));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(activateSelfHostInstanceLicense({ licenseKey: "invalid-key", teamCount: 0, memberCount: 0 })).rejects.toMatchObject({ code: "LICENSE_NOT_FOUND" });
+    expect(String(fetchMock.mock.calls[0][0])).toBe("https://staging-saas.example.test/api/v1/license-client/self_host/activate");
+  });
+
+  it("keeps requiring HTTPS for a configured API URL in production", async () => {
+    useLicenseEnvDefaults();
+    process.env.NODE_ENV = "production";
+    process.env.ERDBPRO_LICENSE_API_URL = "http://license.example.test";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(activateSelfHostInstanceLicense({ licenseKey: "license-key", teamCount: 0, memberCount: 0 }))
+      .rejects.toMatchObject({ code: "LICENSE_API_MUST_USE_HTTPS", status: 503 });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each(["https://erdbuilderpro.com", "https://www.erdbuilderpro.com"])("accepts the official issuer %s when no issuer is configured", (issuer) => {
+    const installationId = "018f3f7e-1c33-43f2-a4e4-19b55e61d3fa";
+    const token = officialEntitlement(installationId, issuer);
+
+    expect(verifySignedEntitlement(token, installationId)).toMatchObject({ planCode: "team-10" });
+  });
+
+  it("rejects any other issuer when no issuer is configured", () => {
+    const installationId = "018f3f7e-1c33-43f2-a4e4-19b55e61d3fa";
+    const token = officialEntitlement(installationId, "https://staging-saas.erdbuilderpro.com");
+
+    expect(() => verifySignedEntitlement(token, installationId)).toThrowError(expect.objectContaining({ code: "LICENSE_ENTITLEMENT_INVALID" }));
+  });
+
+  it("accepts only the configured issuer when one is set", () => {
+    const installationId = "018f3f7e-1c33-43f2-a4e4-19b55e61d3fa";
+    const token = officialEntitlement(installationId);
+    process.env.ERDBPRO_LICENSE_ISSUER = "https://staging-saas.erdbuilderpro.com";
+
+    expect(() => verifySignedEntitlement(token, installationId)).toThrowError(expect.objectContaining({ code: "LICENSE_ENTITLEMENT_INVALID" }));
+  });
+});
