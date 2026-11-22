@@ -214,6 +214,74 @@ fn retry_while_locked<T>(timeout: Duration, mut run: impl FnMut() -> std::io::Re
     }
 }
 
+/// Whether the updater can replace the running app (BUG-097). On macOS the updater renames the `.app`
+/// bundle, using a temp folder next to the bundle when the system temp dir is on another volume. macOS
+/// runs a quarantined app that was not moved with Finder from a read-only App Translocation copy, and
+/// an app opened from a mounted disk image sits on a read-only volume; both fail with "Read-only file
+/// system (os error 30)". A folder the user may not write to is fine: the updater asks for an admin
+/// password there.
+#[derive(Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateInstallLocation {
+    can_install: bool,
+    translocated: bool,
+    read_only: bool,
+}
+
+/// The `.app` bundle that contains `exe`, if any (none in `tauri dev` or on other platforms).
+fn app_bundle_of(exe: &std::path::Path) -> Option<std::path::PathBuf> {
+    exe.ancestors()
+        .find(|path| path.extension().map_or(false, |ext| ext == "app"))
+        .map(std::path::Path::to_path_buf)
+}
+
+fn is_translocated(path: &std::path::Path) -> bool {
+    path.components().any(|part| part.as_os_str() == "AppTranslocation")
+}
+
+/// True for the "Read-only file system" error (EROFS). Other errors, such as a permission error the
+/// updater handles with an admin prompt, do not block the install.
+fn is_read_only_error(error: &std::io::Error) -> bool {
+    error.kind() == std::io::ErrorKind::ReadOnlyFilesystem || (cfg!(unix) && error.raw_os_error() == Some(30))
+}
+
+/// Creates and removes a probe folder in `dir`, the operation the updater needs next to the bundle,
+/// and reports whether it failed because the volume is read-only.
+fn dir_is_on_read_only_volume(dir: &std::path::Path) -> bool {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_nanos());
+    let probe = dir.join(format!(".erdbpro-update-probe-{}-{}", std::process::id(), nanos));
+    match std::fs::create_dir(&probe) {
+        Ok(()) => {
+            let _ = std::fs::remove_dir(&probe);
+            false
+        }
+        Err(error) => is_read_only_error(&error),
+    }
+}
+
+fn update_install_location_for(exe: &std::path::Path) -> UpdateInstallLocation {
+    let Some(bundle) = app_bundle_of(exe) else {
+        return UpdateInstallLocation { can_install: true, translocated: false, read_only: false };
+    };
+    let translocated = is_translocated(&bundle);
+    let read_only = bundle.parent().map_or(false, dir_is_on_read_only_volume);
+    UpdateInstallLocation { can_install: !translocated && !read_only, translocated, read_only }
+}
+
+#[tauri::command]
+fn update_install_location() -> UpdateInstallLocation {
+    if !cfg!(target_os = "macos") {
+        return UpdateInstallLocation { can_install: true, translocated: false, read_only: false };
+    }
+    match std::env::current_exe() {
+        Ok(exe) => update_install_location_for(&exe),
+        // Unknown location: let the updater try, as before.
+        Err(_) => UpdateInstallLocation { can_install: true, translocated: false, read_only: false },
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let context = tauri::generate_context!();
@@ -242,6 +310,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .invoke_handler(tauri::generate_handler![update_install_location])
         .setup(|app| {
             if std::env::args().any(|arg| arg == "--mcp") {
                 let code = match run_mcp_stdio(app) {
@@ -1304,5 +1373,101 @@ mod tests {
             assert!(result.is_err());
             assert_eq!(calls, 1);
         }
+    }
+
+    use super::{app_bundle_of, is_read_only_error, is_translocated, update_install_location_for, UpdateInstallLocation};
+    use std::path::Path;
+
+    #[test]
+    fn only_the_read_only_volume_error_blocks_the_install() {
+        assert!(is_read_only_error(&std::io::Error::from(std::io::ErrorKind::ReadOnlyFilesystem)));
+        if cfg!(unix) {
+            assert!(is_read_only_error(&std::io::Error::from_raw_os_error(30))); // EROFS
+            assert!(!is_read_only_error(&std::io::Error::from_raw_os_error(13))); // EACCES: admin prompt
+        }
+        assert!(!is_read_only_error(&std::io::Error::from(std::io::ErrorKind::NotFound)));
+    }
+
+    #[test]
+    fn app_bundle_of_finds_the_enclosing_app() {
+        let exe = Path::new("/Applications/ERD Builder Pro.app/Contents/MacOS/ERD Builder Pro");
+        assert_eq!(app_bundle_of(exe).unwrap(), Path::new("/Applications/ERD Builder Pro.app"));
+        assert_eq!(app_bundle_of(Path::new("/usr/local/bin/erd-builder-pro")), None);
+    }
+
+    #[test]
+    fn is_translocated_matches_only_the_translocation_folder() {
+        assert!(is_translocated(Path::new(
+            "/private/var/folders/rj/x/T/AppTranslocation/2B6F053D/d/ERD Builder Pro.app"
+        )));
+        assert!(!is_translocated(Path::new("/Applications/ERD Builder Pro.app")));
+        assert!(!is_translocated(Path::new("/Users/me/AppTranslocationNotes/ERD Builder Pro.app")));
+    }
+
+    #[test]
+    fn update_install_location_needs_a_writable_bundle_folder() {
+        let base = std::env::temp_dir().join(format!("erd-bug097-{}", std::process::id()));
+        let exe = base.join("ERD Builder Pro.app").join("Contents").join("MacOS").join("ERD Builder Pro");
+        std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+
+        // Writable folder: the update can be installed, and the probe folder is cleaned up.
+        assert_eq!(
+            update_install_location_for(&exe),
+            UpdateInstallLocation { can_install: true, translocated: false, read_only: false }
+        );
+        assert_eq!(std::fs::read_dir(&base).unwrap().count(), 1);
+
+        // A folder the user may not write to is left to the updater, which asks for an admin password.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o555)).unwrap();
+            let location = update_install_location_for(&exe);
+            std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o755)).unwrap();
+            assert_eq!(location, UpdateInstallLocation { can_install: true, translocated: false, read_only: false });
+        }
+
+        std::fs::remove_dir_all(&base).unwrap();
+
+        // Translocated copy: refused whatever the folder allows.
+        let translocated = Path::new("/private/var/folders/x/T/AppTranslocation/ID/d/ERD Builder Pro.app/Contents/MacOS/ERD Builder Pro");
+        let location = update_install_location_for(translocated);
+        assert!(location.translocated);
+        assert!(!location.can_install);
+    }
+
+    /// Mounts a real read-only disk image, like a downloaded DMG. macOS only, so run it on demand:
+    /// `cargo test --lib -- --ignored read_only_disk_image`.
+    #[test]
+    #[ignore]
+    #[cfg(target_os = "macos")]
+    fn read_only_disk_image_blocks_the_install() {
+        use std::process::Command;
+        let base = std::env::temp_dir().join(format!("erd-bug097-dmg-{}", std::process::id()));
+        let source = base.join("source");
+        let mount = base.join("mount");
+        let image = base.join("test.dmg");
+        std::fs::create_dir_all(source.join("ERD Builder Pro.app/Contents/MacOS")).unwrap();
+        std::fs::write(source.join("ERD Builder Pro.app/Contents/MacOS/ERD Builder Pro"), "exe").unwrap();
+        std::fs::create_dir_all(&mount).unwrap();
+        let run = |args: &[&std::ffi::OsStr]| Command::new("hdiutil").args(args).output().unwrap();
+        let created = run(&["create".as_ref(), "-quiet".as_ref(), "-srcfolder".as_ref(), source.as_os_str(), "-format".as_ref(), "UDZO".as_ref(), image.as_os_str()]);
+        assert!(created.status.success(), "{}", String::from_utf8_lossy(&created.stderr));
+        let attached = run(&["attach".as_ref(), "-readonly".as_ref(), "-nobrowse".as_ref(), "-noautoopen".as_ref(), "-mountpoint".as_ref(), mount.as_os_str(), image.as_os_str()]);
+        assert!(attached.status.success(), "{}", String::from_utf8_lossy(&attached.stderr));
+
+        let location = update_install_location_for(&mount.join("ERD Builder Pro.app/Contents/MacOS/ERD Builder Pro"));
+
+        run(&["detach".as_ref(), "-quiet".as_ref(), mount.as_os_str()]);
+        std::fs::remove_dir_all(&base).unwrap();
+        assert_eq!(location, UpdateInstallLocation { can_install: false, translocated: false, read_only: true });
+    }
+
+    #[test]
+    fn update_install_location_outside_a_bundle_keeps_the_old_behaviour() {
+        assert_eq!(
+            update_install_location_for(Path::new("/tmp/target/debug/app")),
+            UpdateInstallLocation { can_install: true, translocated: false, read_only: false }
+        );
     }
 }
