@@ -4,6 +4,7 @@ import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
 import { openUrl, revealItemInDir } from '@tauri-apps/plugin-opener';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { check, type Update } from '@tauri-apps/plugin-updater';
+import { getUpdateInstallLocation, MOVE_TO_APPLICATIONS_TITLE, moveToApplicationsMessage, quitApp } from '../lib/update-install-location';
 import { progressText } from './format';
 import { errorReport, sendReport, type ErrorReport } from './report';
 import './updater.css';
@@ -116,6 +117,17 @@ function renderAvailable(update: Update) {
 }
 
 async function install(update: Update) {
+  // A copy on a read-only location cannot be replaced, so do not download in vain (BUG-097).
+  const location = await getUpdateInstallLocation();
+  if (!location.canInstall) {
+    render(
+      header(MOVE_TO_APPLICATIONS_TITLE, moveToApplicationsMessage(location), true),
+      h('div', { class: 'actions' },
+        button('Quit ERD Builder Pro', quitApp, 'primary'),
+        button('Download manually', downloadPage, 'link')),
+    );
+    return;
+  }
   const fill = h('div', { class: 'fill' });
   const track = h('div', { class: 'track', role: 'progressbar', 'aria-label': 'Download progress', 'aria-valuemin': '0', 'aria-valuemax': '100' }, fill);
   const percentLabel = h('span', {}, '0%');

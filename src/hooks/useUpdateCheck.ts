@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { check } from '@tauri-apps/plugin-updater';
+import { getUpdateInstallLocation, MOVE_TO_APPLICATIONS_TITLE, moveToApplicationsMessage, quitApp } from '@/lib/update-install-location';
 
 const DISMISS_KEY = 'erd-update-dismissed-version';
 const NOTIFIED_KEY = 'erd-update-notified-version';
@@ -51,6 +52,19 @@ export function useUpdateCheck(onUpdateAvailable?: () => void, skipAutoCheck?: b
     }
     downloadingRef.current = true;
     setIsDownloading(true);
+    // A copy on a read-only location cannot be replaced, so do not download in vain (BUG-097).
+    const location = await getUpdateInstallLocation();
+    if (!location.canInstall) {
+      updateLog('warn', 'install_location_blocked', JSON.stringify(location));
+      toast.error(MOVE_TO_APPLICATIONS_TITLE, {
+        description: moveToApplicationsMessage(location),
+        duration: 20000,
+        action: { label: 'Quit', onClick: () => { void quitApp(); } },
+      });
+      setIsDownloading(false);
+      downloadingRef.current = false;
+      return;
+    }
     updateLog('info', 'download STARTED');
     const toastId = toast.loading('Downloading update...', { description: 'Please wait, downloading the latest version.' });
     updateLog('info', 'download_started', u.version);

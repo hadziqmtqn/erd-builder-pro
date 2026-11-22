@@ -4,6 +4,7 @@ import { ExternalLink, RefreshCw, CheckCircle2, Download, LoaderCircle, Heart } 
 import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { openExternalUrl } from '@/lib/urlUtils';
+import { getUpdateInstallLocation, MOVE_TO_APPLICATIONS_TITLE, moveToApplicationsMessage, quitApp } from '@/lib/update-install-location';
 
 async function getVersion(): Promise<string> {
   try {
@@ -106,22 +107,35 @@ export function AboutDialog({
     } else if (localUpdateObj) {
       if (localIsDownloading) return;
       setLocalIsDownloading(true);
-      localUpdateObj.downloadAndInstall(() => {}).catch((err: unknown) => {
-        const detail =
-          typeof err === 'string'
-            ? err
-            : (err as any)?.message
-              ? (err as any).message
-              : JSON.stringify(err);
-        toast.error('Update failed', {
-          description: detail || 'An error occurred while downloading the update.',
-          duration: 12000,
-          action: {
-            label: 'Copy Error',
-            onClick: () => navigator.clipboard.writeText(detail).catch(() => {}),
-          },
-        });
-      }).finally(() => setLocalIsDownloading(false));
+      void (async () => {
+        // A copy on a read-only location cannot be replaced, so do not download in vain (BUG-097).
+        const location = await getUpdateInstallLocation();
+        if (!location.canInstall) {
+          toast.error(MOVE_TO_APPLICATIONS_TITLE, {
+            description: moveToApplicationsMessage(location),
+            duration: 20000,
+            action: { label: 'Quit', onClick: () => { void quitApp(); } },
+          });
+          setLocalIsDownloading(false);
+          return;
+        }
+        localUpdateObj.downloadAndInstall(() => {}).catch((err: unknown) => {
+          const detail =
+            typeof err === 'string'
+              ? err
+              : (err as any)?.message
+                ? (err as any).message
+                : JSON.stringify(err);
+          toast.error('Update failed', {
+            description: detail || 'An error occurred while downloading the update.',
+            duration: 12000,
+            action: {
+              label: 'Copy Error',
+              onClick: () => navigator.clipboard.writeText(detail).catch(() => {}),
+            },
+          });
+        }).finally(() => setLocalIsDownloading(false));
+      })();
     }
   }, [onDownloadProp, localUpdateObj, localIsDownloading]);
 
