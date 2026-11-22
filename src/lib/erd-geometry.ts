@@ -21,22 +21,51 @@ export function tablesOverlap(a: Node<Entity>, b: Node<Entity>, gap = TABLE_GAP)
     && a.position.y < b.position.y + sb.height + gap && a.position.y + sa.height + gap > b.position.y;
 }
 
+type TableBox = XYPosition & { width: number; height: number };
+const tableBox = (node: Node<Entity>): TableBox => ({ ...node.position, ...tableSize(node) });
+type Candidate = XYPosition & { distance: number };
+// Squared distance, computed once per candidate: sorting by Math.hypot dominated large separations.
+const candidate = (x: number, y: number): Candidate => ({ x, y, distance: x * x + y * y });
+const byDistance = (a: Candidate, b: Candidate) => a.distance - b.distance;
+
 /** Keep the moved group together; nearest free candidate preserves all other table positions. */
 export function separateMovedTables(nodes: Node<Entity>[], movedIds: Set<string>): Node<Entity>[] {
   const moving = nodes.filter(n => movedIds.has(n.id));
   const fixed = nodes.filter(n => !movedIds.has(n.id));
   if (!moving.some(a => fixed.some(b => tablesOverlap(a, b)))) return nodes;
+  const movingBoxes = moving.map(tableBox), fixedBoxes = fixed.map(tableBox);
   const xs = new Set([0]), ys = new Set([0]);
-  for (const a of moving) for (const b of fixed) {
-    const sa = tableSize(a), sb = tableSize(b);
-    xs.add(b.position.x + sb.width + TABLE_GAP - a.position.x);
-    xs.add(b.position.x - sa.width - TABLE_GAP - a.position.x);
-    ys.add(b.position.y + sb.height + TABLE_GAP - a.position.y);
-    ys.add(b.position.y - sa.height - TABLE_GAP - a.position.y);
+  for (const a of movingBoxes) for (const b of fixedBoxes) {
+    xs.add(b.x + b.width + TABLE_GAP - a.x);
+    xs.add(b.x - a.width - TABLE_GAP - a.x);
+    ys.add(b.y + b.height + TABLE_GAP - a.y);
+    ys.add(b.y - a.height - TABLE_GAP - a.y);
   }
-  const candidates: XYPosition[] = [...xs].map(x => ({ x, y: 0 })).concat([...ys].map(y => ({ x: 0, y })));
-  candidates.sort((a, b) => Math.hypot(a.x, a.y) - Math.hypot(b.x, b.y));
-  const delta = candidates.find(d => moving.every(a => fixed.every(b => !tablesOverlap({ ...a, position: { x: a.position.x + d.x, y: a.position.y + d.y } }, b))));
+  // Same rule as tablesOverlap, on sizes measured once instead of per candidate. Neighbouring candidates are
+  // usually blocked by the same table, so the last blocker is tested first.
+  const blocks = (a: TableBox, b: TableBox, x: number, y: number) => a.x + x < b.x + b.width + TABLE_GAP
+    && a.x + x + a.width + TABLE_GAP > b.x && a.y + y < b.y + b.height + TABLE_GAP && a.y + y + a.height + TABLE_GAP > b.y;
+  let blocker: [TableBox, TableBox] | null = null;
+  const fits = ({ x, y }: XYPosition) => {
+    if (blocker && blocks(blocker[0], blocker[1], x, y)) return false;
+    for (const a of movingBoxes) for (const b of fixedBoxes) if (blocks(a, b, x, y)) { blocker = [a, b]; return false; }
+    return true;
+  };
+  const straight = [...xs].map(x => candidate(x, 0)).concat([...ys].map(y => candidate(0, y))).sort(byDistance).find(fits);
+  // BUG-071: a diagonal spot beside the drop point beats a straight shift several tables away. Only combinations
+  // closer than the best spot found so far are tried, so the result is never farther than before and a tie keeps it.
+  let delta: XYPosition | undefined = straight;
+  let best = straight ? straight.distance : Infinity;
+  const byMagnitude = (values: Set<number>) => [...values].filter(v => v !== 0).sort((a, b) => Math.abs(a) - Math.abs(b));
+  const nearYs = byMagnitude(ys);
+  for (const x of byMagnitude(xs)) {
+    if (x * x >= best) break;
+    for (const y of nearYs) {
+      const distance = x * x + y * y;
+      if (distance >= best) break;
+      if (fits({ x, y })) { delta = { x, y }; best = distance; break; }
+    }
+  }
   if (!delta) return nodes;
   return nodes.map(n => movedIds.has(n.id) ? { ...n, position: { x: n.position.x + delta.x, y: n.position.y + delta.y } } : n);
 }
