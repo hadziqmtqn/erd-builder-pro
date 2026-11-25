@@ -43,6 +43,13 @@ export function markAllKeepingFocus(root: ParentNode | null, markAllRead: () => 
   return markAllRead();
 }
 
+/** BUG-094: the panel says "You're all caught up" only after the list loaded, never while it loads or after a failed load. */
+export function notificationSummary(status: "loading" | "ready" | "error", unreadCount: number): string {
+  if (status === "loading") return "Loading…";
+  if (status === "error") return "Couldn't load";
+  return unreadCount ? `${unreadCount} unread` : "You're all caught up";
+}
+
 function NotificationPopover({ placement, activeTeamId, onSelectWorkspace }: Props) {
   const navigate = useNavigate();
   const descriptionId = useId();
@@ -111,10 +118,10 @@ function NotificationPopover({ placement, activeTeamId, onSelectWorkspace }: Pro
           <div className="min-w-0 flex-1">
             <h2 className="text-sm font-semibold">Notifications</h2>
             <p id={descriptionId} className="text-xs text-muted-foreground">
-              {unreadCount ? `${unreadCount} unread` : "You're all caught up"}
+              {notificationSummary(status, unreadCount)}
             </p>
           </div>
-          <Button type="button" variant="ghost" size="sm" disabled={!unreadCount} onClick={() => void markAllKeepingFocus(scopeTabs.current, markAllRead)}>
+          <Button type="button" variant="ghost" size="sm" disabled={status !== "ready" || !unreadCount} onClick={() => void markAllKeepingFocus(scopeTabs.current, markAllRead)}>
             Mark all as read
           </Button>
         </div>
