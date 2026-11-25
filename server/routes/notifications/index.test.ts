@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   teamFindMany: vi.fn(),
   userFindMany: vi.fn(),
   canAccessTeam: vi.fn(),
+  publish: vi.fn(),
   live: true,
 }));
 
@@ -23,6 +24,7 @@ vi.mock("../../lib/prisma.js", () => ({
 vi.mock("../teams/service.js", () => ({ canAccessTeam: mocks.canAccessTeam }));
 vi.mock("../../lib/middleware.js", () => ({ authenticate: vi.fn() }));
 vi.mock("../../lib/config.js", () => ({ isLocalPostgres: () => mocks.live }));
+vi.mock("../../lib/cloud-live-sync.js", () => ({ publishUserNotification: mocks.publish }));
 
 import router, { listLimit } from "./index.js";
 
@@ -73,6 +75,7 @@ describe("notification routes (NOT-001.1)", () => {
     mocks.teamFindMany.mockReset().mockResolvedValue([{ id: "team-1", name: "Anind's Workspace" }, { id: "team-2", name: "Old Team" }]);
     mocks.userFindMany.mockReset().mockResolvedValue([{ id: "jay", name: "Jay Test" }]);
     mocks.canAccessTeam.mockReset().mockImplementation(async (teamId: string) => teamId === "team-1");
+    mocks.publish.mockReset().mockResolvedValue(undefined);
   });
 
   it("lists the session user's notifications newest first with the unread count", async () => {
@@ -181,6 +184,35 @@ describe("notification routes (NOT-001.1)", () => {
 
     expect(mocks.updateMany).toHaveBeenCalledWith({ where: { recipientUserId: "anind", readAt: null }, data: { readAt: expect.any(Date) } });
     expect(res.json).toHaveBeenCalledWith({ success: true, updated: 3 });
+  });
+
+  it("refreshes the user's other open bells after Mark all as read, only when something was unread (BUG-091)", async () => {
+    mocks.updateMany.mockResolvedValue({ count: 3 });
+    await call("post", "/notifications/read-all");
+    expect(mocks.publish).toHaveBeenCalledTimes(1);
+    expect(mocks.publish).toHaveBeenCalledWith(["anind"]);
+    // The live signal goes out after the rows are read, so a bell that refetches sees them read.
+    expect(mocks.updateMany.mock.invocationCallOrder[0]).toBeLessThan(mocks.publish.mock.invocationCallOrder[0]);
+
+    mocks.publish.mockClear();
+    mocks.updateMany.mockResolvedValue({ count: 0 });
+    const res = await call("post", "/notifications/read-all");
+    expect(mocks.publish).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith({ success: true, updated: 0 });
+  });
+
+  it("refreshes the user's other open bells after one bell item is read, only when it was unread (BUG-091)", async () => {
+    await call("post", "/notifications/:id/read", { params: { id: ID } });
+    expect(mocks.publish).toHaveBeenCalledWith(["anind"]);
+
+    mocks.publish.mockClear();
+    mocks.updateMany.mockResolvedValue({ count: 0 });
+    await call("post", "/notifications/:id/read", { params: { id: ID } });
+    expect(mocks.publish).not.toHaveBeenCalled();
+
+    mocks.findFirst.mockResolvedValue(null);
+    await call("post", "/notifications/:id/read", { params: { id: OTHER_ID } });
+    expect(mocks.publish).not.toHaveBeenCalled();
   });
 
   it("answers not-found where the database has no notifications table", async () => {

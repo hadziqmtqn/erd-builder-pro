@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { Router, type Request, type Response } from "express";
 import type { Notification } from "@prisma/client";
+import { publishUserNotification } from "../../lib/cloud-live-sync.js";
 import { isLocalPostgres } from "../../lib/config.js";
 import { isUuid } from "../../lib/erd-column-id-migration.js";
 import { logger } from "../../lib/logger.js";
@@ -109,6 +110,8 @@ router.post("/notifications/read-all", authenticate, async (req: Request, res: R
   try {
     const userId = ((req as any).user as SessionUser).id;
     const updated = await store.updateMany({ where: { recipientUserId: userId, readAt: null }, data: { readAt: new Date() } });
+    // BUG-091: the user's other open bells refresh, as when a thread is read (BUG-081).
+    if (updated.count) await publishUserNotification([userId]);
     res.json({ success: true, updated: updated.count });
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : error }, "[Notifications] read-all failed");
@@ -126,7 +129,8 @@ router.post("/notifications/:id/read", authenticate, async (req: Request, res: R
     // Someone else's id gets the same answer as a missing one; reading an already read notification is fine.
     if (!row) return notFound(res);
     // BUG-081: one bell item stands for its whole group, such as every reply in a thread, so reading it reads them all.
-    await store.updateMany({ where: { recipientUserId: userId, readAt: null, ...(row.groupKey ? { groupKey: row.groupKey } : { id }) }, data: { readAt: new Date() } });
+    const updated = await store.updateMany({ where: { recipientUserId: userId, readAt: null, ...(row.groupKey ? { groupKey: row.groupKey } : { id }) }, data: { readAt: new Date() } });
+    if (updated.count) await publishUserNotification([userId]);
     res.json({ success: true });
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : error }, "[Notifications] read failed");
