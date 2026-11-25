@@ -448,11 +448,25 @@ const commentAnchors: Record<CollaborationFeatureType, ReadonlySet<DiscussionAnc
   flowchart: new Set(["shape"]),
 };
 
+function drawingCommentsPaused(tab: "discussions" | "comments", featureType: CollaborationFeatureType, drawingCommentsEnabled: boolean): boolean {
+  return tab === "comments" && featureType === "drawing" && !drawingCommentsEnabled;
+}
+
 /** What an empty thread list tells this user. While Drawing comments are paused it says so, instead of naming nodes (BUG-083). */
 export function emptyThreadsHint(tab: "discussions" | "comments", featureType: CollaborationFeatureType, readOnly: boolean): string {
-  if (tab === "comments" && featureType === "drawing" && !DRAWING_COMMENTS_ENABLED) return "Comments aren't available on drawings.";
+  if (drawingCommentsPaused(tab, featureType, DRAWING_COMMENTS_ENABLED)) return "Comments aren't available on drawings.";
   if (readOnly) return "You can read threads here, but only members with comment access can start one.";
   return tab === "comments" ? "Use the node context menu to start one." : "Start a thread to capture a question or design decision.";
+}
+
+/** Whether the list shows the "+" button. While Drawing comments are paused it could only toast "Select an item", so it is hidden (BUG-090). */
+export function canStartThread(
+  tab: "discussions" | "comments",
+  featureType: CollaborationFeatureType,
+  readOnly: boolean,
+  drawingCommentsEnabled = DRAWING_COMMENTS_ENABLED,
+): boolean {
+  return !readOnly && !drawingCommentsPaused(tab, featureType, drawingCommentsEnabled);
 }
 
 export function isCommentAnchorForFeature(featureType: CollaborationFeatureType, anchorType: unknown): anchorType is DiscussionAnchor["type"] {
@@ -1294,7 +1308,7 @@ export function DiscussionsPanel({
                 );
               })}
             </div>
-            {!readOnly && (<TooltipProvider delay={250}>
+            {canStartThread(activeTab, fileContext.featureType, readOnly) && (<TooltipProvider delay={250}>
               <Tooltip>
                 <TooltipTrigger render={<Button type="button" size="icon-lg" className="absolute bottom-4 right-4 z-10 min-h-11 min-w-11 rounded-full shadow-lg" aria-label={activeTab === "comments" ? "Add a comment" : "Start a discussion"} onClick={startCompose}><Plus aria-hidden="true" /></Button>} />
                 <TooltipContent side="left">{activeTab === "comments" ? "Add a comment" : "Start a discussion"}</TooltipContent>
