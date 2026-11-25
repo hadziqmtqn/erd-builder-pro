@@ -106,8 +106,13 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
   const isLockedType = isCreate && Boolean(selectedType?.locked);
   const isDbClientCreate = isCreate && view === 'db-client';
   const currentProjectId = activeDocument?.project_id ?? activeDocument?.projectId;
+  // BUG-056: a Project that takes no new files from this user is not offered, except the one an existing file is in.
+  const isOffered = (project: any) => project.canAddFiles !== false || (!isCreate && String(project.id) === String(currentProjectId));
+  const projectOptions = projects.filter(isOffered);
+  // A preselected Project that is not offered, such as a view-only Project open in the workspace filter, counts as none.
+  const projectChoice = projects.some((project) => String(project.id) === selectedProjectId && !isOffered(project)) ? 'none' : selectedProjectId;
   // An existing file without a Project may still be renamed; it just cannot be moved out of one (COL-008).
-  const isProjectMissing = requireProject && selectedProjectId === 'none' && (isCreate || currentProjectId != null);
+  const isProjectMissing = requireProject && projectChoice === 'none' && (isCreate || currentProjectId != null);
   const [isAddingProject, setIsAddingProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [isCreatingProject, setIsCreatingProject] = useState(false);
@@ -156,7 +161,7 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
       // Keep the dialog and the typed name when creation is refused, e.g. by a file quota (BUG-029).
       setIsSubmitting(true);
       try {
-        if (await onCreate?.(newName.trim(), selectedProjectId === 'none' ? null : selectedProjectId)) handleOpenChange(false);
+        if (await onCreate?.(newName.trim(), projectChoice === 'none' ? null : projectChoice)) handleOpenChange(false);
       } finally {
         setIsSubmitting(false);
       }
@@ -168,7 +173,7 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
       ? activeDocument?.uid || activeDocument?.id
       : activeDocument?.id;
     if (id && newName.trim()) {
-      const projectId = selectedProjectId === "none" ? null : selectedProjectId;
+      const projectId = projectChoice === "none" ? null : projectChoice;
       const hasNameChanged = newName.trim() !== (activeDocument?.title || activeDocument?.name);
       const hasProjectChanged = view !== 'db-client' && String(projectId) !== String(currentProjectId);
       if (hasProjectChanged && !canMoveProject) {
@@ -302,7 +307,7 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
               </FieldLabel>
               <div className="flex gap-2">
                 <Select
-                  value={selectedProjectId}
+                  value={projectChoice}
                   onValueChange={(value) => value !== null && setSelectedProjectId(value)}
                   disabled={(!isCreate && !canMoveProject) || isAddingProject || isCreatingProject}
                 >
@@ -313,12 +318,12 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
                     aria-describedby={isCreate && isProjectMissing ? 'document-project-hint' : undefined}
                   >
                     <SelectValue>
-                      {selectedProjectId === "none" ? (requireProject ? "Select Project" : "No project") : projects.find(p => p.id.toString() === selectedProjectId)?.name || "Select Project"}
+                      {projectChoice === "none" ? (requireProject ? "Select Project" : "No project") : projectOptions.find(p => p.id.toString() === projectChoice)?.name || "Select Project"}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {!requireProject && <SelectItem value="none">No project</SelectItem>}
-                    {projects.map((project) => (
+                    {projectOptions.map((project) => (
                       <SelectItem key={project.id} value={project.id.toString()}>
                         {project.name}
                       </SelectItem>

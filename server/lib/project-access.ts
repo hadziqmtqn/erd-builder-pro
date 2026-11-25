@@ -58,6 +58,19 @@ export async function limitedCreatorRole(projectId: number | bigint, userId: str
   return access?.isCreator && (access.role === "viewer" || access.role === "commenter") ? access.role : null;
 }
 
+/**
+ * Whether a role may add files to a Team Project: not a Viewer (COL-004), and not a Project creator a Manager limited
+ * to Commenter, since the files they add would be limited too (COL-007).
+ */
+export const canAddFilesRole = (role: ProjectRole | null, isCreator: boolean): boolean =>
+  canCommentRole(role) && !(isCreator && role === "commenter");
+
+/** Whether the signed-in user may add files to this Project of the active Team; false outside it. */
+export async function canAddFilesTo(projectId: number | bigint, userId: string): Promise<boolean> {
+  const access = await projectAccessFor(projectId, userId);
+  return access !== null && canAddFilesRole(access.role, access.isCreator);
+}
+
 /** Roles for a page of Projects in one round trip; Personal Projects are always the user's own. */
 export async function projectRolesFor(
   projects: Array<{ id: number | bigint; userId?: string | null }>,

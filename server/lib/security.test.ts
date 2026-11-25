@@ -4,8 +4,7 @@ const mocks = vi.hoisted(() => ({
   isDesktopMode: vi.fn(() => true),
   isLocalPostgres: vi.fn(() => false),
   isSsoAuthMode: vi.fn(() => false),
-  projectRole: vi.fn(),
-  limitedCreator: vi.fn(),
+  canAddFiles: vi.fn(),
 }));
 
 vi.mock("./config.js", () => ({
@@ -17,11 +16,8 @@ vi.mock("./team-scope.js", () => ({
   currentTeamScope: vi.fn(),
   projectScopeWhere: vi.fn(() => ({})),
 }));
-vi.mock("./project-access.js", () => ({
-  canCommentRole: (role: string | null) => role !== null && role !== "viewer",
-  projectRoleFor: mocks.projectRole,
-  limitedCreatorRole: mocks.limitedCreator,
-}));
+// The role rule itself is tested in project-access.test.ts (canAddFilesTo) and against PostgreSQL in access.integration.test.ts.
+vi.mock("./project-access.js", () => ({ canAddFilesTo: mocks.canAddFiles }));
 
 import { currentTeamScope } from "./team-scope.js";
 import { requireAdmin, resolveNewFileProjectId } from "./security.js";
@@ -52,28 +48,19 @@ describe("resolveNewFileProjectId with Project roles (COL-004)", () => {
 
   beforeEach(() => {
     prisma.project.findFirst.mockResolvedValue({ id: 7 });
-    mocks.projectRole.mockReset();
-    mocks.limitedCreator.mockReset().mockResolvedValue(null);
+    mocks.canAddFiles.mockReset();
   });
 
-  it.each(["owner", "manager", "editor", "commenter"])("lets a %s add a file to a Team Project", async (role) => {
+  it("lets a member who may add files to a Team Project add one", async () => {
     vi.mocked(currentTeamScope).mockReturnValue({ mode: "team", teamId: "team-1" });
-    mocks.projectRole.mockResolvedValue(role);
+    mocks.canAddFiles.mockResolvedValue(true);
     expect(await resolveNewFileProjectId(prisma, "member", 7)).toBe(7);
+    expect(mocks.canAddFiles).toHaveBeenCalledWith(7, "member");
   });
 
-  it("treats a Team Project as missing for a Viewer or for a member the Project does not reach", async () => {
+  it("treats a Team Project as missing for a Viewer, a limited creator (COL-007) or a member the Project does not reach", async () => {
     vi.mocked(currentTeamScope).mockReturnValue({ mode: "team", teamId: "team-1" });
-    for (const role of ["viewer", null]) {
-      mocks.projectRole.mockResolvedValue(role);
-      await expect(resolveNewFileProjectId(prisma, "member", 7)).rejects.toMatchObject({ status: 404, message: "Project not found" });
-    }
-  });
-
-  it("treats a Team Project as missing for its creator once a Manager limited them to Commenter (COL-007)", async () => {
-    vi.mocked(currentTeamScope).mockReturnValue({ mode: "team", teamId: "team-1" });
-    mocks.projectRole.mockResolvedValue("commenter");
-    mocks.limitedCreator.mockResolvedValue("commenter");
+    mocks.canAddFiles.mockResolvedValue(false);
     await expect(resolveNewFileProjectId(prisma, "member", 7)).rejects.toMatchObject({ status: 404, message: "Project not found" });
   });
 
@@ -88,7 +75,7 @@ describe("resolveNewFileProjectId with Project roles (COL-004)", () => {
   it("never consults Project roles for Personal files", async () => {
     vi.mocked(currentTeamScope).mockReturnValue({ mode: "personal", teamId: null });
     expect(await resolveNewFileProjectId(prisma, "member", 7)).toBe(7);
-    expect(mocks.projectRole).not.toHaveBeenCalled();
+    expect(mocks.canAddFiles).not.toHaveBeenCalled();
   });
 
   it("requires a Project for Personal and Self-host files too (COL-008)", async () => {

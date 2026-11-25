@@ -1,7 +1,7 @@
 import { Children, isValidElement, type ReactElement, type ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Button } from '@/components/ui/button';
-import { Select } from '@/components/ui/select';
+import { Select, SelectItem, SelectValue } from '@/components/ui/select';
 
 vi.mock('react', async original => ({
   ...await original<typeof import('react')>(),
@@ -115,5 +115,49 @@ describe('BUG-028/029 New file dialog', () => {
     const tree = elements(await RenameDocumentDialog({ ...createProps(), selectedProjectId: 'none' }));
     expect(tree.find(e => e.type === Button && e.props.children === 'Create')?.props.disabled).toBe(true);
     expect(tree.some(e => e.props.id === 'document-project-hint')).toBe(true);
+  });
+});
+
+describe('BUG-056 Projects that take no new files', () => {
+  const projects = [{ id: 5, name: 'QA', canAddFiles: false }, { id: 6, name: 'Target', canAddFiles: true }, { id: 7, name: 'Read only', canAddFiles: false }];
+  const createProps = () => ({ ...props(), mode: 'create' as const, activeDocument: null, requireProject: true, projects });
+  const options = (tree: ReactElement<any>[]) => tree.filter(e => e.type === SelectItem).map(e => e.props.value);
+
+  it('offers only Projects that accept new files in the New file dialog', async () => {
+    const create = vi.fn();
+    const tree = elements(await RenameDocumentDialog({ ...createProps(), onCreate: create }));
+    expect(options(tree)).toEqual(['6']);
+    await tree.find(e => e.type === Button && e.props.children === 'Create')?.props.onClick();
+    expect(create).toHaveBeenCalledWith('QA', '6');
+  });
+
+  it('treats a preselected Project that takes no new files as no selection', async () => {
+    const create = vi.fn();
+    const tree = elements(await RenameDocumentDialog({ ...createProps(), selectedProjectId: '5', onCreate: create }));
+    const button = tree.find(e => e.type === Button && e.props.children === 'Create');
+    expect(tree.find(e => e.type === Select)?.props.value).toBe('none');
+    expect(tree.find(e => e.type === SelectValue)?.props.children).toBe('Select Project');
+    expect(button?.props.disabled).toBe(true);
+    expect(tree.some(e => e.props.id === 'document-project-hint')).toBe(true);
+    await button?.props.onClick();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('keeps showing the Project an existing file is in, and offers only Projects that accept files as move targets', async () => {
+    const rename = vi.fn();
+    const move = vi.fn();
+    const p = { ...props(), canMoveProject: true, requireProject: true, projects, selectedProjectId: '5', newName: 'Renamed QA', updateNote: rename, onMoveNoteToProject: move };
+    const tree = elements(await RenameDocumentDialog(p));
+    expect(options(tree)).toEqual(['5', '6']);
+    expect(tree.find(e => e.type === Select)?.props.value).toBe('5');
+    expect(tree.find(e => e.type === SelectValue)?.props.children).toBe('QA');
+    await tree.find(e => e.type === Button && e.props.children === 'Save Changes')?.props.onClick();
+    expect(rename).toHaveBeenCalledWith('qa-file', 'Renamed QA', { silent: true });
+    expect(move).not.toHaveBeenCalled();
+  });
+
+  it('offers every Project when the list does not say, as before', async () => {
+    const tree = elements(await RenameDocumentDialog({ ...props(), mode: 'create' as const, activeDocument: null, requireProject: true }));
+    expect(options(tree)).toEqual(['5', '6']);
   });
 });
