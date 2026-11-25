@@ -30,6 +30,21 @@ describe("notification wording", () => {
     expect(describeNotification(normalizeNotification(raw({ type: "sync.conflict", actor: null, payload: {} })))).toEqual({ title: "Found a sync conflict", detail: "Anind's Workspace" });
   });
 
+  it("names only the shape of a Flowchart comment, since the detail line names the file (BUG-095)", () => {
+    const comment = (anchor: string, fileName = "QA rc3 NOT-001 Flowchart") => describeNotification(normalizeNotification(raw({
+      type: "comment.created",
+      payload: { anchor_label: anchor, file_name: fileName, project_name: "QA Claude" },
+    })));
+    expect(comment("QA rc3 NOT-001 Flowchart · Fetch Data")).toEqual({ title: "Jay Test commented on Fetch Data", detail: "QA rc3 NOT-001 Flowchart · QA Claude" });
+    // A Note block reads the same way; a shape label with its own separator stays whole.
+    expect(comment("Spec · Block", "Spec").title).toBe("Jay Test commented on Block");
+    expect(comment("Flow · Validate · retry", "Flow").title).toBe("Jay Test commented on Validate · retry");
+    // A label stored before the file was renamed no longer starts with its name and stays as it is.
+    expect(comment("Old name · Fetch Data", "New name").title).toBe("Jay Test commented on Old name · Fetch Data");
+    // An ERD table that merely starts like the file name keeps its whole name.
+    expect(comment("QA ERD audit", "QA ERD").title).toBe("Jay Test commented on QA ERD audit");
+  });
+
   it("names the new Project role, and whose it is when the creator reads about a member (NOT-001.8)", () => {
     const granted = normalizeNotification(raw({ type: "project.access_granted", payload: { project_name: "Billing", role: "editor", previous_role: null } }));
     expect(describeNotification(granted)).toEqual({ title: "Jay Test gave you Editor access", detail: "Billing" });
