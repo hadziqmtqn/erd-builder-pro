@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("./prisma.js", () => ({ prisma: mocks }));
 vi.mock("./team-scope.js", () => ({ currentTeamScope: () => mocks.scope }));
 
-import { canCommentRole, canEditRole, canManageAccessRole, effectiveRole, fileAccessRole, isForeignProjectMove, limitedCreatorRole, projectRoleFor, projectRolesFor } from "./project-access.js";
+import { canAddFilesRole, canAddFilesTo, canCommentRole, canEditRole, canManageAccessRole, effectiveRole, fileAccessRole, isForeignProjectMove, limitedCreatorRole, projectRoleFor, projectRolesFor } from "./project-access.js";
 
 function project(overrides: { userId?: string; manager?: boolean; grant?: string }) {
   return {
@@ -23,6 +23,36 @@ function project(overrides: { userId?: string; manager?: boolean; grant?: string
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.scope = { mode: "team", teamId: "team-1" };
+});
+
+describe("adding files to a Team Project (BUG-056)", () => {
+  it.each([
+    [true, "its creator", { userId: "member" }],
+    [true, "a Manager, whatever their grant", { manager: true, grant: "viewer" }],
+    [true, "an Editor", { grant: "editor" }],
+    [true, "a member without a grant (Commenter)", {}],
+    [true, "a Commenter by grant", { grant: "commenter" }],
+    [false, "a Viewer", { grant: "viewer" }],
+    [false, "its creator a Manager limited to Commenter", { userId: "member", grant: "commenter" }],
+    [false, "its creator a Manager limited to Viewer", { userId: "member", grant: "viewer" }],
+    [true, "its creator a Manager set to Editor", { userId: "member", grant: "editor" }],
+  ])("is %s for %s (COL-004, COL-007)", async (allowed, _who, overrides) => {
+    mocks.project.findFirst.mockResolvedValue(project(overrides));
+    expect(await canAddFilesTo(7, "member")).toBe(allowed);
+  });
+
+  it("is false for a Project outside the active Team and outside a Team scope", async () => {
+    mocks.project.findFirst.mockResolvedValue(null);
+    expect(await canAddFilesTo(7, "member")).toBe(false);
+    mocks.scope = { mode: "personal", teamId: null };
+    expect(await canAddFilesTo(7, "member")).toBe(false);
+  });
+
+  it("decides from the role and whether the user created the Project", () => {
+    expect(["owner", "manager", "editor", "commenter"].map((role) => canAddFilesRole(role as any, false))).toEqual([true, true, true, true]);
+    expect(["viewer", null].map((role) => canAddFilesRole(role as any, false))).toEqual([false, false]);
+    expect(["owner", "editor", "commenter", "viewer"].map((role) => canAddFilesRole(role as any, true))).toEqual([true, true, false, false]);
+  });
 });
 
 describe("Project role", () => {

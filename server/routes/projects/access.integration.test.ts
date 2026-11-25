@@ -186,6 +186,22 @@ describe.skipIf(!enabled)("COL-004 project roles in an isolated PostgreSQL schem
     expect(await inTeam(() => security.resolveNewFileProjectId(fixture.db, users.editor, project.id))).toBe(project.id);
   });
 
+  it("BUG-056 offers a Project as a file target only to the roles that may add files to it", async () => {
+    const projects = await import("./service.js");
+    const offered = async (userId: string) => (await inTeam(() => projects.listSelectableProjects(userId))).find((item) => item.id === project.id)?.canAddFiles;
+    const created = (userId: string) => inTeam(() => security.resolveNewFileProjectId(fixture.db, userId, project.id)).then(() => true, () => false);
+    expect(await Promise.all(["creator", "manager", "editor", "commenter", "viewer"].map((name) => offered((users as any)[name])))).toEqual([true, true, true, true, false]);
+    for (const userId of [users.creator, users.manager, users.editor, users.commenter, users.viewer]) {
+      // The dialog list and the create request agree.
+      expect(await offered(userId)).toBe(await created(userId));
+    }
+    for (const role of ["viewer", "commenter"] as const) {
+      expect(await inTeam(() => access.setProjectAccess(project.id, users.manager, users.creator, role))).toMatchObject({ ok: true });
+      expect(await offered(users.creator)).toBe(false);
+      expect(await created(users.creator)).toBe(false);
+    }
+  });
+
   it("COL-007 lets a Manager, and only a Manager, restrict and restore a Staff creator", async () => {
     const manager = await inTeam(() => access.listProjectAccess(project.id, users.manager));
     const creatorRow = manager.ok && manager.data.members.find((member) => member.name === "creator");

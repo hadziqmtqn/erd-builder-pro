@@ -6,7 +6,7 @@ import { randomUUID } from "crypto";
 import { getStorageClientForUser } from "../../lib/storage.js";
 import { isDesktopMode } from "../../lib/config.js";
 import { currentTeamScope, fileScopeWhere, projectScopeWhere } from "../../lib/team-scope.js";
-import { projectRolesFor } from "../../lib/project-access.js";
+import { canAddFilesRole, projectRolesFor } from "../../lib/project-access.js";
 import { deleteEntityRevisions } from "../../lib/entity-history.js";
 import { hasActiveCloudCapability } from "../../lib/cloud-capability.js";
 import * as notesService from "../notes/service.js";
@@ -122,18 +122,26 @@ export async function listProjects(
   };
 }
 
-/** Projects a document dialog may target in the active workspace only. */
+/**
+ * Projects a document dialog may target in the active workspace only. `canAddFiles` says whether a new or moved file
+ * may go there, by the same rule the create request checks (BUG-056).
+ */
 export async function listSelectableProjects(userId: string) {
   const scope = currentTeamScope();
   const where = scope?.mode === "team"
     ? { teamId: scope.teamId, isDeleted: false }
     : { userId, teamId: null, isDeleted: false };
 
-  return prisma?.project.findMany({
+  const projects = await prisma?.project.findMany({
     where,
     select: { id: true, uid: true, name: true, userId: true, teamId: true, team: { select: { name: true } } },
     orderBy: { createdAt: "desc" },
   }) || [];
+  const roles = await projectRolesFor(projects, userId);
+  return projects.map((project) => ({
+    ...project,
+    canAddFiles: canAddFilesRole(roles.get(Number(project.id)) ?? null, project.userId === userId),
+  }));
 }
 
 // ── Create ──
