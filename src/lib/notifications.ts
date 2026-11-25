@@ -100,12 +100,21 @@ function teamMemberAction(item: NotificationItem): string | null {
   return item.type === "team.member_removed" ? `removed ${member} from the Team` : null;
 }
 
+/**
+ * BUG-095: Flowchart, Note and Drawing comment anchors are stored as "file · element", and the detail line already names
+ * the file, so the title keeps the element only, as an ERD table name does. A label from before a rename stays whole.
+ */
+function anchorWithoutFile(anchor: string | null, fileName: string | null): string | null {
+  const prefix = fileName ? `${fileName} · ` : null;
+  return anchor && prefix && anchor.startsWith(prefix) && anchor.length > prefix.length ? anchor.slice(prefix.length) : anchor;
+}
+
 /** One line for who did what, one for where; a Team the user left shows only its name and the event type. */
 export function describeNotification(item: NotificationItem): { title: string; detail: string | null } {
   if (!item.accessible) {
     return { title: LABELS[item.type] ?? "Activity", detail: `${item.teamName ?? "A Team"} · no longer available` };
   }
-  const anchor = payloadText(item.payload, "anchorLabel");
+  const anchor = anchorWithoutFile(payloadText(item.payload, "anchorLabel"), payloadText(item.payload, "fileName"));
   const action = projectAccessAction(item) ?? teamMemberAction(item)
     ?? (item.type === "comment.created" && anchor ? `commented on ${anchor}` : ACTIONS[item.type] ?? "had new activity");
   const actor = item.actorName ?? (item.hasActor ? "A Team member" : null);
