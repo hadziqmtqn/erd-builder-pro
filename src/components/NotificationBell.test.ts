@@ -1,16 +1,17 @@
-import { createElement } from 'react';
+import { createElement, Fragment, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { SidebarProvider } from '@/components/ui/sidebar';
-import { markAllKeepingFocus, NotificationBell, selectedScopeTab } from './NotificationBell';
+import { markAllKeepingFocus, NotificationBell, notificationSummary, selectedScopeTab } from './NotificationBell';
 
-const screen = vi.hoisted(() => ({ mobile: false, unread: 0 }));
+type Status = 'loading' | 'ready' | 'error';
+const screen = vi.hoisted(() => ({ mobile: false, unread: 0, status: 'ready' as 'loading' | 'ready' | 'error' }));
 const useNotifications = vi.hoisted(() => vi.fn());
 vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => screen.mobile }));
 vi.mock('@/hooks/useNotifications', () => ({ useNotifications }));
 // Records each popover's props; the real PopoverContent still renders.
-const popoverProps = vi.hoisted(() => [] as Array<{ initialFocus?: unknown }>);
+const popoverProps = vi.hoisted(() => [] as Array<{ initialFocus?: unknown; children?: unknown }>);
 vi.mock('@/components/ui/popover', async (importOriginal) => {
   const { createElement: h } = await import('react');
   const actual = await importOriginal<typeof import('@/components/ui/popover')>();
@@ -24,11 +25,12 @@ vi.mock('@/components/ui/popover', async (importOriginal) => {
 });
 
 // AppLayout renders the bell in both slots, as here; the sidebar mode decides which one mounts.
-const render = (mobile: boolean, unread = 0) => {
+const render = (mobile: boolean, unread = 0, status: Status = 'ready') => {
   screen.mobile = mobile;
   screen.unread = unread;
+  screen.status = status;
   useNotifications.mockReset().mockImplementation(() => ({
-    items: [], unreadCount: screen.unread, status: 'ready', refresh: vi.fn(), markRead: vi.fn(), markAllRead: vi.fn(),
+    items: [], unreadCount: screen.unread, status: screen.status, refresh: vi.fn(), markRead: vi.fn(), markAllRead: vi.fn(),
   }));
   const bell = (placement: 'header' | 'sidebar') => createElement(NotificationBell, { placement, activeTeamId: null, onSelectWorkspace: async () => {} });
   return renderToStaticMarkup(createElement(MemoryRouter, null,
@@ -113,5 +115,46 @@ describe('BUG-080 bell popover initial focus', () => {
     const root = { querySelector: () => tab } as unknown as ParentNode;
     await markAllKeepingFocus(root, async () => { calls.push('mark'); });
     expect(calls).toEqual(['focus', 'mark']);
+  });
+});
+
+describe('BUG-094 panel summary while the list loads', () => {
+  // A static render keeps the popover closed, so render the content it was given.
+  const panel = (status: Status, unread = 0) => {
+    popoverProps.length = 0;
+    render(false, unread, status);
+    return renderToStaticMarkup(createElement(Fragment, null, popoverProps[0].children as ReactNode));
+  };
+  const markAllDisabled = (html: string) => /<button[^>]*\sdisabled=""[^>]*>Mark all as read<\/button>/.test(html);
+  const caughtUp = 'You&#x27;re all caught up';
+
+  it('does not say everything is read while the list loads', () => {
+    const html = panel('loading');
+    expect(html).not.toContain(caughtUp);
+    expect(html).toContain('Loading…');
+    expect(markAllDisabled(html)).toBe(true);
+  });
+
+  it('does not say everything is read after a failed load, and keeps Try again', () => {
+    const html = panel('error');
+    expect(html).not.toContain(caughtUp);
+    expect(html).toContain('Couldn&#x27;t load');
+    expect(html).toContain('Try again');
+    expect(markAllDisabled(html)).toBe(true);
+  });
+
+  it('says all caught up only after the list loaded with nothing unread', () => {
+    expect(panel('ready', 0)).toContain(caughtUp);
+    const unread = panel('ready', 2);
+    expect(unread).toContain('2 unread');
+    expect(unread).not.toContain(caughtUp);
+    expect(markAllDisabled(unread)).toBe(false);
+  });
+
+  it('names each state in the summary', () => {
+    expect(notificationSummary('loading', 0)).toBe('Loading…');
+    expect(notificationSummary('error', 0)).toBe("Couldn't load");
+    expect(notificationSummary('ready', 0)).toBe("You're all caught up");
+    expect(notificationSummary('ready', 3)).toBe('3 unread');
   });
 });
