@@ -28,7 +28,7 @@ import { useConnectionStatus } from '../hooks/useConnectionStatus';
 import { offerLatestVersion, useSyncService } from '../hooks/useSyncService';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
-import { useFileChanges } from '../hooks/useFileChanges';
+import { openFileEventsPath, useFileChanges } from '../hooks/useFileChanges';
 import { documentVersionKey, getCachedDiagramVersion } from '../lib/diagramVersioning';
 import { useERDSession } from '../hooks/useERDSession';
 import { useSQLGenerator } from '../hooks/useSQLGenerator';
@@ -555,11 +555,9 @@ export function WorkspaceProvider({
 
   // A read-only viewer has no local edits to lose, so other people's saves replace the view as they arrive (BUG-023).
   // An editor may be mid-edit, so they are offered the latest version instead of having it swapped under them.
-  const liveRoute = ({ erd: 'diagrams', notes: 'notes', drawings: 'drawings', flowchart: 'flowcharts' } as Record<string, string>)[view];
   const liveUid = activeDocument?.uid ?? activeDocument?.id;
   const liveVersionId = view === 'erd' ? activeDiagramId : liveUid;
-  useFileChanges(!isPublicView && liveRoute && liveUid != null
-    ? `/api/${liveRoute}/${encodeURIComponent(String(liveUid))}/events` : null, () => {
+  useFileChanges(isPublicView ? null : openFileEventsPath(view, liveUid, location.pathname), () => {
     if (isReadOnlyFile(activeDocument)) { void refreshActiveDocument(); return; }
     offerLatestVersion(view as DraftType, view === 'erd' ? activeDiagramId! : String(liveUid), {
       title: 'Someone else saved this file',

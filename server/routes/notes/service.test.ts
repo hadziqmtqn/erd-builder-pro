@@ -107,6 +107,12 @@ describe("Note update authorization (COL-004)", () => {
     expect((await inTeam(() => updateNote("note-1", "creator", { projectId: 9, expectedVersion: 3 }))).success).toBe(true);
   });
 
+  it("keeps the version when the creator only moves the Note, so an open editor can still save (BUG-096)", async () => {
+    expect((await inTeam(() => updateNote("note-1", "creator", { projectId: 9 }))).success).toBe(true);
+    expect(mocks.note.updateMany.mock.calls[0][0].data).toMatchObject({ projectId: 9 });
+    expect(mocks.note.updateMany.mock.calls[0][0].data).not.toHaveProperty("version");
+  });
+
   it("lets an Editor resend the same Project without it counting as a move", async () => {
     mocks.note.count.mockResolvedValue(1);
     const result = await inTeam(() => updateNote("note-1", "editor", { projectId: 7, content: "<p>Changed</p>", expectedVersion: 3 }));

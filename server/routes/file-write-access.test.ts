@@ -77,6 +77,24 @@ describe.each(updaters)("$name update authorization (COL-004)", ({ model, update
   });
 });
 
+describe.each(updaters.slice(0, 2))("$name move to another Project (BUG-096)", ({ model }) => {
+  const move = (projectId: number | null) => model === mocks.drawing
+    ? updateDrawing("file-1", "creator", { projectId }) : updateFlowchart("file-1", "creator", { projectId });
+
+  it("keeps the version, so an editor who has the file open can still save", async () => {
+    expect(await inTeam(() => move(9))).not.toBeNull();
+    expect(model.updateMany.mock.calls[0][0].data).toMatchObject({ projectId: 9 });
+    expect(model.updateMany.mock.calls[0][0].data).not.toHaveProperty("version");
+  });
+
+  it("still bumps the version for a content save that also sends the Project", async () => {
+    await inTeam(() => model === mocks.drawing
+      ? updateDrawing("file-1", "creator", { title: "New", drawingData: "{}", projectId: 7, expectedVersion: 3 })
+      : updateFlowchart("file-1", "creator", { title: "New", fcData: "{}", projectId: 7, expectedVersion: 3 }));
+    expect(model.updateMany.mock.calls[0][0].data).toMatchObject({ version: 4 });
+  });
+});
+
 describe("ERD autosave authorization (COL-004)", () => {
   it("saves through the same Editor, Manager, Project-creator and file-creator filter", async () => {
     mocks.diagram.findFirst.mockResolvedValue(null);
