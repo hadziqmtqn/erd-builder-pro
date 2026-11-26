@@ -28,11 +28,11 @@ Data stored in `~/.erdbpro/` (SQLite). Zero config, always ready.
 
 ## Interactive Menu
 
-After starting, you'll see an interactive menu you can navigate with arrow keys:
+After starting, you'll see an interactive menu you can navigate with arrow keys (`X.Y.Z` is the installed version):
 
 ```
 ========================================
-  ERD Builder Pro (v2.5.2)
+  ERD Builder Pro (vX.Y.Z)
   🚀 Server: http://localhost:3101
 ========================================
 
