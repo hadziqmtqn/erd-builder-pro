@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ api: vi.fn() }));
 vi.mock('../api', () => ({ apiFetch: mocks.api }));
-import { deleteCommentThread, editComment, fetchAnchorPage, type CommentFileRef } from '../fileComments';
+import { deleteCommentThread, editComment, fetchAnchorPage, markCommentRead, type CommentFileRef } from '../fileComments';
 
 const file: CommentFileRef = { projectId: '7', teamId: 'team-1', featureType: 'note', fileId: 'note-uid' };
 const reply = (status: number, body: unknown) => ({ ok: status < 400, status, json: async () => body }) as Response;
@@ -53,5 +53,22 @@ describe('Notes comment edit and delete (COL-005)', () => {
     expect((await fetchAnchorPage(file, { type: 'block', id: 'b1' })).createdBy).toBe('member-b');
     mocks.api.mockResolvedValueOnce(reply(200, { threads: [], messages: [] }));
     expect((await fetchAnchorPage(file, { type: 'block', id: 'b1' })).createdBy).toBeNull();
+  });
+});
+
+describe('Reading a comment outside the panel (BUG-086)', () => {
+  it('announces a successful read so the header badge reloads', async () => {
+    mocks.api.mockResolvedValue(reply(200, { success: true }));
+    await markCommentRead(file, 't1');
+    expect(mocks.api).toHaveBeenCalledWith('/api/projects/7/comments/t1/read?feature_type=note&file_id=note-uid', { method: 'POST' });
+    expect(events).toEqual([JSON.stringify({ teamId: 'team-1', projectId: '7' })]);
+  });
+
+  it('announces nothing when the read failed or the request never reached the server', async () => {
+    mocks.api.mockResolvedValueOnce(reply(404, { error: 'Not found' }));
+    await markCommentRead(file, 't1');
+    mocks.api.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    await markCommentRead(file, 't1');
+    expect(events).toEqual([]);
   });
 });
