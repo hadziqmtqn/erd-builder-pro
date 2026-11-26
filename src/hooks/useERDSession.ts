@@ -20,7 +20,7 @@ import { useERDHistoryShortcuts } from './useERDHistoryShortcuts';
 import { buildErdIndexes, erdColumnKey, erdSourceColumnKey } from '../lib/erd-indexes';
 import { getForeignKeyConstraintName } from '../lib/diagram-payload';
 import { databaseColumnToERD } from '../lib/column-metadata';
-import { hasViewportChanged, readSavedViewport } from '../lib/erd-viewport';
+import { hasViewportChanged, readRememberedViewport, readSavedViewport, rememberViewport } from '../lib/erd-viewport';
 import { separateTables } from '../lib/erd-geometry';
 
 /** Fix double "col-" prefix from buggy parseSQLToERD output.
@@ -57,6 +57,7 @@ export function useERDSession(
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 });
   const settledViewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 });
+  const viewportKeyRef = useRef<string | null>(null);
   const { setViewport, getNodes, getEdges } = useReactFlow();
 
   // Wrapped onNodesChange to broadcast movement
@@ -350,7 +351,8 @@ export function useERDSession(
       if ((latestDraft ?? draft)?.sync_pending) {
         try { pendingViewport = readSavedViewport(JSON.parse((latestDraft ?? draft)!.data)); } catch { /* ignore invalid local draft */ }
       }
-      const savedViewport = pendingViewport ?? readSavedViewport(finalData);
+      viewportKeyRef.current = String(finalData.uid ?? id);
+      const savedViewport = readRememberedViewport(viewportKeyRef.current) ?? pendingViewport ?? readSavedViewport(finalData);
       if (savedViewport) {
         setViewport(savedViewport, { duration: 0 });
         viewportRef.current = savedViewport;
@@ -895,7 +897,8 @@ export function useERDSession(
     const changed = hasViewportChanged(previous, v);
     viewportRef.current = v;
     settledViewportRef.current = v;
-    if (!isPublicView && event && changed) setSaveCounter(prev => prev + 1);
+    // Panning or zooming is not an edit: saving here told every other user someone saved the file (BUG-084).
+    if (!isPublicView && event && changed && viewportKeyRef.current) rememberViewport(viewportKeyRef.current, v);
   }, [isPublicView]);
 
   // ── ERD Keyboard Shortcuts (undo/redo), only while the ERD view is shown ──
