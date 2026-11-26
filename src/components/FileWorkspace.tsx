@@ -47,8 +47,9 @@ export function FileWorkspace({ children, root, mainAI, teamState, discussionTar
   const host = useRef<HTMLDivElement>(null);
   const [percent, setPercent] = useState(50);
   const dragging = useRef(false);
-  const team = teamState as { activeTeamId?: string | null; activeTeam?: unknown; isLoading?: boolean };
-  const editorTeam = useMemo(() => ({ activeTeamId: team.activeTeamId, activeTeam: team.activeTeam, isLoading: team.isLoading }), [team.activeTeamId, team.activeTeam, team.isLoading]);
+  const team = teamState as { activeTeamId?: string | null; activeTeam?: unknown; isLoading?: boolean; loadFailed?: boolean; fetchTeams?: unknown };
+  // CloudFeatureRoute in a file pane needs loadFailed and fetchTeams to tell a failed plan request from a missing plan (BUG-089).
+  const editorTeam = useMemo(() => ({ activeTeamId: team.activeTeamId, activeTeam: team.activeTeam, isLoading: team.isLoading, loadFailed: team.loadFailed, fetchTeams: team.fetchTeams }), [team.activeTeamId, team.activeTeam, team.isLoading, team.loadFailed, team.fetchTeams]);
   const match = location.pathname.match(/^\/(notes|diagrams|flowcharts|drawings)\/([^/]+)$/);
   const types: Record<string, PaneFile['type']> = { notes: 'notes', diagrams: 'erd', flowcharts: 'flowchart', drawings: 'drawings' };
   const type = match ? types[match[1]] : null;

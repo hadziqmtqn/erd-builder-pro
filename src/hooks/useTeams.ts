@@ -70,6 +70,8 @@ export function useTeams(isGuest = false, isSso = false, onActiveTeamUnavailable
   const [isLoading, setIsLoading] = useState(!isGuest);
   const [isAvailable, setIsAvailable] = useState(false);
   const [licenseRequired, setLicenseRequired] = useState(false);
+  // The last request never got a Team answer (offline, 5xx): no Team is known, but that is not "no access" (BUG-089).
+  const [loadFailed, setLoadFailed] = useState(false);
   const fetchVersion = useRef(0);
 
   const fetchTeams = useCallback(async (showLoading = false) => {
@@ -78,6 +80,7 @@ export function useTeams(isGuest = false, isSso = false, onActiveTeamUnavailable
       setIsLoading(false);
       setIsAvailable(false);
       setLicenseRequired(false);
+      setLoadFailed(false);
       return [];
     }
 
@@ -97,6 +100,7 @@ export function useTeams(isGuest = false, isSso = false, onActiveTeamUnavailable
           onUnavailableRef.current?.();
         }
         setIsAvailable(false);
+        setLoadFailed(false);
         setLicenseRequired(["INSTANCE_LICENSE_REQUIRED", "LICENSE_EXPIRED_OR_INVALID"].includes(body.code || ""));
         return [];
       }
@@ -108,6 +112,7 @@ export function useTeams(isGuest = false, isSso = false, onActiveTeamUnavailable
       setTeams(nextTeams);
       setIsAvailable(true);
       setLicenseRequired(false);
+      setLoadFailed(false);
       const selected = readActiveTeamId();
       if (selected && nextTeams.some((team: TeamSummary) => String(team.id) === selected)) {
         setActiveTeamId(selected);
@@ -123,6 +128,7 @@ export function useTeams(isGuest = false, isSso = false, onActiveTeamUnavailable
       setTeams([]);
       setIsAvailable(false);
       setLicenseRequired(false);
+      setLoadFailed(true);
       return [];
     } finally {
       if (showLoading && version === fetchVersion.current) setIsLoading(false);
@@ -146,6 +152,14 @@ export function useTeams(isGuest = false, isSso = false, onActiveTeamUnavailable
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [fetchTeams, isGuest]);
+
+  // A failed request is retried as soon as the connection returns, not only on the next focus (BUG-089).
+  useEffect(() => {
+    if (isGuest || !loadFailed) return;
+    const retry = () => { void fetchTeams(); };
+    window.addEventListener("online", retry);
+    return () => window.removeEventListener("online", retry);
+  }, [fetchTeams, isGuest, loadFailed]);
 
   useEffect(() => {
     const clearQuarantinedTeam = (event: Event) => {
@@ -213,6 +227,7 @@ export function useTeams(isGuest = false, isSso = false, onActiveTeamUnavailable
     isLoading,
     isAvailable,
     licenseRequired,
+    loadFailed,
     fetchTeams,
     selectTeam,
     createTeam,
