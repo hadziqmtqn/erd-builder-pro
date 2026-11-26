@@ -27,6 +27,7 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } 
 import EntityNode from '../diagram/EntityNode';
 import { CommentMarker, ERDCommentsProvider, OPEN_COMMENT_EVENT, PrepareCommentAnchor, type CommentAnchor, type ERDCommentsConfig } from '../diagram/ERDComments';
 import { SchemaDiffOverlay } from '../diagram/SchemaDiffOverlay';
+import { viewportBesidePanels } from '@/lib/canvas-panel-focus';
 import { Entity } from '@/types';
 import { useAIAction } from '@/contexts/AIActionContext';
 import { applyToErdContent, ErdApplyResult } from '@/components/ai/actions/erdActions';
@@ -226,6 +227,13 @@ const ERDViewComponent = ({
     onMove(event, viewport);
   }, [onMove]);
 
+  // BUG-076: the Comments panel floats over the canvas, so the anchor is centred in the part it leaves visible.
+  const focusBesidePanels = useCallback((x: number, y: number) => {
+    const zoom = getViewport().zoom;
+    if (canvasRef.current) void setViewport(viewportBesidePanels(canvasRef.current, { x, y }, zoom), { duration: 0 });
+    else void setCenter(x, y, { zoom, duration: 0 });
+  }, [getViewport, setCenter, setViewport]);
+
   const handleDiscussionAnchorSelected = useCallback((type: "general" | "table" | "relationship", id: string | null) => {
     if (!id || type === "general") return;
     const currentNodes = getNodes() as Node<Entity>[];
@@ -237,7 +245,7 @@ const ERDViewComponent = ({
       const node = currentNodes.find((item) => item.id === id);
       if (node) {
         const center = centerOf(node);
-        void setCenter(center.x, center.y, { zoom: getViewport().zoom, duration: 0 });
+        focusBesidePanels(center.x, center.y);
       }
       return;
     }
@@ -248,8 +256,8 @@ const ERDViewComponent = ({
     if (!source || !target) return;
     const from = centerOf(source);
     const to = centerOf(target);
-    void setCenter((from.x + to.x) / 2, (from.y + to.y) / 2, { zoom: getViewport().zoom, duration: 0 });
-  }, [getEdges, getNodes, getViewport, setCenter]);
+    focusBesidePanels((from.x + to.x) / 2, (from.y + to.y) / 2);
+  }, [focusBesidePanels, getEdges, getNodes]);
 
   React.useEffect(() => {
     const onDiscussionAnchorSelected = (event: Event) => {

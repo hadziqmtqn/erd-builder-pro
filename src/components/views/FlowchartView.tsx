@@ -54,6 +54,7 @@ import { useWorkspace } from '@/providers/WorkspaceContext';
 import type { FlowchartExportHandler } from '@/providers/WorkspaceContext';
 import { PrepareCommentAnchor, type CommentAnchor } from '@/components/diagram/ERDComments';
 import { storedHasAnchor } from '@/lib/fileComments';
+import { viewportBesidePanels } from '@/lib/canvas-panel-focus';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 
@@ -116,7 +117,7 @@ const FlowchartCanvas = React.memo(({
   const isParsingFromDataRef = React.useRef(false);
   const isDraggingRef = React.useRef(false);
   const pendingContentAppliedRef = React.useRef(false);
-  const { fitView, screenToFlowPosition, getInternalNode, getViewport, setCenter } = useReactFlow();
+  const { fitView, screenToFlowPosition, getInternalNode, getViewport, setCenter, setViewport: setCanvasViewport } = useReactFlow();
   const canvasRef = React.useRef<HTMLDivElement>(null);
   const lastFlowchartIdRef = React.useRef(activeFlowchartId);
   const isEditingEdgeRef = React.useRef(false);
@@ -456,6 +457,7 @@ const FlowchartCanvas = React.memo(({
   }, [selectedNodeId, selectedEdgeId, isReadOnly]);
 
   // NOT-001.4: opening a symbol's comment centres the symbol; one deleted since then leaves the view as it is.
+  // BUG-076: centred in the part of the canvas the floating Comments panel leaves visible.
   useEffect(() => {
     const onCommentAnchorSelected = (event: Event) => {
       const detail = (event as CustomEvent<{ fileId?: string; id?: string }>).detail;
@@ -463,11 +465,14 @@ const FlowchartCanvas = React.memo(({
       const node = getInternalNode(detail.id);
       if (!node) return;
       const { x, y } = node.internals.positionAbsolute;
-      void setCenter(x + (node.measured.width ?? 0) / 2, y + (node.measured.height ?? 0) / 2, { zoom: getViewport().zoom, duration: 0 });
+      const center = { x: x + (node.measured.width ?? 0) / 2, y: y + (node.measured.height ?? 0) / 2 };
+      const zoom = getViewport().zoom;
+      if (canvasRef.current) void setCanvasViewport(viewportBesidePanels(canvasRef.current, center, zoom), { duration: 0 });
+      else void setCenter(center.x, center.y, { zoom, duration: 0 });
     };
     window.addEventListener('flowchart-comment-anchor-selected', onCommentAnchorSelected);
     return () => window.removeEventListener('flowchart-comment-anchor-selected', onCommentAnchorSelected);
-  }, [activeFlowchart?.uid, activeFlowchart?.id, getInternalNode, getViewport, setCenter]);
+  }, [activeFlowchart?.uid, activeFlowchart?.id, getInternalNode, getViewport, setCanvasViewport, setCenter]);
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId);
   const selectedEdge = edges.find((e) => e.id === selectedEdgeId);
