@@ -127,8 +127,10 @@ function notifyCommentChange(file: CommentFileRef) {
   window.dispatchEvent(new CustomEvent('collaboration-updated', { detail: { teamId: file.teamId, projectId: file.projectId } }));
 }
 
+/** Marks a thread read; a successful read refreshes the header badge and markers like a read in the panel (BUG-086). */
 export async function markCommentRead(file: CommentFileRef, threadId: string): Promise<void> {
-  await apiFetch(`${base(file)}/${encodeURIComponent(threadId)}/read?${fileQuery(file)}`, { method: 'POST' }).catch(() => undefined);
+  const response = await apiFetch(`${base(file)}/${encodeURIComponent(threadId)}/read?${fileQuery(file)}`, { method: 'POST' }).catch(() => undefined);
+  if (response?.ok) notifyCommentChange(file);
 }
 
 /** The newest `count` messages of an oldest-first list. */
