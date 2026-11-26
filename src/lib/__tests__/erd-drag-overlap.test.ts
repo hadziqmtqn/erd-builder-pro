@@ -80,3 +80,26 @@ describe('BUG-043 drag over crowded tables', () => {
     expect(redone.nodes[3].position).toEqual(separated);
   });
 });
+
+describe('BUG-088 measuring tables loaded by Load latest', () => {
+  // A table loaded from the server has no measured size until React Flow renders it. With onlyRenderVisibleElements an
+  // off-screen table stays unmeasured, so only its estimated size (44 px + 38 px per column) is known.
+  const loaded = (id: string, x: number, y: number, columns: number): Node<Entity> => ({
+    id, position: { x, y },
+    data: { id, name: id, x, y, color: '#666', columns: Array.from({ length: columns }, (_, i) => ({ id: `${id}_${i}`, name: `c${i}`, type: 'INT', is_pk: i === 0, is_nullable: false })) },
+  });
+
+  it('does not move a table when a visible table is measured next to an off-screen one', () => {
+    // Another user placed new_table 32 px under orders, whose real height is 200 px; its estimate is 234 px.
+    const canvas = [loaded('orders', 0, 0, 5), loaded('new_table', 0, 232, 1)];
+    const measured: NodeChange<Node<Entity>>[] = [{ type: 'dimensions', id: 'new_table', dimensions: { width: 220, height: 80 } }];
+    expect(constrainTableChanges(measured, canvas)).toBe(measured);
+  });
+
+  it('still separates two measured tables that really overlap', () => {
+    const canvas = [{ ...loaded('orders', 0, 0, 5), measured: { width: 220, height: 200 } }, loaded('new_table', 0, 150, 1)];
+    const next = apply([{ type: 'dimensions', id: 'new_table', dimensions: { width: 220, height: 80 } }], canvas);
+    expect(overlapsAny(next)).toBe(false);
+    expect(next[0].position).toEqual({ x: 0, y: 0 });
+  });
+});

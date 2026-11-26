@@ -50,12 +50,23 @@ export function separateTables(nodes: Node<Entity>[]): Node<Entity>[] {
   return placed.every((n, i) => n === nodes[i]) ? nodes : placed;
 }
 
+/**
+ * BUG-088: a loaded table has no measured size until React Flow renders it, and an off-screen one stays unmeasured
+ * (onlyRenderVisibleElements). Its estimated size can overlap a neighbour that really sits clear of it, so measuring
+ * after a load only separates tables whose real sizes are both known; otherwise loading a file moved and saved it.
+ */
+function separateMeasuredTables(nodes: Node<Entity>[]): Node<Entity>[] {
+  const measured = nodes.filter(n => n.measured?.width !== undefined && n.measured?.height !== undefined);
+  const separated = new Map(separateTables(measured).map(n => [n.id, n]));
+  return nodes.map(n => separated.get(n.id) ?? n);
+}
+
 export function constrainTableChanges(changes: NodeChange<Node<Entity>>[], nodes: Node<Entity>[]) {
   const next = applyNodeChanges(changes, nodes);
   // BUG-043: a table may overlap others while the mouse is down; it is separated on the drop (dragging false).
   const moving = new Set(changes.flatMap(c => c.type === 'position' && !c.dragging ? [c.id] : []));
   const safe = moving.size ? separateMovedTables(next, moving)
-    : changes.some(c => c.type === 'dimensions') ? separateTables(next) : next;
+    : changes.some(c => c.type === 'dimensions') ? separateMeasuredTables(next) : next;
   const corrections: NodeChange<Node<Entity>>[] = safe.flatMap((n, i) => n.position.x !== next[i].position.x || n.position.y !== next[i].position.y
     ? [{ type: 'position' as const, id: n.id, position: n.position }] : []);
   return corrections.length ? [...changes, ...corrections] : changes;
