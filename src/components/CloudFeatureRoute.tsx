@@ -55,10 +55,19 @@ function CloudFeatureUnavailable({ capability, teamName, ssoPortalUrl }: { capab
 
 export function CloudFeatureRoute({ capability, children }: { capability: Capability; children: ReactNode }) {
   const { user } = useAuth();
-  const { activeTeamId, activeTeam, isLoading } = useOutletContext<TeamsState>();
+  const { activeTeamId, activeTeam, isLoading, loadFailed, fetchTeams } = useOutletContext<TeamsState>();
 
   if (!user?.isSso || !activeTeamId) return <>{children}</>;
   if (isLoading) return <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Checking Team plan…</div>;
+  // A plan that could not be loaded is not a missing plan: offer a retry instead of the paywall (BUG-089).
+  if (!activeTeam && loadFailed) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-muted-foreground" role="status">
+        <p>Could not load the Team plan. Check your connection.</p>
+        <Button variant="outline" size="sm" onClick={() => void fetchTeams(true)}>Try again</Button>
+      </div>
+    );
+  }
 
   const allowed = capability !== 'desktop_only' && activeTeam?.capabilities?.[capability] === true;
   if (allowed) return <>{children}</>;
