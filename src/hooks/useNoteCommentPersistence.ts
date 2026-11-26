@@ -57,6 +57,14 @@ export function useNoteCommentPersistence({ noteUid, note, isReadOnly, handleNot
       return false;
     }
 
+    // The block's comment card opens its composer (NoteCommentsLayer); the Discussions panel is not involved.
+    const openComposer = () => window.dispatchEvent(new CustomEvent('note-comment-compose', { detail: { fileId: String(noteUid), anchorId: id } }));
+    // The block already had this anchor: the Note is unchanged, so saving it would only bump its update time (BUG-085).
+    if (content === beforeContent) {
+      openComposer();
+      return true;
+    }
+
     cancelPendingNoteSaves();
     try {
       const draftId = note.uid || note.id || noteUid;
@@ -87,8 +95,7 @@ export function useNoteCommentPersistence({ noteUid, note, isReadOnly, handleNot
 
       const saved = await saveNote({ ...note, content }, { syncPending: false });
       if (saved === false) toast.error('Anchor tersimpan di server, tetapi cache lokal gagal diperbarui.');
-      // The block's comment card opens its composer (NoteCommentsLayer); the Discussions panel is not involved.
-      window.dispatchEvent(new CustomEvent('note-comment-compose', { detail: { fileId: String(noteUid), anchorId: id } }));
+      openComposer();
       return true;
     } catch {
       toast.error('Tidak dapat menambahkan komentar ke Note.');
