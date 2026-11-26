@@ -351,6 +351,24 @@ export function linkedThread(search: string, pathname: string, fileId: string): 
   }
 }
 
+/**
+ * Which screen opening a node's comments shows, given the file's comment list (`null` when that request was
+ * superseded or failed). A notification link names a thread the detail request already authorized, so it opens
+ * that thread even when the list is unknown or older than the comment; an unknown list loads the node's threads
+ * instead of offering a new comment (BUG-087). `threadId: null` lets the node's thread request pick the newest.
+ */
+export function commentOpenTarget(
+  snapshot: Thread[] | null,
+  anchor: PendingCommentOpen,
+  readOnly: boolean,
+): { screen: "thread"; threadId: string | null } | { screen: "compose" | "list" } {
+  const group = snapshot && groupCommentThreads(snapshot).find((candidate) => candidate.representative.anchorType === anchor.type && candidate.representative.anchorId === anchor.id);
+  // A notification link names its thread; a marker click opens the newest one.
+  if (group) return { screen: "thread", threadId: group.threads.find((thread) => thread.id === anchor.threadId)?.id ?? anchor.threadId ?? group.representative.id };
+  if (anchor.threadId || !snapshot) return { screen: "thread", threadId: anchor.threadId ?? null };
+  return { screen: readOnly ? "list" : "compose" };
+}
+
 type ActiveDetailRefreshTarget =
   | { kind: "thread"; threadId: string }
   | { kind: "anchor"; anchor: DiscussionAnchor; threadId: string | null };
@@ -566,14 +584,15 @@ export function DiscussionsPanel({
     file_id: fileContext.fileId,
   } : {}), [activeTab, endpoint, fileContext.featureType, fileContext.fileId]);
 
-  const loadThreads = useCallback(async (notify = false): Promise<Thread[]> => {
+  /** Resolves to `null` when a newer request superseded this one or the request failed: the list is then unknown, not empty. */
+  const loadThreads = useCallback(async (notify = false): Promise<Thread[] | null> => {
     const requestId = ++listRequest.current;
     setLoadError("");
     if (!hasInitialSnapshot.current) setLoadingThreads(true);
     try {
       // The other tab only feeds the badge and the toast, so its failure must not hide the active list.
       const [data, other] = await Promise.all([requestListJson(listEndpoint), requestListJson(otherListEndpoint).catch(() => null)]);
-      if (requestId !== listRequest.current) return [];
+      if (requestId !== listRequest.current) return null;
       const nextThreads: Thread[] = Array.isArray(data.threads) ? data.threads.map((thread: RawRecord) => normalizeThread(thread)) : [];
       const otherThreads: Thread[] = Array.isArray(other?.threads) ? other.threads.map((thread: RawRecord) => normalizeThread(thread)) : [];
       const watched = [...nextThreads, ...otherThreads];
@@ -600,7 +619,7 @@ export function DiscussionsPanel({
       return nextThreads;
     } catch {
       if (requestId === listRequest.current) setLoadError(`Couldn't load ${activeTab}. Try again.`);
-      return [];
+      return null;
     } finally {
       if (requestId === listRequest.current) setLoadingThreads(false);
     }
@@ -810,15 +829,13 @@ export function DiscussionsPanel({
     void (async () => {
       const snapshot = await loadThreads();
       if (cancelled) return;
-      const group = groupCommentThreads(snapshot).find((candidate) => candidate.representative.anchorType === anchor.type && candidate.representative.anchorId === anchor.id);
-      if (group) {
-        // A notification link names its thread; a marker click opens the newest one.
-        const threadId = group.threads.find((thread) => thread.id === anchor.threadId)?.id ?? group.representative.id;
+      const target = commentOpenTarget(snapshot, anchor, readOnly);
+      if (target.screen === "thread") {
         setScreen("thread");
-        setSelectedThreadId(threadId);
-        await loadAnchor(anchor, true, false, threadId);
+        setSelectedThreadId(target.threadId);
+        await loadAnchor(anchor, true, false, target.threadId ?? undefined);
       } else {
-        setScreen(readOnly ? "list" : "compose");
+        setScreen(target.screen);
       }
       if (!cancelled) setPendingCommentOpen(null);
     })();
@@ -1403,6 +1420,24 @@ export function DiscussionsPanel({
             {readOnly && <p className="border-t border-border px-4 py-3 text-sm text-muted-foreground">You can read this thread but not reply to it.</p>}
           </div>
         )}
+
+        {/* BUG-087: a linked thread that is not in the list yet waits here instead of falling back to another screen. */}
+        {screen === "thread" && !activeThread && (threadError ? (
+          <div className="m-4 rounded-lg border border-destructive/40 p-4 text-sm" role="alert">
+            <p>{threadError}</p>
+            <Button
+              variant="outline"
+              className="mt-3 min-h-11"
+              onClick={() => {
+                void loadThreads();
+                if (isCommentRail && activeCommentAnchor) void loadAnchor(activeCommentAnchor, true, false, selectedThreadId || undefined);
+                else if (selectedThreadId) void loadThread(selectedThreadId, true);
+              }}
+            >Retry</Button>
+          </div>
+        ) : (
+          <p role="status" className="px-4 py-5 text-center text-sm text-muted-foreground">Loading {activeTab === "comments" ? "comment" : "discussion"}…</p>
+        ))}
       </PopoverContent>
       <ConfirmModal
         isOpen={confirmDiscard}
