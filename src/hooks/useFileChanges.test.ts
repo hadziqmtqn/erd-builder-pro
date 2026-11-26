@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { watchFileChanges } from './useFileChanges';
+import { openFileEventsPath, watchFileChanges } from './useFileChanges';
 
 const apiFetch = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', async (importOriginal) => ({ ...await importOriginal<typeof import('@/lib/api')>(), apiFetch }));
@@ -73,5 +73,23 @@ describe('Self-host collaboration signal on the file stream (BUG-079)', () => {
     await vi.waitFor(() => expect(onCollaboration).toHaveBeenCalledWith('team-1'));
     signal.abort();
     expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
+describe('which file the change stream follows (BUG-096)', () => {
+  it('follows the file shown in its editor', () => {
+    expect(openFileEventsPath('notes', 'n 1', '/notes/n%201')).toBe('/api/notes/n%201/events');
+    expect(openFileEventsPath('erd', 'd-1', '/diagrams/d-1')).toBe('/api/diagrams/d-1/events');
+    expect(openFileEventsPath('erd', 'd-1', '/db-client/d-1')).toBe('/api/diagrams/d-1/events');
+    expect(openFileEventsPath('drawings', 'w-1', '/drawings/w-1')).toBe('/api/drawings/w-1/events');
+    expect(openFileEventsPath('flowchart', 'f-1', '/flowcharts/f-1')).toBe('/api/flowcharts/f-1/events');
+  });
+
+  it('stops following a file the user left for the Dashboard or another page', () => {
+    for (const pathname of ['/', '/projects/p-1', '/trash', '/library', '/teams/t-1']) {
+      expect(openFileEventsPath('notes', 'n-1', pathname)).toBeNull();
+    }
+    expect(openFileEventsPath('notes', undefined, '/notes/n-1')).toBeNull();
+    expect(openFileEventsPath('trash', 'n-1', '/notes/n-1')).toBeNull();
   });
 });

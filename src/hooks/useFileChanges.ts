@@ -30,6 +30,20 @@ export function collaborationTeam(event: string): string | null {
   }
 }
 
+const LIVE_ROUTES: Record<string, string> = { erd: 'diagrams', notes: 'notes', drawings: 'drawings', flowchart: 'flowcharts' };
+const FILE_EDITOR_PATH = /^\/(notes|diagrams|db-client|drawings|flowcharts)\/[^/]+/;
+
+/**
+ * The change stream of the file shown in an editor, or null when no file editor is shown. The Dashboard and the other
+ * pages keep the last opened file as active, so following it there told the user about saves to a file they had left
+ * (BUG-096).
+ */
+export function openFileEventsPath(view: string, uid: unknown, pathname: string): string | null {
+  const route = LIVE_ROUTES[view];
+  if (!route || uid == null || !FILE_EDITOR_PATH.test(pathname)) return null;
+  return `/api/${route}/${encodeURIComponent(String(uid))}/events`;
+}
+
 /**
  * Follows the file change stream at `path` until `signal` aborts (BUG-023). A save may have happened while the stream
  * was down, so a reconnect calls `onChange` when the server's version is newer than the one this client knows, or when

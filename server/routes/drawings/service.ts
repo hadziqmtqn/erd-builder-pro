@@ -127,7 +127,9 @@ export async function updateDrawing(
   if (isForeignProjectMove(existing, userId, data.projectId)) return null;
 
   const updatePayload: any = { updatedAt: new Date() };
-  if (isDesktopMode() || isLocalPostgres()) updatePayload.version = (data.expectedVersion ?? existing.version ?? 0) + 1;
+  // A move to another Project changes no content; keeping the version lets editors who have the file open keep saving (BUG-096).
+  const moveOnly = data.projectId !== undefined && data.title === undefined && data.drawingData === undefined;
+  if ((isDesktopMode() || isLocalPostgres()) && !moveOnly) updatePayload.version = (data.expectedVersion ?? existing.version ?? 0) + 1;
   if (data.title !== undefined) updatePayload.title = data.title;
   if (data.drawingData !== undefined) updatePayload.data = replacePrivateStorageUrlsInDrawingData(data.drawingData, {});
   if (data.projectId !== undefined) updatePayload.projectId = data.projectId;

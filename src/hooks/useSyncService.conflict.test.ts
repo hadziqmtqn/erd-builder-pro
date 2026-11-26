@@ -76,3 +76,19 @@ describe('SH-002 Note conflict recovery', () => {
     expect(mocks.toast).not.toHaveBeenCalled();
   });
 });
+
+describe('BUG-096 content sync after someone moved the file', () => {
+  it.each([
+    { type: 'notes', path: '/api/notes/f-1', data: { title: 'QA', project_id: 3, content: '<p>B</p>' } },
+    { type: 'drawings', path: '/api/drawings/f-1', data: { title: 'QA', project_id: 3, data: '{}' } },
+    { type: 'flowchart', path: '/api/flowcharts/f-1', data: { title: 'QA', project_id: 3, data: '{}' } },
+  ])('does not send the Project a stale $type draft still carries, so the save cannot move the file back', async ({ type, path, data }) => {
+    mocks.pending.mockResolvedValue([{ type, id: 'f-1', updated_at: 1, data: JSON.stringify(data) }]);
+    mocks.api.mockResolvedValue(Response.json({ version: 7 }));
+    await useSyncService(true).syncDrafts();
+    const [sentPath, init] = mocks.api.mock.calls[0];
+    expect(sentPath).toBe(path);
+    expect(JSON.parse(init.body as string)).not.toHaveProperty('project_id');
+    expect(mocks.synced).toHaveBeenCalledWith(type, 'f-1', 1);
+  });
+});

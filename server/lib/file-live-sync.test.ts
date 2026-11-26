@@ -23,6 +23,7 @@ describe("file change stream", () => {
     mocks.canAccessTeam.mockReset().mockResolvedValue(true);
     controller = new AbortController();
     const app = express();
+    app.use(express.json());
     app.use((req, _res, next) => {
       (req as any).user = { id: req.get("x-user") ?? "viewer" };
       runWithTeamScope({ mode: "team", teamId: "team-1" }, next);
@@ -74,6 +75,19 @@ describe("file change stream", () => {
     await fetch(`${base}/notes/${NOTE.uid}`, { method: "PUT" });
     await fetch(`${base}/notes/${NOTE.uid}`, { method: "PUT", headers: { "x-user": "editor" } });
     expect(await next()).toBe("event: change\ndata: {}\n\n");
+    expect(mocks.noteFindFirst).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not signal a move to another Project as a save (BUG-096)", async () => {
+    const { next } = await open();
+    await next();
+    const put = (body: unknown) => fetch(`${base}/notes/${NOTE.uid}`, {
+      method: "PUT", headers: { "x-user": "editor", "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    await put({ project_id: 5 });
+    await put({ title: "Plan", content: "<p>edited</p>", project_id: 5 });
+    expect(await next()).toBe("event: change\ndata: {}\n\n");
+    // One read when the stream opened and one for the content save; the move sent nothing.
     expect(mocks.noteFindFirst).toHaveBeenCalledTimes(2);
   });
 

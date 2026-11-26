@@ -36,10 +36,21 @@ export function publishProjectAccessChange(projectId: number, userId: string): v
   changes.emit("project-access", String(projectId), String(userId));
 }
 
-/** Route middleware for content writes: publishes once the response succeeded. */
+/** True for a request body that only moves a file to another Project (or out of one) and changes no content. */
+export function isProjectMoveOnly(body: unknown): boolean {
+  const keys = body && typeof body === "object" ? Object.keys(body) : [];
+  return keys.length > 0 && keys.every(key => key === "project_id" || key === "projectId");
+}
+
+/**
+ * Route middleware for content writes: publishes once the response succeeded. A move to another Project changes no
+ * content, so it is not signalled; other users would otherwise be told someone saved the file (BUG-096).
+ */
 export function notifyFileChange(model: LiveFileModel) {
   return (req: Request, res: Response, next: NextFunction) => {
-    res.on("finish", () => { if (res.statusCode < 300) publishFileChange(model, req.params.uid, (req as any).user?.id); });
+    res.on("finish", () => {
+      if (res.statusCode < 300 && !isProjectMoveOnly(req.body)) publishFileChange(model, req.params.uid, (req as any).user?.id);
+    });
     next();
   };
 }

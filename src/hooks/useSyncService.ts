@@ -127,9 +127,11 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
                 }
               }
 
+              // A content save never sends the Project: moving is its own request, and a draft made before someone else
+              // moved the file would otherwise move it back (BUG-096).
               if (draft.type === DraftType.NOTES) {
                 endpoint = `/api/notes/${draft.id}`;
-                body = { title: parsedData.title, content: parsedData.content, project_id: parsedData.project_id, expectedVersion: await baseVersion(draft) };
+                body = { title: parsedData.title, content: parsedData.content, expectedVersion: await baseVersion(draft) };
               } else if (draft.type === DraftType.ERD) {
                 endpoint = `/api/diagrams/save/${draft.id}`;
                 
@@ -163,10 +165,10 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
                 }
               } else if (draft.type === DraftType.FLOWCHART) {
                 endpoint = `/api/flowcharts/${draft.id}`;
-                body = { title: parsedData.title, data: parsedData.data || draft.data, project_id: parsedData.project_id, expectedVersion: await baseVersion(draft) };
+                body = { title: parsedData.title, data: parsedData.data || draft.data, expectedVersion: await baseVersion(draft) };
               } else if (draft.type === DraftType.DRAWINGS) {
                 endpoint = `/api/drawings/${draft.id}`;
-                body = { title: parsedData.title, data: parsedData.data || draft.data, project_id: parsedData.project_id, expectedVersion: await baseVersion(draft) };
+                body = { title: parsedData.title, data: parsedData.data || draft.data, expectedVersion: await baseVersion(draft) };
               }
 
               if (endpoint) {
