@@ -28,7 +28,7 @@ import EntityNode, { NOTES_COMPANION_ENTITY_EDIT_EVENT } from '@/components/diag
 import { edgeToRelationship } from '@/lib/diagram-payload';
 import { constrainTableChanges, separateTables, alignErdHandles } from '@/lib/erd-geometry';
 import { autoLayoutERD } from '@/lib/autoLayoutERD';
-import { readSavedViewport } from '@/lib/erd-viewport';
+import { readRememberedViewport, readSavedViewport, rememberViewport } from '@/lib/erd-viewport';
 import { erdToDBML } from '@/lib/dbml-converter';
 import { applyToErdContent } from '@/components/ai/actions/erdActions';
 import { loadDbmlCore } from '@/lib/dbml-core';
@@ -82,7 +82,7 @@ function DiagramCanvas({ document, previewSchema, previewKey }: {
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const persistedViewport = useMemo(() => readSavedViewport(document), [document]);
+  const persistedViewport = useMemo(() => readRememberedViewport(document.uid ?? document.id) ?? readSavedViewport(document), [document]);
   const savedViewport = persistedViewport ?? { x: 0, y: 0, zoom: 1 };
   const viewportRef = useRef(savedViewport);
   nodesRef.current = nodes;
@@ -289,8 +289,9 @@ function DiagramCanvas({ document, previewSchema, previewKey }: {
 
   const handleMoveEnd = useCallback((event: unknown, viewport: typeof savedViewport) => {
     viewportRef.current = viewport;
-    if (event) persist(nodesRef.current, edgesRef.current);
-  }, [persist]);
+    // The viewer's own view, not an edit of the shared diagram (BUG-084).
+    if (event) rememberViewport(document.uid ?? document.id, viewport);
+  }, [document.id, document.uid]);
 
   useEffect(() => {
     const edit = (event: Event) => setSelectedNodeId((event as CustomEvent<{ id: string }>).detail?.id ?? null);
