@@ -119,7 +119,8 @@ describe('BUG-028/029 New file dialog', () => {
 });
 
 describe('BUG-056 Projects that take no new files', () => {
-  const projects = [{ id: 5, name: 'QA', canAddFiles: false }, { id: 6, name: 'Target', canAddFiles: true }, { id: 7, name: 'Read only', canAddFiles: false }];
+  // Shaped like GET /api/projects/selectable: the server's response middleware turns `canAddFiles` into `can_add_files`.
+  const projects = [{ id: 5, name: 'QA', can_add_files: false }, { id: 6, name: 'Target', can_add_files: true }, { id: 7, name: 'Read only', can_add_files: false }];
   const createProps = () => ({ ...props(), mode: 'create' as const, activeDocument: null, requireProject: true, projects });
   const options = (tree: ReactElement<any>[]) => tree.filter(e => e.type === SelectItem).map(e => e.props.value);
 
