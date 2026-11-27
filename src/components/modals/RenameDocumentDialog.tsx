@@ -107,7 +107,8 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
   const isDbClientCreate = isCreate && view === 'db-client';
   const currentProjectId = activeDocument?.project_id ?? activeDocument?.projectId;
   // BUG-056: a Project that takes no new files from this user is not offered, except the one an existing file is in.
-  const isOffered = (project: any) => project.canAddFiles !== false || (!isCreate && String(project.id) === String(currentProjectId));
+  // The API sends response keys in snake_case, so the flag arrives as `can_add_files`.
+  const isOffered = (project: any) => project.can_add_files !== false || (!isCreate && String(project.id) === String(currentProjectId));
   const projectOptions = projects.filter(isOffered);
   // A preselected Project that is not offered, such as a view-only Project open in the workspace filter, counts as none.
   const projectChoice = projects.some((project) => String(project.id) === selectedProjectId && !isOffered(project)) ? 'none' : selectedProjectId;
