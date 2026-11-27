@@ -1,4 +1,4 @@
-import { supabase, isDesktopMode, isLocalPostgres, useLocalAuth, getInstallMode, getSsoConfig, isSsoAuthMode } from "../../lib/config.js";
+import { supabase, isDesktopInstall, isDesktopMode, isLocalPostgres, useLocalAuth, getInstallMode, getSsoConfig, isSsoAuthMode } from "../../lib/config.js";
 import { prisma } from "../../lib/prisma.js";
 import {
   hashPassword,
@@ -18,6 +18,11 @@ const DESKTOP_DEFAULT_PASSWORD = "admin123";
 
 // ── Auth Config ──
 
+/** Password login with a first-run administrator: local PostgreSQL, or SQLite outside the Desktop and CLI apps (Docker). */
+function usesSelfHostPasswordLogin(): boolean {
+  return useLocalAuth() && !isDesktopInstall() && !isSsoAuthMode();
+}
+
 function isBootstrapAdmin(user: any): boolean {
   return Boolean(
     user?.email?.toLowerCase() === DESKTOP_DEFAULT_EMAIL &&
@@ -29,7 +34,8 @@ function isBootstrapAdmin(user: any): boolean {
 
 export async function getAuthConfig() {
   let needsSetup = false;
-  if (isLocalPostgres() && prisma) {
+  // An install whose only account is the Desktop bootstrap admin (older Docker SQLite images) also needs setup.
+  if (usesSelfHostPasswordLogin() && prisma) {
     try {
       const users = await prisma.user.findMany({
         take: 2,
@@ -46,14 +52,14 @@ export async function getAuthConfig() {
     ssoConfigured: !isSsoAuthMode() || getSsoConfig().configured,
     ssoLoginUrl: "/api/sso/login",
     supabaseAuth: !useLocalAuth(),
-    isDesktop: isDesktopMode(),
+    isDesktop: isDesktopInstall(),
     isLocalPostgres: isLocalPostgres(),
-    supportsPasswordUpdate: isLocalPostgres() && !isSsoAuthMode(),
+    supportsPasswordUpdate: usesSelfHostPasswordLogin(),
     installMode: getInstallMode(),
     guestMode: (process.env.VITE_ENABLE_GUEST_MODE || "false") === "true",
     guestAiEnabled: (process.env.GUEST_AI_ENABLED || "false") === "true",
     needsSetup: isSsoAuthMode() ? false : needsSetup,
-    ...(isDesktopMode()
+    ...(getInstallMode() === "desktop"
       ? {
           desktopDefaultEmail: DESKTOP_DEFAULT_EMAIL,
           desktopDefaultPassword: DESKTOP_DEFAULT_PASSWORD,
@@ -68,8 +74,8 @@ export async function setupLocalAdmin(data: {
   confirmPassword: string;
   name?: string;
 }) {
-  if (!isLocalPostgres() || !prisma) {
-    throw new Error("Initial administrator setup is only available for Self-host PostgreSQL");
+  if (!usesSelfHostPasswordLogin() || !prisma) {
+    throw new Error("Initial administrator setup is only available for Self-host");
   }
 
   const users = await prisma.user.findMany({
@@ -116,8 +122,8 @@ export async function localLogin(email: string, password: string) {
   if (!prisma) throw new Error("Database not available");
 
   const normalizedEmail = email.toLowerCase();
-  // The desktop bootstrap credential must never be accepted by a shared self-host instance.
-  if (!isDesktopMode() && normalizedEmail === DESKTOP_DEFAULT_EMAIL && password === DESKTOP_DEFAULT_PASSWORD) {
+  // The desktop bootstrap credential must never be accepted by a shared self-host instance, Docker on SQLite included.
+  if (!isDesktopInstall() && normalizedEmail === DESKTOP_DEFAULT_EMAIL && password === DESKTOP_DEFAULT_PASSWORD) {
     return null;
   }
 
@@ -128,7 +134,7 @@ export async function localLogin(email: string, password: string) {
   let user = existingUser;
   if (!user) {
     const userCount = await prisma.user.count();
-    if (isDesktopMode()) {
+    if (isDesktopInstall()) {
       user = await prisma.user.create({
         data: {
           email: normalizedEmail,
@@ -200,7 +206,7 @@ export async function localLogin(email: string, password: string) {
       id: (user as any).id,
       email: (user as any).email,
       name: (user as any).name,
-      isSuperAdmin: isDesktopMode() || Boolean((user as any).isSuperAdmin),
+      isSuperAdmin: isDesktopInstall() || Boolean((user as any).isSuperAdmin),
       mustChangePassword: Boolean((user as any).mustChangePassword),
       activeTeamId,
       user_metadata: { name: (user as any).name },
@@ -232,7 +238,7 @@ export async function ensureDesktopUser(): Promise<{
   user: any;
   token: string;
 } | null> {
-  if (!prisma || !useLocalAuth()) return null;
+  if (!prisma || !isDesktopInstall()) return null;
 
   try {
     let user = await prisma.user.findFirst({
@@ -312,7 +318,7 @@ export async function getLocalSession(token: string) {
     id: (user as any).id,
     email: (user as any).email,
     name: (user as any).name,
-    isSuperAdmin: !isSsoAuthMode() && (isDesktopMode() || Boolean((user as any).isSuperAdmin)),
+    isSuperAdmin: !isSsoAuthMode() && (isDesktopInstall() || Boolean((user as any).isSuperAdmin)),
     isSso: isSsoAuthMode(),
     ssoPortalUrl: isSsoAuthMode() ? getSsoConfig().issuerUrl || null : null,
     mustChangePassword: Boolean((user as any).mustChangePassword),
@@ -340,7 +346,7 @@ export async function updateLocalAccount(
 
   // If changing password, require verified current password.
   // Name and email changes don't require current password.
-  const requiresCurrentPassword = !isDesktopMode() && !!data.newPassword;
+  const requiresCurrentPassword = !isDesktopInstall() && !!data.newPassword;
   if (requiresCurrentPassword) {
     if (!data.currentPassword) {
       return { error: "Current password is required to change your password" };
@@ -351,8 +357,8 @@ export async function updateLocalAccount(
     }
   }
 
-  // Password update is web-pure-PG only
-  if (data.newPassword && !isLocalPostgres()) {
+  // Desktop and CLI sign in automatically, so they have no password to change.
+  if (data.newPassword && isDesktopInstall()) {
     return { error: "Password update is not available in desktop mode" };
   }
 

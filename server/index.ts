@@ -11,7 +11,7 @@ import path from "node:path";
 
 import { authenticate, checkSupabase } from "./lib/middleware.js";
 import { httpLogger, logger, requestIdMiddleware, redactLogValue } from "./lib/logger.js";
-import { getInstallMode, isDesktopMode } from "./lib/config.js";
+import { getInstallMode, isDesktopInstall } from "./lib/config.js";
 import { isSameHostOrigin } from "./lib/same-origin.js";
 import authRouter from "./routes/auth/index.js";
 import diagramsRouter from "./routes/diagrams/index.js";
@@ -103,8 +103,9 @@ const corsMiddleware = cors({
     // frontend (Tauri webview). The Origin header varies across platforms
     // and Tauri versions — it can be tauri://, https://tauri.localhost,
     // file://, or even null. There is no cross-origin risk when both
-    // frontend and backend are on the same local machine.
-    if (isDesktopMode()) {
+    // frontend and backend are on the same local machine. Docker on SQLite
+    // is a server, so it gets the same origin checks as PostgreSQL.
+    if (isDesktopInstall()) {
       return callback(null, true);
     }
     

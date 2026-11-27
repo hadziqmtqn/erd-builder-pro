@@ -29,9 +29,10 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   console.log(`Seeding ${dbType} database...`);
 
-  // SQLite Desktop uses its local bootstrap account. PostgreSQL Self-host
-  // creates the first admin through the one-time setup screen instead.
-  if (isSqliteUrl(rawUrl)) {
+  // SQLite Desktop uses its local bootstrap account. Self-host (PostgreSQL, or
+  // SQLite in the Docker image) creates the first admin through the one-time
+  // setup screen instead.
+  if (isSqliteUrl(rawUrl) && process.env.ERD_INSTALL_MODE !== 'docker') {
     const adminEmail = 'admin@local.dev';
     const adminPassword = 'admin123';
     const admin = await prisma.user.upsert({

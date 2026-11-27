@@ -85,6 +85,9 @@ ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOST=0.0.0.0
 ENV APP_VERSION=${APP_VERSION}
+# Declare the install mode: /.dockerenv is missing in Kiri, Podman and Kubernetes. With SQLite this
+# keeps password login and the first-run administrator setup instead of the Desktop app's auto-login.
+ENV ERD_INSTALL_MODE=docker
 
 # Expose port
 EXPOSE 3000

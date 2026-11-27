@@ -1,7 +1,7 @@
 import { Request as ExpressRequest, Response as ExpressResponse } from "express";
 import { logger } from "../../lib/logger.js";
 import { handleError } from "../../lib/utils.js";
-import { useLocalAuth, isDesktopMode, isSsoAuthMode } from "../../lib/config.js";
+import { useLocalAuth, isDesktopInstall, isSsoAuthMode } from "../../lib/config.js";
 import { prisma } from "../../lib/prisma.js";
 import * as authService from "./service.js";
 
@@ -69,7 +69,7 @@ export async function login(req: ExpressRequest, res: ExpressResponse): Promise<
       }
 
       const isSecure = isProd && req.protocol === "https";
-      const isDesktop = isDesktopMode();
+      const isDesktop = isDesktopInstall();
       res.cookie("token", result.token, {
         httpOnly: !isDesktop,
         secure: isSecure,
@@ -112,7 +112,7 @@ export async function login(req: ExpressRequest, res: ExpressResponse): Promise<
     if (authData && authData.session) {
       const isSecure = isProd && req.protocol === "https";
       res.cookie("token", authData.session.access_token, {
-        httpOnly: !isDesktopMode(),
+        httpOnly: !isDesktopInstall(),
         secure: isSecure,
         sameSite: "lax",
         path: "/",
@@ -196,14 +196,14 @@ export async function me(req: ExpressRequest, res: ExpressResponse): Promise<voi
         }
       }
 
-      // 2. No valid session → auto-login (desktop only)
-      if (isDesktopMode()) {
+      // 2. No valid session → auto-login (Desktop and CLI only; Docker on SQLite signs in with a password)
+      if (isDesktopInstall()) {
         const result = await authService.ensureDesktopUser();
         if (result) {
           const isProd = process.env.NODE_ENV === "production";
           const isSecure = isProd && req.protocol === "https";
           res.cookie("token", result.token, {
-            httpOnly: !isDesktopMode(),
+            httpOnly: !isDesktopInstall(),
             secure: isSecure,
             sameSite: "lax",
             path: "/",

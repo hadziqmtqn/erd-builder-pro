@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../../lib/config.js", () => ({
   supabase: null,
+  isDesktopInstall: () => false,
   isDesktopMode: () => false,
   isLocalPostgres: () => true,
   useLocalAuth: () => true,
