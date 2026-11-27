@@ -92,6 +92,10 @@ docker run -d \
   bekenweb/erd-builder-pro:latest
 ```
 
+On first start, open the app and create the administrator account, then sign in with that email and password. SQLite and PostgreSQL work the same way here. Until the account exists, anyone who can reach the port can create it, so create it before you share the address. A container upgraded from an earlier image shows this screen once if its database has only the built-in local account; the administrator you create keeps that account's documents.
+
+To use an AI provider on a private network address, such as a local model server, set `AI_ALLOW_PRIVATE_BASE_URL=true`.
+
 Keep the `erd-data` volume and `.env` backed up. Removing the volume deletes the SQLite database. PostgreSQL and Supabase deployments need additional environment settings; see [`.env.example`](./.env.example).
 
 ## MCP support (experimental)

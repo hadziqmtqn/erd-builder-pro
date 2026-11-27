@@ -36,17 +36,30 @@ export const GITHUB_TOKEN = process.env.GITHUB_TOKEN || "";
 export const GITHUB_REPO_OWNER = process.env.GITHUB_REPO_OWNER || "";
 export const GITHUB_REPO_NAME = process.env.GITHUB_REPO_NAME || "";
 
+/** True when the database is SQLite. The Docker image uses SQLite too, so use isDesktopInstall() for app behavior. */
 export function isDesktopMode(): boolean {
   const dbUrl = process.env.DATABASE_URL || "";
   return dbUrl === "" || dbUrl.startsWith("file:") || dbUrl.endsWith(".db");
 }
 
 export function getInstallMode(): string {
-  if (process.env.ERD_INSTALL_MODE === "cli") return "cli";
+  // The CLI launcher and the Docker image declare their mode. /.dockerenv is missing in Kiri, Podman and Kubernetes.
+  const declaredMode = process.env.ERD_INSTALL_MODE;
+  if (declaredMode === "cli" || declaredMode === "docker") return declaredMode;
   if (process.env.VERCEL) return "vercel";
   if (process.env.DOCKER || isInDocker()) return "docker";
   if (isDesktopMode()) return "desktop";
   return "web";
+}
+
+/**
+ * Desktop (Tauri) and CLI are single-user apps on the user's own machine: they sign in automatically and the user is
+ * admin. Every other install, Docker on SQLite included, signs in with a password and checks each user's SuperAdmin flag.
+ */
+export function isDesktopInstall(): boolean {
+  if (!isDesktopMode()) return false;
+  const mode = getInstallMode();
+  return mode === "desktop" || mode === "cli";
 }
 
 function isInDocker(): boolean {

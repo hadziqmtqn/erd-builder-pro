@@ -1,15 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  isDesktopMode: vi.fn(() => true),
-  isLocalPostgres: vi.fn(() => false),
+  isDesktopInstall: vi.fn(() => true),
+  useLocalAuth: vi.fn(() => true),
   isSsoAuthMode: vi.fn(() => false),
   canAddFiles: vi.fn(),
 }));
 
 vi.mock("./config.js", () => ({
-  isDesktopMode: mocks.isDesktopMode,
-  isLocalPostgres: mocks.isLocalPostgres,
+  isDesktopInstall: mocks.isDesktopInstall,
+  useLocalAuth: mocks.useLocalAuth,
   isSsoAuthMode: mocks.isSsoAuthMode,
 }));
 vi.mock("./team-scope.js", () => ({

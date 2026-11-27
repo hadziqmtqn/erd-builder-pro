@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./config.js", () => ({ isDesktopMode: () => false }));
+vi.mock("./config.js", () => ({ isDesktopInstall: () => false }));
 vi.mock("node:dns/promises", () => ({ default: { lookup: vi.fn() } }));
 
 import dns from "node:dns/promises";

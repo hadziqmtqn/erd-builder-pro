@@ -169,10 +169,11 @@ CSS variables from shadcn (`var(--popover)`, `var(--popover-foreground)`) used i
 |------|-----------|------|-----|--------|
 | Pure PostgreSQL (main) | `postgresql://` + no `SUPABASE_URL` | Local | Int | `schema.pg.prisma` |
 | Official Cloud | Pure PostgreSQL + `AUTH_MODE=sso` | SSO; local password routes disabled | Int | `schema.pg.prisma` |
-| Desktop/SQLite (and CLI) | `file:` or `.db` in URL | Local (desktop-auth) | Int | `schema.sqlite.prisma` |
+| Desktop/SQLite (and CLI) | `file:` or `.db` in URL, install mode `desktop`/`cli` | Local (desktop-auth), automatic sign-in, user is admin | Int | `schema.sqlite.prisma` |
+| Docker/SQLite | `file:` URL + `ERD_INSTALL_MODE=docker` (set in `Dockerfile`) | Local password, first-run admin setup, per-user SuperAdmin | Int | `schema.sqlite.prisma` |
 | Supabase (legacy) | `postgresql://` + `SUPABASE_URL` | Supabase JWT | BigInt | `schema.prisma` |
 
-Detection: `isDesktopMode()`, `isLocalPostgres()`, `useLocalAuth()`. Supabase auth via `supabase.auth.getUser(token)`.
+Detection: `isDesktopMode()`, `isLocalPostgres()`, `useLocalAuth()`, `isDesktopInstall()`. Supabase auth via `supabase.auth.getUser(token)`. `isDesktopMode()` only says the database is SQLite; automatic sign-in, admin for every user and other single-user allowances use `isDesktopInstall()` (BUG-104).
 
 Local web development uses `npm run dev:pg:local` and `npm run test:pg`. `DB_VARIANT` defaults to `pg`; `npm run dev` and `npm run dev:api` generate the PostgreSQL client without pushing the schema. `postinstall` generates the legacy Supabase client first (kept for Supabase deployments that build with `npm install`), then the PostgreSQL client, so `@prisma/client` types follow `schema.pg.prisma`.
 
