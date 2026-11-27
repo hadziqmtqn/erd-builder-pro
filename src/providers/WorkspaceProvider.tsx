@@ -1,6 +1,7 @@
 import { fileAccessRole, isFileViewer } from '@/lib/fileOwnership';
 import { useEditorActive, useFileSession } from '@/contexts/FileSessionContext';
 import { flushWorkspaceEditors } from '@/lib/file-panes';
+import { isSyncShortcut } from '@/lib/shortcuts';
 import { EntityNodeProvider } from '@/contexts/EntityNodeContext';
 import React, {
   useState, useCallback, useEffect, useMemo, useRef,
@@ -877,7 +878,7 @@ export function WorkspaceProvider({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!editorActive()) return;
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+      if (isSyncShortcut(e)) {
         e.preventDefault();
         if (hasPendingSyncs && !isSyncing && isOnline) syncDrafts();
       }
