@@ -1,7 +1,7 @@
 import { readPendingERDCanvas } from '@/lib/erd-draft-canvas';
 import { useEditorActive } from '@/contexts/FileSessionContext';
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { apiFetch } from '../lib/api';
+import { apiFetch, isInstalledApp } from '../lib/api';
 import { 
   useNodesState, 
   useEdgesState, 
@@ -188,8 +188,9 @@ export function useERDSession(
 
       // Production DB diagram: fetch live schema + merge with saved positions
       // Detection: data.data exists and data.data._type === 'production_db_positions' and data.data.source exists
+      // The live schema is DB Client, which only Desktop and CLI serve (BUG-105); web keeps the saved canvas.
       const diagramData = (data as any).data;
-      if (diagramData && diagramData._type === 'production_db_positions' && diagramData.source) {
+      if (diagramData && diagramData._type === 'production_db_positions' && diagramData.source && isInstalledApp()) {
         try {
           const source = diagramData.source;
           const schemaRes = await apiFetch('/api/diagrams/fetch-schema', {

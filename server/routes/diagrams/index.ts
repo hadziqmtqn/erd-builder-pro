@@ -3,6 +3,7 @@ import { authenticate } from "../../lib/middleware.js";
 import { requireCloudCapability } from "../../lib/cloud-capability.js";
 import { validate, createDiagramSchema } from "../../lib/validation.js";
 import { fileChangeStream, notifyFileChange } from "../../lib/file-live-sync.js";
+import { desktopOnly } from "../connections/middleware.js";
 import * as ctrl from "./controller.js";
 import discussionsRouter, { requireCloudDiscussionTeam } from "./discussions.js";
 
@@ -29,7 +30,8 @@ router.delete("/:uid", authenticate, cloudCapability, ctrl.remove);
 router.post("/:uid/restore", authenticate, cloudCapability, ctrl.restore);
 router.delete("/:uid/permanent", authenticate, cloudCapability, ctrl.permanentDelete);
 router.post("/save/:uid", authenticate, cloudCapability, notifyFileChange("diagram"), ctrl.save);
-router.post("/fetch-schema", authenticate, cloudCapability, ctrl.fetchSchema);
-router.post("/test-db-connection", authenticate, cloudCapability, ctrl.testDbConnection);
+// Live database schema and connection tests belong to DB Client, which is Desktop/CLI only (BUG-105).
+router.post("/fetch-schema", authenticate, desktopOnly, ctrl.fetchSchema);
+router.post("/test-db-connection", authenticate, desktopOnly, ctrl.testDbConnection);
 
 export default router;
