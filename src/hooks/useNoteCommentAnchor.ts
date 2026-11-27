@@ -36,7 +36,8 @@ export function useNoteCommentAnchor({ editor, onRequestComment, onChangeTimeout
     }
 
     requestInFlightRef.current = true;
-    editor.setEditable(false);
+    // setEditable emits an `update` by default, which the Note editor treats as an edit and saves (BUG-085).
+    editor.setEditable(false, false);
     try {
       let saved = false;
       try {
@@ -57,7 +58,7 @@ export function useNoteCommentAnchor({ editor, onRequestComment, onChangeTimeout
       }
       return saved;
     } finally {
-      editor.setEditable(!isReadOnly);
+      editor.setEditable(!isReadOnly, false);
       requestInFlightRef.current = false;
     }
   }, [editor, isReadOnly, onChangeTimeoutRef, onRequestComment]);
