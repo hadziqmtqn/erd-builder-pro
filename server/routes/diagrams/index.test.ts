@@ -40,7 +40,8 @@ const MODES = [
   { name: "web", env: { DATABASE_URL: POSTGRES_URL }, installMode: "web", sso: false },
   { name: "docker", env: { DATABASE_URL: POSTGRES_URL, DOCKER: "1" }, installMode: "docker", sso: false },
   { name: "Cloud", env: { DATABASE_URL: POSTGRES_URL, DOCKER: "1", AUTH_MODE: "sso" }, installMode: "docker", sso: true },
-  { name: "desktop", env: { DATABASE_URL: SQLITE_URL }, installMode: "desktop", sso: false },
+  // Desktop and CLI launchers set ERD_INSTALL_MODE themselves (src-tauri/src/lib.rs, cli/src/cli.mjs).
+  { name: "desktop", env: { DATABASE_URL: SQLITE_URL, ERD_INSTALL_MODE: "desktop" }, installMode: "desktop", sso: false },
   { name: "cli", env: { DATABASE_URL: SQLITE_URL, ERD_INSTALL_MODE: "cli" }, installMode: "cli", sso: false },
 ] as const;
 
